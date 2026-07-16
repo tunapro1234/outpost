@@ -1,8 +1,31 @@
 import { TYPE_DIRECTORIES } from "../../lib/vault.mjs";
 import { normalizeSearch } from "../../lib/slug.mjs";
-import { emptyMailStats } from "../reach/mails.mjs";
+import { extractMailAddresses } from "../mail/parser.mjs";
 
 export const VALID_TYPES = new Set(Object.keys(TYPE_DIRECTORIES));
+
+function emptyMailStats() {
+  return {
+    mail_count: 0,
+    last_mail_date: null,
+    last_mail_direction: null,
+    last_mail_from: null,
+  };
+}
+
+export function entityMailAddresses(entity) {
+  return extractMailAddresses([entity?.meta?.mail, entity?.meta?.mails]);
+}
+
+export function mailEntityIndex(index) {
+  const entitiesByAddress = new Map();
+  for (const entity of index.entities.values()) {
+    for (const address of entityMailAddresses(entity)) {
+      if (!entitiesByAddress.has(address)) entitiesByAddress.set(address, entity);
+    }
+  }
+  return entitiesByAddress;
+}
 
 export function networkStats(index) {
   const byType = {};

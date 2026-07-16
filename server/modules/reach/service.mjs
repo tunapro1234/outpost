@@ -1,19 +1,17 @@
 import { workspaceMails } from "./mails.mjs";
+import { extractMailAddresses } from "../mail/parser.mjs";
 
 export const DEFAULT_CANDIDATE_MIN_SCORE = 20;
 
 const EMPTY_MAIL_VALUES = new Set(["", "-", "yok", "none", "null"]);
 
 export function mailAddresses(value) {
-  const values = Array.isArray(value) ? value : [value];
-  return values
-    .flatMap((item) => typeof item === "string" ? item.split(/[;,\s]+/) : [])
-    .map((item) => item.trim().toLowerCase())
-    .filter((item) => item.includes("@") && !EMPTY_MAIL_VALUES.has(item));
+  return extractMailAddresses(value)
+    .filter((item) => !EMPTY_MAIL_VALUES.has(item));
 }
 
 export function hasMail(entity) {
-  return mailAddresses(entity.meta.mail).length > 0;
+  return mailAddresses([entity.meta.mail, entity.meta.mails]).length > 0;
 }
 
 export function reachCandidateEntities(index, mails, {
@@ -29,7 +27,7 @@ export function reachCandidateEntities(index, mails, {
   }
 
   return [...index.entities.values()].filter((entity) => {
-    const addresses = mailAddresses(entity.meta.mail);
+    const addresses = mailAddresses([entity.meta.mail, entity.meta.mails]);
     return addresses.length > 0 &&
       typeof entity.meta.score === "number" &&
       entity.meta.score > minScore &&

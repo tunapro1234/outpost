@@ -37,6 +37,7 @@ async function directories(root) {
 
 function workspaceRecord(id, directory, config, vaultPath) {
   const mailLogPath = path.resolve(directory, "mails", "log.jsonl");
+  const mailIngestedPath = path.resolve(directory, "mails", "ingested.jsonl");
   return {
     id,
     name: typeof config.name === "string" && config.name.trim() ? config.name.trim() : id,
@@ -44,6 +45,7 @@ function workspaceRecord(id, directory, config, vaultPath) {
     config,
     vaultPath: path.resolve(vaultPath ?? path.join(directory, "vault")),
     mailLogPath,
+    mailIngestedPath,
     mailsPath: mailLogPath,
     index: null,
   };

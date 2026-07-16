@@ -256,7 +256,7 @@ test("chokidar değişiklikleri tam tarama olmadan indekse alır", async (t) => 
   const vault = await temporaryDirectory();
   await fs.mkdir(path.join(vault, "people"), { recursive: true });
   t.after(() => fs.rm(vault, { recursive: true, force: true }));
-  const app = await createApp({ vaultPath: vault, watch: true });
+  const app = await createApp({ vaultPath: vault, watch: true, schedule: false });
   t.after(() => app.close());
 
   await writeEntity(

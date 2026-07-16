@@ -8,6 +8,12 @@ import { runClaude } from "./modules/copilot/runner.mjs";
 import { gatherRoutes } from "./modules/gather/routes.mjs";
 import { GatherRunner } from "./modules/gather/runner.mjs";
 import { GatherScheduler } from "./modules/gather/scheduler.mjs";
+import { mailRoutes } from "./modules/mail/routes.mjs";
+import {
+  DEFAULT_MAIL_DATA,
+  DEFAULT_MAIL_INTERVAL_MS,
+  MailIngestor,
+} from "./modules/mail/service.mjs";
 import { networkRoutes } from "./modules/network/routes.mjs";
 import { overviewRoutes } from "./modules/overview/routes.mjs";
 import { profileRoutes } from "./modules/profile/routes.mjs";
@@ -61,6 +67,10 @@ export async function createApp({
   webDist = DEFAULT_WEB_DIST,
   watch = true,
   schedule = watch,
+  mailSchedule = schedule,
+  mailDataPath = process.env.OUTPOST_MAIL_DATA ?? DEFAULT_MAIL_DATA,
+  mailIntervalMs = DEFAULT_MAIL_INTERVAL_MS,
+  mailScan,
   gatherRunner = new GatherRunner(),
   copilotRunner = runClaude,
   metricsNow,
@@ -85,9 +95,17 @@ export async function createApp({
   const gatherScheduler = new GatherScheduler(registry, gatherRunner, {
     onError: (error) => app.log.warn({ err: error }, "Gather scheduler error"),
   });
+  const mailIngestor = new MailIngestor(registry, {
+    mailDataPath,
+    intervalMs: mailIntervalMs,
+    ...(mailScan ? { scan: mailScan } : {}),
+    onWarn: (error, context) => app.log.warn({ err: error }, context),
+  });
+  app.decorate("mailIngestor", mailIngestor);
   if (schedule) gatherScheduler.start();
   app.addHook("onClose", async () => {
     gatherScheduler.stop();
+    await mailIngestor.stop();
     await registry.close();
   });
   app.setErrorHandler((error, _request, reply) => {
@@ -115,11 +133,18 @@ export async function createApp({
     resolveWorkspace: resolveScopedWorkspace,
     runner: copilotRunner,
   });
+  await app.register(mailRoutes, {
+    prefix: "/api/ws/:ws",
+    resolveWorkspace: resolveScopedWorkspace,
+    ingestor: mailIngestor,
+  });
   await mountApi(app, "/api", defaultResolver(registry), {
     legacy: true,
     gatherRunner,
     metricsNow,
   });
+
+  if (mailSchedule) await mailIngestor.start();
 
   app.get("/*", async (request, reply) => serveWeb(request, reply, path.resolve(webDist)));
   return app;

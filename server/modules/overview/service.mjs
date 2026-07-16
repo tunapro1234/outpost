@@ -1,6 +1,6 @@
 import { networkStats } from "../network/service.mjs";
-import { readMailLog } from "../reach/mails.mjs";
-import { hasMail, reachCandidateCount } from "../reach/service.mjs";
+import { workspaceTrafficMails } from "../reach/mails.mjs";
+import { hasMail, mailAddresses, reachCandidateCount } from "../reach/service.mjs";
 import { listRuns } from "../gather/journal.mjs";
 import { GATHER_KINDS, readAgentRegistry } from "../gather/registry.mjs";
 import { stageStats } from "../gather/stage.mjs";
@@ -22,11 +22,11 @@ function dayKey(timestamp) {
   return new Date(timestamp).toISOString().slice(0, 10);
 }
 
-function recipientKey(mail) {
-  const address = typeof mail.to === "string" ? mail.to.trim().toLowerCase() : "";
-  if (address) return `address:${address}`;
-  if (mail.person_id) return `person:${mail.person_id}`;
-  return mail.entity_id ? `entity:${mail.entity_id}` : null;
+function recipientKeys(mail) {
+  const addresses = mailAddresses(mail.peer ?? mail.to);
+  if (addresses.length) return addresses.map((address) => `address:${address}`);
+  if (mail.person_id) return [`person:${mail.person_id}`];
+  return mail.entity_id ? [`entity:${mail.entity_id}`] : [];
 }
 
 export function outreachMetrics(mails, { now = () => new Date() } = {}) {
@@ -36,7 +36,7 @@ export function outreachMetrics(mails, { now = () => new Date() } = {}) {
     .filter((entry) => entry.date !== null)
     .sort((left, right) => left.date - right.date);
   const activeDates = new Set(dated.map((entry) => dayKey(utcDay(entry.date))));
-  const recipients = new Set(outgoing.map(recipientKey).filter(Boolean));
+  const recipients = new Set(outgoing.flatMap(recipientKeys));
 
   const today = utcDay(now());
   const firstDay = today - (DAILY_DAYS - 1) * DAY_MS;
@@ -100,7 +100,7 @@ function totalMetrics(index) {
 
 export async function overviewMetrics(workspace, { now } = {}) {
   const [mails, gather, candidates] = await Promise.all([
-    readMailLog(workspace.mailsPath),
+    workspaceTrafficMails(workspace),
     gatherMetrics(workspace),
     reachCandidateCount(workspace),
   ]);

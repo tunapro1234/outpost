@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { TYPE_DIRECTORIES, serializeMarkdown } from "../../lib/vault.mjs";
 import { normalizeSearch } from "../../lib/slug.mjs";
-import { mailStats, readMailLog } from "../reach/mails.mjs";
+import { mailStats, workspaceTrafficMails } from "../reach/mails.mjs";
 import {
   VALID_TYPES,
   entityListItem,
@@ -18,7 +18,7 @@ function fail(statusCode, message) {
 }
 
 async function statsFor(workspace) {
-  return mailStats(await readMailLog(workspace.mailsPath));
+  return mailStats(await workspaceTrafficMails(workspace));
 }
 
 export async function networkRoutes(app, { resolveWorkspace }) {

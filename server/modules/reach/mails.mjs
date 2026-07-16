@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
+import { ingestedWorkspaceMails } from "../mail/service.mjs";
 
 function clean(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -97,21 +98,38 @@ function compareMails(left, right) {
   return String(right.date).localeCompare(String(left.date));
 }
 
+function combinedMailKey(record) {
+  return record.id?.startsWith("maildir:") ? `maildir\0${record.id}` : mailDedupKey(record);
+}
+
 export async function workspaceMails(workspace, { includeUnknownVault = false } = {}) {
   const vault = vaultMailRecords(workspace.index)
     .filter((mail) => includeUnknownVault || ["in", "out"].includes(mail.direction));
   const combined = [
-    ...await readMailLog(workspace.mailsPath),
+    ...await workspaceTrafficMails(workspace),
     ...vault,
   ];
   const byKey = new Map();
   for (const record of combined) {
-    const key = mailDedupKey(record);
+    const key = combinedMailKey(record);
     if (!byKey.has(key)) byKey.set(key, record);
   }
   return [...byKey.values()]
     .map((record) => enrich(record, workspace.index))
     .sort(compareMails);
+}
+
+export async function workspaceTrafficMails(workspace) {
+  const combined = [
+    ...await readMailLog(workspace.mailsPath),
+    ...await ingestedWorkspaceMails(workspace),
+  ];
+  const byKey = new Map();
+  for (const record of combined) {
+    const key = combinedMailKey(record);
+    if (!byKey.has(key)) byKey.set(key, record);
+  }
+  return [...byKey.values()].sort(compareMails);
 }
 
 export function mailStats(mails) {
