@@ -1,0 +1,16 @@
+[Unit]
+Description=Outpost - graf-merkezli outreach araci (127.0.0.1:3002)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/outpost/outpost
+Environment=NODE_ENV=production
+Environment=OUTPOST_PORT=3002
+Environment=OUTPOST_VAULT=/srv/outpost/data/vault
+ExecStart=/usr/bin/node /srv/outpost/outpost/server/index.mjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
