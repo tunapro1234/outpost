@@ -2842,8 +2842,19 @@ table.grid td.num {
 .g-strip-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 9px;
+  gap: 9px;
+  margin-bottom: 10px;
+}
+.g-strip-total {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 7px;
+  line-height: 17px;
 }
 .g-strip-live {
   display: inline-flex;
@@ -2852,26 +2863,24 @@ table.grid td.num {
   font-size: 11px;
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
+  margin-left: auto;
 }
 .g-strip-empty {
   font-size: 12.5px;
   color: var(--text-faint);
   padding: 6px 2px 2px;
 }
-.g-strip-scroll {
-  display: flex;
+/* pills WRAP — no horizontal scrollbar for typical (small) agent counts */
+.g-strip-pills {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
   gap: 9px;
-  overflow-x: auto;
-  padding-bottom: 3px;
-  scrollbar-width: thin;
 }
 .g-pill {
-  flex: 0 0 auto;
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  min-width: 190px;
-  max-width: 240px;
+  min-width: 0;
   text-align: left;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -2881,10 +2890,15 @@ table.grid td.num {
 }
 .g-pill:hover {
   border-color: var(--text-faint);
+  background: var(--surface-3);
 }
 .g-pill.sel {
   border-color: var(--text-dim);
   box-shadow: 0 0 0 1px var(--text-dim) inset;
+}
+.g-pill.live {
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+  background: color-mix(in srgb, var(--ok) 7%, var(--surface-2));
 }
 .g-pill .g-dot {
   margin-top: 4px;
@@ -2925,6 +2939,10 @@ table.grid td.num {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.g-pill-task.off {
+  color: var(--text-faint);
+  font-style: italic;
+}
 /* strip idle dot reads gray (spec §3), independent of card semantics */
 .g-strip .g-dot.idle {
   background: var(--text-faint);
@@ -2940,9 +2958,18 @@ table.grid td.num {
   flex-wrap: wrap;
 }
 .g-flowhint {
-  font-size: 11.5px;
-  color: var(--text-faint);
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-dim);
   font-family: var(--mono);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 .g-tab-section {
   display: flex;
@@ -3082,16 +3109,31 @@ table.grid td.num {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface);
-  padding: 13px 15px;
+  padding: 13px 15px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  cursor: pointer;
   transition: border-color 0.14s, transform 0.14s, box-shadow 0.14s;
 }
 .g-agent:hover {
   border-color: var(--text-faint);
   transform: translateY(-1px);
 }
+.g-agent:focus-visible {
+  outline: none;
+  border-color: var(--text-dim);
+  box-shadow: 0 0 0 2px var(--focus);
+}
 .g-agent.sel {
   border-color: var(--text-dim);
   box-shadow: 0 0 0 1px var(--text-dim) inset;
+}
+.g-agent.live {
+  border-color: color-mix(in srgb, var(--ok) 42%, var(--line));
+}
+.g-agent.paused {
+  background: color-mix(in srgb, var(--surface-2) 55%, var(--surface));
 }
 .g-agent-top {
   display: flex;
@@ -3117,19 +3159,83 @@ table.grid td.num {
   padding: 2px 7px;
   white-space: nowrap;
 }
-.g-agent-task {
-  font-size: 12px;
+.g-agent-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.g-agent-status {
+  font-weight: 600;
   color: var(--text-dim);
-  margin: 8px 0 9px;
+}
+.g-agent-status.running {
+  color: var(--ok);
+}
+.g-agent-status.error {
+  color: var(--danger);
+}
+.g-agent-status.paused {
+  color: var(--text-faint);
+}
+.g-agent-kindtag {
   font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.g-agent-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .g-agent-foot {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
   font-size: 11.5px;
   color: var(--text-faint);
+}
+.g-agent-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.g-agent-when {
+  color: var(--text-dim);
+}
+.g-agent-never {
+  font-style: italic;
+}
+.g-agent-run {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 550;
+  padding: 4px 11px;
+  border-radius: 7px;
+  transition: border-color 0.14s, background 0.14s, opacity 0.14s;
+}
+.g-agent-run:hover:not(:disabled) {
+  border-color: var(--text-faint);
+  background: var(--surface-3);
+}
+.g-agent-run:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 .g-dot-sep {
   color: var(--line);
@@ -3143,6 +3249,10 @@ table.grid td.num {
   gap: 7px;
   color: var(--ok);
   font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .g-dot {
@@ -3198,7 +3308,9 @@ table.grid td.num {
 
 /* staging review */
 .g-stage {
-  margin-top: 34px;
+  margin-top: 24px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line-soft);
 }
 .g-stage-head {
   display: flex;
@@ -3218,22 +3330,23 @@ table.grid td.num {
 .g-stage-empty {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: 12.5px;
   border: 1px dashed var(--line);
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 10px;
+  padding: 11px 14px;
 }
 .g-check {
-  width: 26px;
-  height: 26px;
+  width: 19px;
+  height: 19px;
   display: grid;
   place-items: center;
   border-radius: 50%;
   background: color-mix(in srgb, var(--ok) 16%, transparent);
   color: var(--ok);
-  font-size: 14px;
+  font-size: 11px;
+  flex: 0 0 auto;
 }
 .g-stage-grid {
   display: grid;

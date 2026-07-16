@@ -45,6 +45,15 @@ function taskDesc(task: string): string {
   return TASK_DESC[task] ?? task;
 }
 
+// short, human status label for a card (dark + light readable)
+function statusLabel(status: string | undefined, enabled: boolean): string {
+  if (status === "running") return "Running";
+  if (status === "error") return "Needs attention";
+  if (!enabled) return "Paused";
+  if (status === "ok") return "Idle";
+  return "Ready";
+}
+
 // ---- tab taxonomy (SPEC-GATHER2 §1 + §3) --------------------------------
 interface KindTab {
   key: GatherKind;
@@ -117,51 +126,87 @@ function AgentCard({
   live,
   selected,
   onSelect,
+  onRun,
 }: {
   agent: Agent;
   ov?: OverviewAgent;
   live: boolean; // locally-triggered run in flight
   selected: boolean;
   onSelect: () => void;
+  onRun: () => void;
 }) {
   const lr = agent.last_run;
   const status = live ? "running" : ov?.status ?? lr?.status;
   const running = status === "running";
   const currentTask = running ? ov?.currentTask : null;
   return (
-    <button className={`g-agent ${selected ? "sel" : ""}`} onClick={onSelect}>
+    <div
+      className={`g-agent ${selected ? "sel" : ""} ${running ? "live" : ""} ${
+        !agent.enabled ? "paused" : ""
+      }`}
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+    >
       <div className="g-agent-top">
         <StatusDot status={status} enabled={agent.enabled} />
         <span className="g-agent-name">{agent.name}</span>
         <span className="g-model">{agent.model}</span>
       </div>
-      <div className="g-agent-task">
-        {currentTask ?? agent.task}
+
+      <div className="g-agent-meta">
+        <span className={`g-agent-status ${status ?? ""} ${!agent.enabled ? "paused" : ""}`}>
+          {statusLabel(status, agent.enabled)}
+        </span>
+        <span className="g-dot-sep">·</span>
+        <span className="g-agent-kindtag">{agent.task}</span>
       </div>
+
+      <p className="g-agent-desc">{taskDesc(agent.task)}</p>
+
       <div className="g-agent-foot">
-        {running ? (
-          <span className="g-run-live">
-            <span className="g-spin" /> {currentTask ? "Working…" : "Running…"}
-          </span>
-        ) : lr ? (
-          <>
-            <span>{timeAgo(lr.started)}</span>
-            <span className="g-dot-sep">·</span>
-            <span>{lr.items_out} items</span>
-            <span className="g-dot-sep">·</span>
-            <span>{lr.staged} staged</span>
-            {lr.warnings > 0 && (
-              <>
-                <span className="g-dot-sep">·</span>
-                <span className="g-warn">{lr.warnings} warn</span>
-              </>
-            )}
-          </>
-        ) : (
-          <span className="muted">never run</span>
-        )}
+        <span className="g-agent-stat">
+          {running ? (
+            <span className="g-run-live">
+              <span className="g-spin" /> {currentTask ?? "Working…"}
+            </span>
+          ) : lr ? (
+            <>
+              <span className="g-agent-when">{timeAgo(lr.started)}</span>
+              <span className="g-dot-sep">·</span>
+              <span>{lr.items_out} items</span>
+              <span className="g-dot-sep">·</span>
+              <span>{lr.staged} staged</span>
+              {lr.warnings > 0 && (
+                <>
+                  <span className="g-dot-sep">·</span>
+                  <span className="g-warn">{lr.warnings} warn</span>
+                </>
+              )}
+            </>
+          ) : (
+            <span className="g-agent-never">Not run yet</span>
+          )}
+        </span>
+        <button
+          className="g-agent-run"
+          disabled={running}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRun();
+          }}
+          title={running ? "Run in progress" : "Run this agent now"}
+        >
+          {running ? "Running" : "Run now"}
+        </button>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -317,6 +362,7 @@ export default function GatherView() {
       live={running?.agentId === a.id}
       selected={selectedId === a.id}
       onSelect={() => setSelectedId(a.id)}
+      onRun={() => runNow(a.id)}
     />
   );
 
