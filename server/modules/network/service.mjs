@@ -15,6 +15,10 @@ export function entityListItem(entity, index, statsByEntity) {
     name: entity.meta.name,
     type: entity.meta.type,
     subtype: entity.meta.subtype ?? null,
+    role: entity.meta.role ?? null,
+    closeness: entity.meta.closeness ?? null,
+    hook: entity.meta.hook ?? null,
+    mail_source: entity.meta.mail_source ?? null,
     status: entity.meta.status ?? null,
     score: typeof entity.meta.score === "number" ? entity.meta.score : null,
     city: entity.meta.city ?? null,
@@ -99,4 +103,3 @@ export function graph(index, statsByEntity, query) {
     ),
   };
 }
-

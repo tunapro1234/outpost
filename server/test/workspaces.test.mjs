@@ -41,6 +41,61 @@ test("workspace taraması scoped API'leri ve legacy default alias'ını ayırır
   assert.equal((await app.inject({ url: "/api/ws/yok/entities" })).statusCode, 404);
 });
 
+test("scoped entities listesi frontmatter liste alanlarını ve null varsayılanlarını döndürür", async (t) => {
+  const root = await temporaryDirectory("outpost-entity-list-");
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(root, "config.yaml"), "default_workspace: probot\n", "utf8");
+  const { vault } = await writeWorkspace(root, "probot", "Probot", "hedef");
+  await writeEntity(
+    vault,
+    "people",
+    "alanli-kisi",
+    `---
+type: person
+name: Alanlı Kişi
+subtype: kurucu
+role: kurucu ortak
+closeness: 4
+hook: Robotik mentorluk programını büyütüyor.
+mail_source: yayimlanmis
+---
+`,
+  );
+  await writeEntity(
+    vault,
+    "people",
+    "bos-kisi",
+    "---\ntype: person\nname: Boş Kişi\n---\n",
+  );
+
+  const app = await createApp({ workspacesPath: root, outpostVault: null, watch: false });
+  t.after(() => app.close());
+  const people = (await app.inject({
+    url: "/api/ws/probot/entities?type=person&sort=name&order=asc",
+  })).json();
+
+  assert.deepEqual(
+    Object.fromEntries(
+      ["subtype", "role", "closeness", "hook", "mail_source"]
+        .map((key) => [key, people[0][key]]),
+    ),
+    {
+      subtype: "kurucu",
+      role: "kurucu ortak",
+      closeness: 4,
+      hook: "Robotik mentorluk programını büyütüyor.",
+      mail_source: "yayimlanmis",
+    },
+  );
+  assert.deepEqual(
+    Object.fromEntries(
+      ["subtype", "role", "closeness", "hook", "mail_source"]
+        .map((key) => [key, people[1][key]]),
+    ),
+    { subtype: null, role: null, closeness: null, hook: null, mail_source: null },
+  );
+});
+
 test("OUTPOST_VAULT boş registry'yi Probot olarak kurar, stale yol workspace'i ezmez", async (t) => {
   const root = await temporaryDirectory("outpost-workspace-env-");
   const externalVault = await temporaryDirectory("outpost-external-vault-");
