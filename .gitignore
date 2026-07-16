@@ -7,3 +7,6 @@ out/
 *.log
 .npm-cache/
 .playwright-browsers/
+*.tsbuildinfo
+web/vite.config.d.ts
+web/vite.config.js
