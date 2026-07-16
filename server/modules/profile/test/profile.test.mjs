@@ -22,6 +22,7 @@ async function fixtureApp(t, usersSource) {
   const app = await createApp({
     vaultPath: EXAMPLE_VAULT,
     usersPath,
+    defaultUser: "tuna",
     watch: false,
   });
   t.after(() => app.close());
@@ -29,7 +30,7 @@ async function fixtureApp(t, usersSource) {
   return { app, usersPath, directory };
 }
 
-test("GET /api/profile yalnızca header kullanıcısını, headersızken tuna'yı döndürür", async (t) => {
+test("GET /api/profile header kullanıcısını ve yapılandırılmış default kullanıcıyı döndürür", async (t) => {
   const { app } = await fixtureApp(t, `users:
   - username: tuna
     name: Tuna
@@ -59,6 +60,28 @@ test("GET /api/profile yalnızca header kullanıcısını, headersızken tuna'y�
   });
   assert.equal(remote.statusCode, 200);
   assert.equal(remote.json().username, "deniz");
+});
+
+test("header ve OUTPOST_DEFAULT_USER yoksa profil kimliksiz isteği 401 ile reddeder", async (t) => {
+  const directory = await temporaryDirectory("outpost-profile-auth-");
+  const usersPath = path.join(directory, "users.yaml");
+  await fs.writeFile(usersPath, "users:\n  - username: tuna\n    name: Tuna\n", "utf8");
+  const app = await createApp({
+    vaultPath: EXAMPLE_VAULT,
+    usersPath,
+    defaultUser: "",
+    watch: false,
+  });
+  t.after(() => app.close());
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+
+  const anonymous = await app.inject({ url: "/api/profile" });
+  assert.equal(anonymous.statusCode, 401);
+  assert.deepEqual(anonymous.json(), { error: "authentication required" });
+  assert.equal((await app.inject({
+    url: "/api/profile",
+    headers: { "x-remote-user": "tuna" },
+  })).statusCode, 200);
 });
 
 test("PATCH /api/profile izinli alanları users.yaml'a yazar ve diğer kullanıcıyı korur", async (t) => {
@@ -96,7 +119,12 @@ test("PATCH /api/profile izinli alanları users.yaml'a yazar ve diğer kullanıc
 test("eksik users.yaml default tuna profilini bellekte tutar ve dosya oluşturmaz", async (t) => {
   const directory = await temporaryDirectory("outpost-profile-missing-");
   const usersPath = path.join(directory, "users.yaml");
-  const app = await createApp({ vaultPath: EXAMPLE_VAULT, usersPath, watch: false });
+  const app = await createApp({
+    vaultPath: EXAMPLE_VAULT,
+    usersPath,
+    defaultUser: "tuna",
+    watch: false,
+  });
   t.after(() => app.close());
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
 
@@ -109,6 +137,23 @@ test("eksik users.yaml default tuna profilini bellekte tutar ve dosya oluşturma
     role: "owner",
   });
   await assert.rejects(fs.access(usersPath), { code: "ENOENT" });
+});
+
+test("profil ve şifre entegrasyonları ayarlanmamışsa anlaşılır 503 döner", async (t) => {
+  const app = await createApp({ vaultPath: EXAMPLE_VAULT, defaultUser: "tuna", watch: false });
+  t.after(() => app.close());
+
+  const profile = await app.inject({ url: "/api/profile" });
+  assert.equal(profile.statusCode, 503);
+  assert.deepEqual(profile.json(), { error: "Profile is not configured" });
+
+  const password = await app.inject({
+    method: "POST",
+    url: "/api/profile/password",
+    payload: { current: "old-password", next: "new-password" },
+  });
+  assert.equal(password.statusCode, 503);
+  assert.deepEqual(password.json(), { error: "Password change is not configured" });
 });
 
 test("POST /api/profile/password mevcut şifreyi doğrular ve günceller", async (t) => {
@@ -132,6 +177,7 @@ test("POST /api/profile/password mevcut şifreyi doğrular ve günceller", async
     vaultPath: EXAMPLE_VAULT,
     usersPath: fixture.usersPath,
     htpasswdPath,
+    defaultUser: "tuna",
     watch: false,
   });
   t.after(() => app.close());

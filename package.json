@@ -5,11 +5,15 @@
   "description": "Graf-merkezli outreach aracı: markdown vault + ilişki grafı + araştırma scraper'ı",
   "type": "module",
   "scripts": {
+    "postinstall": "npm install --prefix server && npm install --prefix web",
+    "start": "node scripts/start.mjs",
     "dev": "npm --prefix server run dev",
     "build": "npm --prefix web run build",
     "test": "npm --prefix server test",
     "import": "node server/importer.mjs"
   },
+  "author": "Tuna Gül",
+  "license": "GPL-3.0-only",
   "engines": {
     "node": ">=22"
   }

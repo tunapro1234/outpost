@@ -49,8 +49,9 @@ export async function* runClaude(prompt, {
   signal,
   workspace,
   timeoutMs = 120_000,
+  bin = process.env.OUTPOST_CLAUDE_BIN ?? "claude",
 } = {}) {
-  const child = spawn(process.env.OUTPOST_CLAUDE_BIN ?? "claude", CLAUDE_ARGS, {
+  const child = spawn(bin, CLAUDE_ARGS, {
     cwd: workspace?.directory ?? process.cwd(),
     env: process.env,
     stdio: ["pipe", "pipe", "pipe"],

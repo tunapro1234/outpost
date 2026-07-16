@@ -1,7 +1,7 @@
 import { workspaceMails } from "./mails.mjs";
 import { extractMailAddresses } from "../mail/parser.mjs";
 
-export const DEFAULT_CANDIDATE_MIN_SCORE = 20;
+export const DEFAULT_CANDIDATE_MIN_SCORE = 15;
 
 const EMPTY_MAIL_VALUES = new Set(["", "-", "yok", "none", "null"]);
 
@@ -30,7 +30,7 @@ export function reachCandidateEntities(index, mails, {
     const addresses = mailAddresses([entity.meta.mail, entity.meta.mails]);
     return addresses.length > 0 &&
       typeof entity.meta.score === "number" &&
-      entity.meta.score > minScore &&
+      entity.meta.score >= minScore &&
       !contactedEntities.has(entity.id) &&
       !addresses.some((address) => contactedAddresses.has(address));
   });

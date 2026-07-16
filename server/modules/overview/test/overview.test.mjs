@@ -20,7 +20,7 @@ async function metricsWorkspace(t) {
   const entities = [
     ["people", "ulasildi", { type: "person", name: "Ulaşıldı", mail: "alice@example.com", score: 45 }],
     ["companies", "aday", { type: "company", name: "Aday", mail: "candidate@example.com", score: 25 }],
-    ["schools", "esik", { type: "school", name: "Eşik", mail: "threshold@example.com", score: 20 }],
+    ["schools", "esik", { type: "school", name: "Eşik", mail: "threshold@example.com", score: 15 }],
     ["institutions", "mailsiz", { type: "institution", name: "Mailsiz", score: 80 }],
     ["channels", "bos-mail", { type: "channel", name: "Boş Mail", mail: "-", score: 90 }],
   ];
@@ -174,7 +174,7 @@ test("GET /api/ws/:ws/metrics tüm modül metriklerini kontrat şeklinde derler"
     agents: 2,
     running: 1,
   });
-  assert.deepEqual(metrics.reach, { candidates: 1 });
+  assert.deepEqual(metrics.reach, { candidates: 2 });
 });
 
 test("metrics eksik kaynaklarda sıfır döner ve daily boş günleri tam 30 güne doldurur", async (t) => {

@@ -1,17 +1,9 @@
 import { TYPE_DIRECTORIES } from "../../lib/vault.mjs";
 import { normalizeSearch } from "../../lib/slug.mjs";
 import { extractMailAddresses } from "../mail/parser.mjs";
+import { emptyMailStats } from "../reach/mails.mjs";
 
 export const VALID_TYPES = new Set(Object.keys(TYPE_DIRECTORIES));
-
-function emptyMailStats() {
-  return {
-    mail_count: 0,
-    last_mail_date: null,
-    last_mail_direction: null,
-    last_mail_from: null,
-  };
-}
 
 export function entityMailAddresses(entity) {
   return extractMailAddresses([entity?.meta?.mail, entity?.meta?.mails]);

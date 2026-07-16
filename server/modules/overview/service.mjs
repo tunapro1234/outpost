@@ -1,6 +1,6 @@
 import { networkStats } from "../network/service.mjs";
 import { workspaceTrafficMails } from "../reach/mails.mjs";
-import { hasMail, mailAddresses, reachCandidateCount } from "../reach/service.mjs";
+import { hasMail, mailAddresses, reachCandidateEntities } from "../reach/service.mjs";
 import { listRuns } from "../gather/journal.mjs";
 import { GATHER_KINDS, readAgentRegistry } from "../gather/registry.mjs";
 import { stageStats } from "../gather/stage.mjs";
@@ -107,11 +107,11 @@ function totalMetrics(index) {
 }
 
 export async function overviewMetrics(workspace, { now } = {}) {
-  const [mails, gather, candidates] = await Promise.all([
+  const [mails, gather] = await Promise.all([
     workspaceTrafficMails(workspace),
     gatherMetrics(workspace),
-    reachCandidateCount(workspace),
   ]);
+  const candidates = reachCandidateEntities(workspace.index, mails).length;
   return {
     totals: totalMetrics(workspace.index),
     outreach: outreachMetrics(mails, { ...(now ? { now } : {}) }),

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createApp } from "../../../app.mjs";
+import { runClaude } from "../runner.mjs";
 import { WorkspaceRegistry } from "../../../lib/config.mjs";
 import { serializeMarkdown } from "../../../lib/vault.mjs";
 import { temporaryDirectory, writeEntity } from "../../../test-support/helpers.mjs";
@@ -43,7 +44,7 @@ function sseEvents(response) {
     .map((line) => JSON.parse(line.slice(6)));
 }
 
-test("copilot owner gate header yokluğunu local tuna sayar ve diğer kullanıcıyı engeller", async (t) => {
+test("copilot owner gate header/default kullanıcıyı kabul eder, kimliksizi 401 ile reddeder", async (t) => {
   const { root, directory } = await fixture(t);
   let calls = 0;
   const runner = async function* () {
@@ -55,6 +56,7 @@ test("copilot owner gate header yokluğunu local tuna sayar ve diğer kullanıc�
     outpostVault: null,
     watch: false,
     copilotRunner: runner,
+    defaultUser: "tuna",
   });
   t.after(() => app.close());
 
@@ -88,6 +90,26 @@ test("copilot owner gate header yokluğunu local tuna sayar ve diğer kullanıc�
   assert.equal(calls, 0);
   await assert.rejects(fs.access(path.join(directory, "copilot-threads")), { code: "ENOENT" });
   assert.equal((await app.inject({ url: "/api/copilot/enabled" })).statusCode, 404);
+
+  const anonymousApp = await createApp({
+    workspacesPath: root,
+    outpostVault: null,
+    watch: false,
+    copilotRunner: runner,
+    defaultUser: "",
+  });
+  t.after(() => anonymousApp.close());
+  assert.deepEqual(
+    (await anonymousApp.inject({ url: "/api/ws/fixture/copilot/enabled" })).json(),
+    { enabled: false },
+  );
+  const anonymous = await anonymousApp.inject({
+    method: "POST",
+    url: "/api/ws/fixture/copilot",
+    payload: { message: "Merhaba" },
+  });
+  assert.equal(anonymous.statusCode, 401);
+  assert.deepEqual(anonymous.json(), { error: "authentication required" });
 });
 
 test("workspace promptu stats/run/mail/stage özetini toplar, son beşi seçer ve secret redakte eder", async (t) => {
@@ -176,6 +198,7 @@ test("copilot SSE deltaları ve done eventini yollar, thread geçmişini sonraki
     outpostVault: null,
     watch: false,
     copilotRunner: runner,
+    defaultUser: "tuna",
   });
   t.after(() => app.close());
 
@@ -227,6 +250,7 @@ test("runner hatası HTTP 500 yerine error ve done SSE eventleriyle kapanır", a
     outpostVault: null,
     watch: false,
     copilotRunner: runner,
+    defaultUser: "tuna",
   });
   t.after(() => app.close());
 
@@ -240,6 +264,19 @@ test("runner hatası HTTP 500 yerine error ve done SSE eventleriyle kapanır", a
     { error: "Claude geçici olarak yok" },
     { done: true, thread_id: "thread-1" },
   ]);
+});
+
+test("Claude CLI yokluğu anlaşılır entegrasyon hatası üretir", async () => {
+  const chunks = [];
+  await assert.rejects(async () => {
+    for await (const chunk of runClaude("Merhaba", {
+      bin: `/tmp/outpost-missing-claude-${process.pid}`,
+      timeoutMs: 1_000,
+    })) {
+      chunks.push(chunk);
+    }
+  }, /Claude CLI kurulu değil/);
+  assert.deepEqual(chunks, []);
 });
 
 test("tmux köprüsü promptu yazar, literal komut ve Enter yollar, dosya eklerini stream eder", async (t) => {
@@ -260,6 +297,10 @@ test("tmux köprüsü promptu yazar, literal komut ve Enter yollar, dosya ekleri
     assert.equal(milliseconds, 500);
     poll += 1;
     if (poll === 1) {
+      assert.equal(
+        await fs.readFile(path.join(directory, "copilot", "inbox", `${id}.md`), "utf8"),
+        "TAM PROMPT",
+      );
       await fs.writeFile(outboxFile, Buffer.from("Merhaba \xf0\x9f", "binary"));
     } else {
       await fs.appendFile(outboxFile, Buffer.from("\x91\x8b", "binary"));
@@ -278,10 +319,18 @@ test("tmux köprüsü promptu yazar, literal komut ve Enter yollar, dosya ekleri
   const deltas = [];
   for await (const delta of stream) deltas.push(delta);
 
-  assert.equal(
-    await fs.readFile(path.join(directory, "copilot", "inbox", `${id}.md`), "utf8"),
-    "TAM PROMPT",
+  await assert.rejects(
+    fs.access(path.join(directory, "copilot", "inbox", `${id}.md`)),
+    { code: "ENOENT" },
   );
+  await assert.rejects(fs.access(outboxFile), { code: "ENOENT" });
+  await assert.rejects(fs.access(doneFile), { code: "ENOENT" });
+  for (const directoryName of ["copilot", "copilot/inbox", "copilot/outbox"]) {
+    assert.equal(
+      (await fs.stat(path.join(directory, directoryName))).mode & 0o777,
+      0o700,
+    );
+  }
   assert.equal(deltas.join(""), "Merhaba 👋");
   assert.deepEqual(calls, [
     ["tmux", ["has-session", "-t", "fake-copilot"]],
@@ -302,6 +351,7 @@ test("tmux köprüsü meşgul oturumu 2 saniyede bir bekler ve 20 saniye sonunda
   const calls = [];
   const warnings = [];
   let clock = 10_000;
+  let promptSeen = false;
   const exec = async (_command, args) => {
     calls.push(args);
     if (args[0] === "capture-pane") {
@@ -314,6 +364,16 @@ test("tmux köprüsü meşgul oturumu 2 saniyede bir bekler ve 20 saniye sonunda
     now: () => clock,
     sleep: async (milliseconds) => {
       assert.equal(milliseconds, 2_000);
+      if (!promptSeen) {
+        promptSeen = true;
+        assert.equal(
+          await fs.readFile(
+            path.join(directory, "copilot", "inbox", "cp-busy-0000.md"),
+            "utf8",
+          ),
+          "prompt",
+        );
+      }
       clock += milliseconds;
     },
     idFactory: () => "cp-busy-0000",
@@ -325,12 +385,10 @@ test("tmux köprüsü meşgul oturumu 2 saniyede bir bekler ve 20 saniye sonunda
   assert.equal(calls.some((args) => args[0] === "send-keys"), false);
   assert.equal(warnings.length, 1);
   assert.match(warnings[0][1], /headless runner/);
-  assert.equal(
-    await fs.readFile(
-      path.join(directory, "copilot", "inbox", "cp-busy-0000.md"),
-      "utf8",
-    ),
-    "prompt",
+  assert.equal(promptSeen, true);
+  await assert.rejects(
+    fs.access(path.join(directory, "copilot", "inbox", "cp-busy-0000.md")),
+    { code: "ENOENT" },
   );
 });
 
@@ -367,4 +425,45 @@ test("tmux outbox 180 saniyede tamamlanmazsa zaman aşımı hatası verir", asyn
     for await (const _delta of stream) { /* tüket */ }
   }, /180 saniyede zaman aşımına uğradı/);
   assert.equal(clock, 180_000);
+  for (const suffix of [".md", ".done"]) {
+    await assert.rejects(
+      fs.access(path.join(directory, "copilot", "outbox", `cp-timeout-0000${suffix}`)),
+      { code: "ENOENT" },
+    );
+  }
+});
+
+test("tmux köprüsü eşzamanlı istekleri tek send/wait akışında sıraya alır", async (t) => {
+  const { directory } = await fixture(t);
+  const ids = ["cp-first", "cp-second"];
+  const sends = [];
+  const bridge = createTmuxBridge({
+    idFactory: () => ids.shift(),
+    exec: async (_command, args) => {
+      if (args[0] === "capture-pane") return { stdout: "hazır" };
+      if (args[0] === "send-keys" && args.includes("-l")) sends.push(args.at(-1));
+      return { stdout: "" };
+    },
+    sleep: async () => {},
+  });
+
+  const first = await bridge("birinci", { workspace: { directory } });
+  let secondResolved = false;
+  const secondPromise = bridge("ikinci", { workspace: { directory } })
+    .then((stream) => {
+      secondResolved = true;
+      return stream;
+    });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(secondResolved, false);
+  assert.equal(sends.length, 1);
+
+  await fs.writeFile(path.join(directory, "copilot", "outbox", "cp-first.done"), "", "utf8");
+  for await (const _delta of first) { /* tüket */ }
+  const second = await secondPromise;
+  assert.equal(sends.length, 2);
+  await fs.writeFile(path.join(directory, "copilot", "outbox", "cp-second.done"), "", "utf8");
+  for await (const _delta of second) { /* tüket */ }
+  assert.match(sends[0], /cp-first/);
+  assert.match(sends[1], /cp-second/);
 });

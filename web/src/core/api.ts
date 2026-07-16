@@ -8,15 +8,12 @@ import type {
   Facets,
   GatherOverview,
   GraphData,
-  GraphEdge,
-  GraphFilters,
   GraphNode,
   MailItem,
   Metrics,
   Profile,
   Relation,
   StageItem,
-  Stats,
   Status,
   WorkspaceInfo,
 } from "./types";
@@ -25,10 +22,20 @@ import { TYPE_LABELS } from "./theme";
 
 const MOCK = import.meta.env.VITE_MOCK === "1";
 
-// Workspace-scoped API base. The server keeps /api/* as a legacy alias, but new
-// UI code targets the ws-scoped routes explicitly.
-export const WORKSPACE = "probot";
-const BASE = `/api/ws/${WORKSPACE}`;
+let activeWorkspace: string | null = null;
+
+export function setWorkspace(id: string): void {
+  activeWorkspace = id;
+}
+
+export function getWorkspace(): string {
+  if (!activeWorkspace) throw new Error("Workspace has not been selected");
+  return activeWorkspace;
+}
+
+export function workspaceBase(): string {
+  return `/api/ws/${encodeURIComponent(getWorkspace())}`;
+}
 
 // ---- mock data (bundled) ----
 import mockGraphRaw from "../../mock/graph.json";
@@ -91,34 +98,6 @@ function fallbackEntity(id: string): Entity {
   };
 }
 
-function edgeEndpoints(e: GraphEdge): [string, string] {
-  const src = typeof e.source === "string" ? e.source : e.source.id;
-  const tgt = typeof e.target === "string" ? e.target : e.target.id;
-  return [src, tgt];
-}
-
-// ---- mock filtering ----
-function filterGraph(filters: GraphFilters): GraphData {
-  const q = trNormalize(filters.q);
-  const nodes = mockGraph.nodes.filter((n) => {
-    if (filters.types.length && !filters.types.includes(n.type)) return false;
-    if (filters.statuses.length) {
-      if (!n.status || !filters.statuses.includes(n.status)) return false;
-    }
-    if (filters.minScore != null) {
-      if (n.score == null || n.score < filters.minScore) return false;
-    }
-    if (q && !trNormalize(n.name).includes(q)) return false;
-    return true;
-  });
-  const visible = new Set(nodes.map((n) => n.id));
-  const edges = mockGraph.edges.filter((e) => {
-    const [s, t] = edgeEndpoints(e);
-    return visible.has(s) && visible.has(t);
-  });
-  return { nodes, edges };
-}
-
 function mockEntityList(params: {
   type?: EntityType | null;
   status?: Status | null;
@@ -150,6 +129,10 @@ function mockEntityList(params: {
         last_mail_date: null,
         last_mail_direction: null,
         last_mail_from: null,
+        role: (full?.meta.role as string | undefined) ?? null,
+        closeness: (full?.meta.closeness as number | undefined) ?? null,
+        hook: (full?.meta.hook as string | undefined) ?? null,
+        mail_source: (full?.meta.mail_source as string | undefined) ?? null,
       };
     });
   const sort = params.sort ?? "score";
@@ -162,21 +145,6 @@ function mockEntityList(params: {
     return order === "asc" ? cmp : -cmp;
   });
   return items;
-}
-
-function mockStats(): Stats {
-  const byType: Record<string, number> = {};
-  const byStatus: Record<string, number> = {};
-  for (const n of mockGraph.nodes) {
-    byType[n.type] = (byType[n.type] ?? 0) + 1;
-    if (n.status) byStatus[n.status] = (byStatus[n.status] ?? 0) + 1;
-  }
-  return {
-    total: mockGraph.nodes.length,
-    byType,
-    byStatus,
-    edgeCount: mockGraph.edges.length,
-  };
 }
 
 // Derive a plausible metrics payload from the bundled mock graph so the
@@ -212,17 +180,6 @@ function mockMetrics(): Metrics {
   };
 }
 
-// ---- real-mode helpers ----
-function buildGraphQuery(f: GraphFilters): string {
-  const p = new URLSearchParams();
-  if (f.types.length) p.set("types", f.types.join(","));
-  if (f.statuses.length) p.set("statuses", f.statuses.join(","));
-  if (f.minScore != null) p.set("minScore", String(f.minScore));
-  if (f.q) p.set("q", f.q);
-  const s = p.toString();
-  return s ? `?${s}` : "";
-}
-
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   if (!res.ok) {
@@ -242,22 +199,17 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
 export const api = {
   mock: MOCK,
 
-  async graph(filters: GraphFilters): Promise<GraphData> {
-    if (MOCK) return filterGraph(filters);
-    return json<GraphData>(`${BASE}/graph${buildGraphQuery(filters)}`);
-  },
-
   // Full unfiltered graph — v2 loads this once and filters client-side.
   async fullGraph(): Promise<GraphData> {
-    if (MOCK) return filterGraph({ types: [], statuses: [], minScore: null, q: "" });
-    return json<GraphData>(`${BASE}/graph`);
+    if (MOCK) return { nodes: mockGraph.nodes, edges: mockGraph.edges };
+    return json<GraphData>(`${workspaceBase()}/graph`);
   },
 
   // Server-provided facets. Returns null on 404 so the caller derives them.
   async facets(): Promise<Facets | null> {
     if (MOCK) return null;
     try {
-      const res = await fetch(`${BASE}/facets`);
+      const res = await fetch(`${workspaceBase()}/facets`);
       if (!res.ok) return null;
       return (await res.json()) as Facets;
     } catch {
@@ -269,7 +221,7 @@ export const api = {
   async mails(): Promise<MailItem[] | null> {
     if (MOCK) return [];
     try {
-      const res = await fetch(`${BASE}/mails`);
+      const res = await fetch(`${workspaceBase()}/mails`);
       if (!res.ok) return null;
       return (await res.json()) as MailItem[];
     } catch {
@@ -282,7 +234,7 @@ export const api = {
   async metrics(): Promise<Metrics | null> {
     if (MOCK) return mockMetrics();
     try {
-      const res = await fetch(`${BASE}/metrics`);
+      const res = await fetch(`${workspaceBase()}/metrics`);
       if (!res.ok) return null;
       return (await res.json()) as Metrics;
     } catch {
@@ -305,12 +257,14 @@ export const api = {
     if (params.sort) p.set("sort", params.sort);
     if (params.order) p.set("order", params.order);
     const s = p.toString();
-    return json<EntityListItem[]>(`${BASE}/entities${s ? `?${s}` : ""}`);
+    return json<EntityListItem[]>(
+      `${workspaceBase()}/entities${s ? `?${s}` : ""}`
+    );
   },
 
   async entity(id: string): Promise<Entity> {
     if (MOCK) return mockEntities[id] ?? fallbackEntity(id);
-    return json<Entity>(`${BASE}/entities/${encodeURIComponent(id)}`);
+    return json<Entity>(`${workspaceBase()}/entities/${encodeURIComponent(id)}`);
   },
 
   async patchEntity(
@@ -335,7 +289,7 @@ export const api = {
       mockEntities[id] = next;
       return next;
     }
-    return json<Entity>(`${BASE}/entities/${encodeURIComponent(id)}`, {
+    return json<Entity>(`${workspaceBase()}/entities/${encodeURIComponent(id)}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(patch),
@@ -371,43 +325,42 @@ export const api = {
       }
       return ent;
     }
-    return json<Entity>(`${BASE}/entities`, {
+    return json<Entity>(`${workspaceBase()}/entities`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
   },
 
-  async stats(): Promise<Stats> {
-    if (MOCK) return mockStats();
-    return json<Stats>(`${BASE}/stats`);
-  },
-
   // ---- gather: agents / runs / stage ------------------------------------
   async agents(): Promise<Agent[]> {
     if (MOCK) return [];
-    return json<Agent[]>(`${BASE}/agents`);
+    return json<Agent[]>(`${workspaceBase()}/agents`);
   },
 
   async runAgent(id: string): Promise<{ runId: string }> {
     return json<{ runId: string }>(
-      `${BASE}/agents/${encodeURIComponent(id)}/run`,
+      `${workspaceBase()}/agents/${encodeURIComponent(id)}/run`,
       { method: "POST" }
     );
   },
 
   async runs(agentId: string): Promise<AgentRun[]> {
     if (MOCK) return [];
-    return json<AgentRun[]>(`${BASE}/runs?agent=${encodeURIComponent(agentId)}`);
+    return json<AgentRun[]>(
+      `${workspaceBase()}/runs?agent=${encodeURIComponent(agentId)}`
+    );
   },
 
   async run(runId: string): Promise<AgentRun> {
-    return json<AgentRun>(`${BASE}/runs/${encodeURIComponent(runId)}`);
+    return json<AgentRun>(
+      `${workspaceBase()}/runs/${encodeURIComponent(runId)}`
+    );
   },
 
   async stage(): Promise<StageItem[]> {
     if (MOCK) return [];
-    return json<StageItem[]>(`${BASE}/stage`);
+    return json<StageItem[]>(`${workspaceBase()}/stage`);
   },
 
   // Live agents overview (SPEC-GATHER2 §2). Returns null on 404 / error so the
@@ -415,7 +368,7 @@ export const api = {
   async gatherOverview(): Promise<GatherOverview | null> {
     if (MOCK) return null;
     try {
-      const res = await fetch(`${BASE}/gather/overview`);
+      const res = await fetch(`${workspaceBase()}/gather/overview`);
       if (!res.ok) return null;
       return (await res.json()) as GatherOverview;
     } catch {
@@ -428,7 +381,7 @@ export const api = {
     decision: "accept" | "reject",
     note?: string
   ): Promise<{ ok: boolean }> {
-    return json<{ ok: boolean }>(`${BASE}/stage/decision`, {
+    return json<{ ok: boolean }>(`${workspaceBase()}/stage/decision`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ file, decision, ...(note ? { note } : {}) }),
@@ -437,7 +390,7 @@ export const api = {
 
   // ---- workspaces (global) ----------------------------------------------
   async workspaces(): Promise<WorkspaceInfo[] | null> {
-    if (MOCK) return null;
+    if (MOCK) return [{ id: "mock", name: "Mock", default: true }];
     try {
       const res = await fetch(`/api/workspaces`);
       if (!res.ok) return null;

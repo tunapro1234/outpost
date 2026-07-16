@@ -4,6 +4,7 @@ dist/
 out/
 .env
 .env.*
+!.env.example
 *.log
 .npm-cache/
 .playwright-browsers/
@@ -13,3 +14,6 @@ web/vite.config.js
 workspaces/
 web/mock/live-*.png
 web/mock/v2-*.png
+scraper/node_modules/
+scraper/out/
+web/mock/*.png

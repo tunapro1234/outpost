@@ -16,13 +16,14 @@ import OverviewView from "@/modules/overview/OverviewView";
 import CopilotDrawer from "@/modules/copilot/CopilotDrawer";
 import { copilotEnabled } from "@/core/copilot";
 import { IconCopilot } from "@/core/icons";
-import { api } from "@/core/api";
+import { api, setWorkspace as configureWorkspace } from "@/core/api";
 import type {
   EntityListItem,
   Facets,
   GraphData,
   GraphNode,
   MailItem,
+  WorkspaceInfo,
 } from "@/core/types";
 import type { ThemeName } from "@/core/theme";
 import type { FilterState, Preset } from "@/core/filters";
@@ -41,7 +42,7 @@ import { loadPhysics, savePhysics } from "@/core/physics";
 import { useRoute, navigate, entityPath, viewPath } from "@/core/router";
 
 const EMPTY: GraphData = { nodes: [], edges: [] };
-const WORKSPACE = "probot";
+const WORKSPACE_STORAGE_KEY = "outpost.workspace";
 
 const TITLES: Record<NavKey, string> = {
   overview: "Overview",
@@ -81,6 +82,8 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [workspace, setWorkspaceState] = useState<string | null>(null);
+  const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
 
   const [filters, setFiltersState] = useState<FilterState>(loadFilters);
   const [physics, setPhysicsState] = useState<Physics>(loadPhysics);
@@ -91,18 +94,68 @@ export default function App() {
   const [fitSignal, setFitSignal] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // Choose the workspace before issuing any scoped API request. A persisted
+  // choice wins only while it still exists; otherwise use the backend default
+  // flag and finally the first selectable record.
+  useEffect(() => {
+    let alive = true;
+    api.workspaces().then((list) => {
+      if (!alive) return;
+      const all = list ?? [];
+      const selectable = all.filter((w) => !w.comingSoon);
+      const stored = localStorage.getItem(WORKSPACE_STORAGE_KEY);
+      const chosen =
+        selectable.find((w) => w.id === stored) ??
+        selectable.find((w) => w.default) ??
+        selectable[0];
+
+      if (!chosen) {
+        if (stored) localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+        setError("No available workspace was returned by the server");
+        setLoaded(true);
+        return;
+      }
+
+      configureWorkspace(chosen.id);
+      localStorage.setItem(WORKSPACE_STORAGE_KEY, chosen.id);
+      setWorkspaces(all);
+      setWorkspaceState(chosen.id);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // ---- copilot (right drawer, gated per viewer) ----
   const [copilotAllowed, setCopilotAllowed] = useState(false);
   const [copilotOpen, setCopilotOpen] = useState(false);
+
+  const changeWorkspace = useCallback(
+    (id: string) => {
+      if (id === workspace) return;
+      const next = workspaces.find((w) => w.id === id && !w.comingSoon);
+      if (!next) return;
+      configureWorkspace(next.id);
+      localStorage.setItem(WORKSPACE_STORAGE_KEY, next.id);
+      setCopilotOpen(false);
+      setSelectedId(null);
+      setFocusNodeId(null);
+      setWorkspaceState(next.id);
+    },
+    [workspace, workspaces]
+  );
+
   useEffect(() => {
+    if (!workspace) return;
     let alive = true;
+    setCopilotAllowed(false);
     copilotEnabled().then((ok) => {
       if (alive) setCopilotAllowed(ok);
     });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [workspace]);
 
   // ---- persistence side-effects ----
   useEffect(() => {
@@ -137,8 +190,12 @@ export default function App() {
 
   // ---- load full data once (+ on refresh) ----
   useEffect(() => {
+    if (!workspace) return;
     let alive = true;
     setLoaded(false);
+    setFull(EMPTY);
+    setEntityList([]);
+    setMails(null);
     Promise.all([api.fullGraph(), api.entities({}), api.facets()])
       .then(([graph, list, serverFacets]) => {
         if (!alive) return;
@@ -151,6 +208,10 @@ export default function App() {
                 ...n,
                 city: m.city ?? null,
                 mail: m.mail ?? null,
+                role: m.role ?? null,
+                closeness: m.closeness ?? null,
+                hook: m.hook ?? null,
+                mailSource: m.mail_source ?? null,
                 mail_count: m.mail_count ?? 0,
                 last_mail_date: m.last_mail_date ?? null,
                 last_mail_direction: m.last_mail_direction ?? null,
@@ -173,11 +234,23 @@ export default function App() {
     return () => {
       alive = false;
     };
-  }, [refreshKey]);
+  }, [workspace, refreshKey]);
 
   useEffect(() => {
-    api.mails().then(setMails).catch(() => setMails(null));
-  }, [refreshKey]);
+    if (!workspace) return;
+    let alive = true;
+    api
+      .mails()
+      .then((items) => {
+        if (alive) setMails(items);
+      })
+      .catch(() => {
+        if (alive) setMails(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [workspace, refreshKey]);
 
   // default hub threshold from facets once known
   useEffect(() => {
@@ -303,8 +376,10 @@ export default function App() {
           last_mail_date: n.last_mail_date ?? null,
           last_mail_direction: n.last_mail_direction ?? null,
           last_mail_from: n.last_mail_from ?? null,
-          role: (n.subtype as string | null) ?? null,
+          role: n.role ?? null,
           closeness: n.closeness ?? null,
+          hook: n.hook ?? null,
+          mail_source: n.mailSource ?? null,
           connected_org: org?.name ?? null,
           connected_org_id: org?.id ?? null,
         };
@@ -343,9 +418,24 @@ export default function App() {
             <span className="copilot-fab-label">Copilot</span>
           </button>
         )}
-        {copilotOpen && <CopilotDrawer onClose={() => setCopilotOpen(false)} />}
+        {copilotOpen && (
+          <CopilotDrawer
+            key={workspace ?? undefined}
+            onClose={() => setCopilotOpen(false)}
+          />
+        )}
       </>
     );
+
+  if (!workspace) {
+    return (
+      <div className="app">
+        <div className="center-msg">
+          <div>{error ?? "Loading workspace…"}</div>
+        </div>
+      </div>
+    );
+  }
 
   // ---- full entity page route ----
   if (route.name === "entity") {
@@ -356,9 +446,11 @@ export default function App() {
           onNavigate={navigateHome}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
-          workspace={WORKSPACE}
+          workspace={workspace}
+          workspaces={workspaces}
+          onWorkspaceChange={changeWorkspace}
         />
-        <div className="main">
+        <div className="main" key={workspace}>
           <EntityPage
             id={route.id}
             theme={theme}
@@ -388,10 +480,12 @@ export default function App() {
         onNavigate={navigateHome}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
-        workspace={WORKSPACE}
+        workspace={workspace}
+        workspaces={workspaces}
+        onWorkspaceChange={changeWorkspace}
       />
 
-      <div className="main">
+      <div className="main" key={workspace}>
         <TopBar
           title={TITLES[view]}
           showGraphToggle={isNetwork}

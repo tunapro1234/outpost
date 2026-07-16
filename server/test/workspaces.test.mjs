@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createApp } from "../app.mjs";
+import { WorkspaceRegistry } from "../lib/config.mjs";
 import { importProbot } from "../modules/reach/import-probot.mjs";
 import { temporaryDirectory, writeEntity } from "../test-support/helpers.mjs";
 
@@ -39,6 +40,43 @@ test("workspace taraması scoped API'leri ve legacy default alias'ını ayırır
   const legacy = (await app.inject({ url: "/api/graph" })).json();
   assert.deepEqual(legacy.nodes.map((node) => node.id), ["beta-sirketi"]);
   assert.equal((await app.inject({ url: "/api/ws/yok/entities" })).statusCode, 404);
+});
+
+test("boş workspace kökü example-vault kopyasından demo workspace tohumlar", async (t) => {
+  const root = await temporaryDirectory("outpost-workspace-seed-");
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const seeded = [];
+  const registry = await WorkspaceRegistry.load({
+    workspacesPath: root,
+    outpostVault: null,
+    onSeed: (record) => seeded.push(record),
+    watch: false,
+  });
+
+  assert.deepEqual(registry.list(), [
+    { id: "demo", name: "Demo", entities: 13, default: true },
+  ]);
+  assert.equal(seeded.length, 1);
+  assert.equal(seeded[0].id, "demo");
+  assert.equal(
+    await fs.readFile(path.join(root, "demo", "config.yaml"), "utf8"),
+    "name: Demo\n",
+  );
+  assert.match(
+    await fs.readFile(path.join(root, "demo", "vault", "README.md"), "utf8"),
+    /Outpost örnek vault/,
+  );
+
+  await registry.close();
+  const reopened = await WorkspaceRegistry.load({
+    workspacesPath: root,
+    outpostVault: null,
+    onSeed: (record) => seeded.push(record),
+    watch: false,
+  });
+  t.after(() => reopened.close());
+  assert.equal(seeded.length, 1);
+  assert.equal(reopened.getDefault().id, "demo");
 });
 
 test("scoped entities listesi frontmatter liste alanlarını ve null varsayılanlarını döndürür", async (t) => {

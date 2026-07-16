@@ -3,7 +3,8 @@ import path from "node:path";
 import { mailEntityIndex } from "../network/service.mjs";
 import { readMailHeaders } from "./parser.mjs";
 
-export const DEFAULT_MAIL_DATA = "/srv/mailserver/data/probotstudio.com";
+// No default maildir: mail ingest is off unless OUTPOST_MAIL_DATA is set.
+export const DEFAULT_MAIL_DATA = null;
 export const DEFAULT_MAIL_INTERVAL_MS = 10 * 60 * 1000;
 
 const MAILDIR_FOLDERS = [
@@ -36,6 +37,21 @@ function unique(values) {
 }
 
 export async function scanMaildir(mailDataPath = DEFAULT_MAIL_DATA, { onWarn } = {}) {
+  if (!mailDataPath) {
+    return {
+      records: [],
+      report: {
+        mailDataPath: null,
+        accounts: 0,
+        scanned: 0,
+        parsed: 0,
+        unique: 0,
+        duplicates: 0,
+        failed: 0,
+        unavailable: true,
+      },
+    };
+  }
   const report = {
     mailDataPath: path.resolve(mailDataPath),
     accounts: 0,
@@ -228,6 +244,15 @@ export class MailIngestor {
     this.scan = scan;
     this.timer = null;
     this.queue = Promise.resolve();
+    this.unavailableWarned = false;
+  }
+
+  scanWarning(error, context) {
+    if (String(context).startsWith("Maildir okunamadı:")) {
+      if (this.unavailableWarned) return;
+      this.unavailableWarned = true;
+    }
+    warn(this.onWarn, error, context);
   }
 
   enqueue(task) {
@@ -245,14 +270,20 @@ export class MailIngestor {
 
   refresh(workspace) {
     return this.enqueue(async () => {
-      const scanned = await this.scan(this.mailDataPath, { onWarn: this.onWarn });
+      const scanned = await this.scan(this.mailDataPath, {
+        onWarn: (error, context) => this.scanWarning(error, context),
+      });
+      if (!scanned.report?.unavailable) this.unavailableWarned = false;
       return this.applyScan(workspace, scanned);
     });
   }
 
   refreshAll() {
     return this.enqueue(async () => {
-      const scanned = await this.scan(this.mailDataPath, { onWarn: this.onWarn });
+      const scanned = await this.scan(this.mailDataPath, {
+        onWarn: (error, context) => this.scanWarning(error, context),
+      });
+      if (!scanned.report?.unavailable) this.unavailableWarned = false;
       const reports = {};
       for (const workspace of this.registry.workspaces.values()) {
         reports[workspace.id] = await this.applyScan(workspace, scanned);

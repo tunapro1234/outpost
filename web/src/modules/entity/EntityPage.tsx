@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { marked } from "marked";
 import type { Entity, GraphData, MailItem, Relation, Status } from "@/core/types";
 import type { ThemeName } from "@/core/theme";
 import {
@@ -12,6 +11,7 @@ import {
 import { api } from "@/core/api";
 import { trNormalize } from "@/core/normalize";
 import { navigate, entityPath } from "@/core/router";
+import { renderMarkdown } from "@/core/markdown";
 import {
   IconGlobe,
   IconInstagram,
@@ -21,8 +21,6 @@ import {
   IconWhatsapp,
 } from "@/core/icons";
 import EntityMiniGraph from "./EntityMiniGraph";
-
-marked.setOptions({ breaks: true });
 
 type Tab = "overview" | "mails" | "activity" | "note";
 
@@ -165,9 +163,7 @@ export default function EntityPage({
   );
   const bodyHtml = useMemo(() => {
     if (!entity) return "";
-    return marked.parse(
-      stripLeadingTitle(entity.body, entity.meta.name)
-    ) as string;
+    return renderMarkdown(stripLeadingTitle(entity.body, entity.meta.name));
   }, [entity]);
 
   const entityMails = useMemo(() => {

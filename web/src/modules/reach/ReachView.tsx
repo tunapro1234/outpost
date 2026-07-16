@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { EntityListItem, MailItem } from "@/core/types";
 import { STATUS_COLORS, STATUS_LABELS, TYPE_LABELS } from "@/core/theme";
 import { trNormalize } from "@/core/normalize";
-import { api } from "@/core/api";
 
 interface Props {
   mails: MailItem[] | null; // null = endpoint not available yet
@@ -25,7 +24,6 @@ export default function ReachView({ mails, entities, onOpenEntity }: Props) {
   const [q, setQ] = useState("");
   const [candSort, setCandSort] = useState<CandSort>("score");
   const [candAsc, setCandAsc] = useState(false);
-  const [hooks, setHooks] = useState<Record<string, string | null>>({});
 
   const list = mails ?? [];
   const sent = useMemo(() => list.filter((m) => m.direction === "out"), [list]);
@@ -71,34 +69,6 @@ export default function ReachView({ mails, entities, onOpenEntity }: Props) {
     });
     return out;
   }, [entities, q, candSort, candAsc]);
-
-  // lazily fetch hooks ("why candidate") for the candidate set
-  useEffect(() => {
-    if (tab !== "candidates") return;
-    const missing = candidates.filter((c) => !(c.id in hooks)).map((c) => c.id);
-    if (missing.length === 0) return;
-    let alive = true;
-    const queue = [...missing];
-    const results: Record<string, string | null> = {};
-    const worker = async () => {
-      while (queue.length) {
-        const id = queue.shift();
-        if (!id) break;
-        try {
-          const e = await api.entity(id);
-          results[id] = (e.meta.hook as string | undefined) ?? null;
-        } catch {
-          results[id] = null;
-        }
-      }
-    };
-    Promise.all(Array.from({ length: 6 }, worker)).then(() => {
-      if (alive) setHooks((h) => ({ ...h, ...results }));
-    });
-    return () => {
-      alive = false;
-    };
-  }, [tab, candidates, hooks]);
 
   const filteredSent = useMemo(() => {
     const nq = trNormalize(q);
@@ -213,7 +183,7 @@ export default function ReachView({ mails, entities, onOpenEntity }: Props) {
         <div className="empty-state">
           <div className="es-title">Mail service coming online</div>
           <div className="es-sub">
-            The <code>/api/ws/probot/mails</code> endpoint is not reachable yet.
+            The workspace mail endpoint is not reachable yet.
           </div>
         </div>
       ) : tab === "sent" ? (
@@ -286,7 +256,7 @@ export default function ReachView({ mails, entities, onOpenEntity }: Props) {
           ) : (
             <div className="cand-list">
               {candidates.map((c) => {
-                const hook = hooks[c.id];
+                const hook = c.hook;
                 return (
                   <button
                     key={c.id}
@@ -312,9 +282,7 @@ export default function ReachView({ mails, entities, onOpenEntity }: Props) {
                       )}
                     </div>
                     <div className="cand-mail">{c.mail}</div>
-                    {hook === undefined ? (
-                      <div className="cand-why loading">Loading reason…</div>
-                    ) : hook ? (
+                    {hook ? (
                       <div className="cand-why">
                         <span className="cand-why-k">Why</span> {hook}
                       </div>

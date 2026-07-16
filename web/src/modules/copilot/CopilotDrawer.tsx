@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { marked } from "marked";
 import {
   COPILOT_SUGGESTIONS,
   clearConversation,
@@ -21,8 +20,7 @@ import {
   type CopilotMessage,
 } from "@/core/copilot";
 import { IconClose, IconCopilot, IconPlus, IconSend } from "@/core/icons";
-
-marked.setOptions({ breaks: true });
+import { renderMarkdown } from "@/core/markdown";
 
 interface Props {
   onClose: () => void;
@@ -48,6 +46,16 @@ export default function CopilotDrawer({ onClose }: Props) {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Closing the drawer unmounts it; terminate any in-flight SSE fetch so its
+  // callbacks cannot keep updating a drawer that is no longer visible.
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    },
+    []
+  );
 
   // Keep pinned to the newest content while the user hasn't scrolled up.
   useLayoutEffect(() => {
@@ -295,7 +303,7 @@ function MessageRow({
 }
 
 function AssistantMarkdown({ text }: { text: string }) {
-  const html = useMemo(() => marked.parse(text) as string, [text]);
+  const html = useMemo(() => renderMarkdown(text), [text]);
   return <div className="md cp-md" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 

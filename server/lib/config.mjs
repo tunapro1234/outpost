@@ -1,7 +1,12 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import { VaultIndex } from "./vault.mjs";
+
+const MODULE_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_EXAMPLE_VAULT = path.resolve(MODULE_DIRECTORY, "../../example-vault");
+const DEFAULT_WORKSPACES = path.resolve(process.cwd(), "data/workspaces");
 
 async function exists(target) {
   try {
@@ -35,6 +40,30 @@ async function directories(root) {
   }
 }
 
+async function seedDemoWorkspace(root, exampleVaultPath) {
+  const directory = path.join(root, "demo");
+  await fs.mkdir(root, { recursive: true });
+  try {
+    await fs.mkdir(directory);
+  } catch (error) {
+    if (error.code === "EEXIST") return null;
+    throw error;
+  }
+
+  try {
+    await fs.cp(exampleVaultPath, path.join(directory, "vault"), {
+      recursive: true,
+      errorOnExist: true,
+      force: false,
+    });
+    await fs.writeFile(path.join(directory, "config.yaml"), "name: Demo\n", "utf8");
+    return workspaceRecord("demo", directory, { name: "Demo" });
+  } catch (error) {
+    await fs.rm(directory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 function workspaceRecord(id, directory, config, vaultPath) {
   const mailLogPath = path.resolve(directory, "mails", "log.jsonl");
   const mailIngestedPath = path.resolve(directory, "mails", "ingested.jsonl");
@@ -59,11 +88,13 @@ export class WorkspaceRegistry {
   }
 
   static async load({
-    workspacesPath = process.env.OUTPOST_WORKSPACES ?? path.resolve(process.cwd(), "workspaces"),
+    workspacesPath = process.env.OUTPOST_WORKSPACES ?? DEFAULT_WORKSPACES,
     vaultPath,
     envVaultPath,
     outpostVault = envVaultPath === undefined ? process.env.OUTPOST_VAULT : envVaultPath,
     defaultWorkspace,
+    exampleVaultPath = DEFAULT_EXAMPLE_VAULT,
+    onSeed,
     watch = true,
   } = {}) {
     const root = path.resolve(workspacesPath);
@@ -106,6 +137,24 @@ export class WorkspaceRegistry {
           workspaceRecord("probot", directory, { name: "Probot" }, path.resolve(outpostVault)),
         );
         defaultId = "probot";
+      } else if (!workspaces.length) {
+        const seeded = await seedDemoWorkspace(root, path.resolve(exampleVaultPath));
+        if (seeded) {
+          workspaces.push(seeded);
+          defaultId = seeded.id;
+          onSeed?.({
+            id: seeded.id,
+            directory: seeded.directory,
+            source: path.resolve(exampleVaultPath),
+          });
+        } else {
+          for (const id of await directories(root)) {
+            const directory = path.join(root, id);
+            const config = await readYaml(path.join(directory, "config.yaml"));
+            workspaces.push(workspaceRecord(id, directory, config));
+          }
+          defaultId = workspaces[0]?.id;
+        }
       } else if (outpostVault && defaultId && await exists(path.resolve(outpostVault))) {
         const workspace = workspaces.find((candidate) => candidate.id === defaultId);
         workspace.vaultPath = path.resolve(outpostVault);

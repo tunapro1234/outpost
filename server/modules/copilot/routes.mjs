@@ -2,13 +2,13 @@ import { buildCopilotPrompt, redactSecrets, workspaceSummary } from "./context.m
 import { appendThreadMessage, readThread, resolveThreadId } from "./threads.mjs";
 import { createTmuxBridge } from "./tmux-bridge.mjs";
 
-function remoteUser(request) {
+function remoteUser(request, defaultUser = process.env.OUTPOST_DEFAULT_USER) {
   const value = request.headers["x-remote-user"];
-  return value === undefined ? "tuna" : value;
+  return value === undefined ? (defaultUser || undefined) : value;
 }
 
-export function copilotEnabled(request) {
-  return remoteUser(request) === "tuna";
+export function copilotEnabled(request, defaultUser) {
+  return remoteUser(request, defaultUser) === "tuna";
 }
 
 function fail(statusCode, message) {
@@ -46,15 +46,20 @@ async function sendEvent(reply, payload) {
 export async function copilotRoutes(app, {
   resolveWorkspace,
   runner,
+  defaultUser = process.env.OUTPOST_DEFAULT_USER,
   tmuxBridge = createTmuxBridge({ logger: app.log }),
 }) {
   app.get("/copilot/enabled", async (request) => {
     resolveWorkspace(request);
-    return { enabled: copilotEnabled(request) };
+    return { enabled: copilotEnabled(request, defaultUser) };
   });
 
   app.post("/copilot", async (request, reply) => {
-    if (!copilotEnabled(request)) {
+    const username = remoteUser(request, defaultUser);
+    if (username === undefined) {
+      return reply.code(401).send({ error: "authentication required" });
+    }
+    if (username !== "tuna") {
       return reply.code(403).send({ error: "copilot is owner-only" });
     }
     const workspace = resolveWorkspace(request);

@@ -22,6 +22,22 @@ function contentType(filePath) {
   return types[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
 }
 
+function contained(root, target) {
+  const relative = path.relative(root, target);
+  return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
+async function canonicalWebFile(webDist, filePath) {
+  const root = await fs.realpath(webDist);
+  let target = await fs.realpath(filePath);
+  if (!contained(root, target)) return null;
+  if ((await fs.stat(target)).isDirectory()) {
+    target = await fs.realpath(path.join(target, "index.html"));
+    if (!contained(root, target)) return null;
+  }
+  return target;
+}
+
 export async function serveWeb(request, reply, webDist) {
   if (request.url.startsWith("/api/") || request.url === "/api") {
     return apiError(reply, 404, "Endpoint bulunamadı");
@@ -33,15 +49,17 @@ export async function serveWeb(request, reply, webDist) {
     return apiError(reply, 400, "Geçersiz yol");
   }
   try {
-    const stat = await fs.stat(filePath);
-    if (stat.isDirectory()) filePath = path.join(filePath, "index.html");
+    filePath = await canonicalWebFile(webDist, filePath);
+    if (!filePath) return apiError(reply, 404, "Dosya bulunamadı");
     const data = await fs.readFile(filePath);
     return reply.type(contentType(filePath)).send(data);
   } catch (error) {
     if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
   }
   try {
-    const index = await fs.readFile(path.join(webDist, "index.html"));
+    const indexPath = await canonicalWebFile(webDist, path.join(webDist, "index.html"));
+    if (!indexPath) return apiError(reply, 404, "Dosya bulunamadı");
+    const index = await fs.readFile(indexPath);
     return reply.type("text/html; charset=utf-8").send(index);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;

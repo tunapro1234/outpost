@@ -144,8 +144,9 @@ atölyeleri göster" → FilterState).
 
 ## 6.6 Tuna ek direktifleri (2026-07-16, üçüncü tur)
 
-- **Auth basit kalır**: nginx basic auth (kasma). **Default şifre herkes için `tunapro1234`**
-  (`/etc/nginx/.htpasswd-outpost`, user `tuna`; ayarlandı). Profile'dan şifre değiştirme:
+- **Auth basit kalır**: nginx basic auth (kasma). **Varsayılan parola deploy notunda / takım
+  içi iletilir** (public repoya düz metin yazılmaz;
+  `/etc/nginx/.htpasswd-outpost`, user `tuna`; ayarlandı). Profile'dan şifre değiştirme:
   server endpoint `POST /api/profile/password` → htpasswd satırını yeniden yazar (htpasswd -b);
   sadece giriş yapan kullanıcı ($remote_user) kendi şifresini değiştirir.
 - **Profile sayfası GERÇEK içerik**: kullanıcı bilgileri (ad/kullanıcı adı, kullanılan mail,

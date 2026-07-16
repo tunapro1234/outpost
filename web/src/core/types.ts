@@ -24,9 +24,10 @@ export interface GraphNode {
   status?: Status | null;
   score?: number | null;
   degree: number;
-  // enriched client-side from the entity list (city/mail) — optional
+  // enriched client-side from the entity list — optional
   city?: string | null;
   mail?: string | null;
+  role?: string | null;
   mailSource?: string | null;
   closeness?: number | null;
   hook?: string | null;
@@ -73,6 +74,8 @@ export interface EntityListItem {
   // enriched client-side / server-optional (used by list presets)
   role?: string | null;
   closeness?: number | null;
+  hook?: string | null;
+  mail_source?: string | null;
   connected_org?: string | null;
   connected_org_id?: string | null;
 }
@@ -119,13 +122,6 @@ export interface Entity {
   body: string;
   relations: Relation[];
   unresolved: string[];
-}
-
-export interface Stats {
-  total: number;
-  byType: Record<string, number>;
-  byStatus: Record<string, number>;
-  edgeCount: number;
 }
 
 // ---- facets (server /api/facets, or derived client-side) ----------------
@@ -277,12 +273,4 @@ export interface WorkspaceInfo {
   default?: boolean;
   active?: boolean;
   comingSoon?: boolean;
-}
-
-// legacy graph-fetch filters (server-side) — retained for the api layer
-export interface GraphFilters {
-  types: EntityType[];
-  statuses: Status[];
-  minScore: number | null;
-  q: string;
 }

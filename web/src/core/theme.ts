@@ -99,11 +99,3 @@ export function statusColors(theme: ThemeName): Record<Status, string> {
 }
 
 export const STATUS_COLORS = STATUS_DARK;
-
-export function statusColor(
-  status?: Status | null,
-  theme: ThemeName = "dark"
-): string | null {
-  if (!status) return null;
-  return statusColors(theme)[status] ?? null;
-}

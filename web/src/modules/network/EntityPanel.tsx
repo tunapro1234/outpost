@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { marked } from "marked";
 import type { Entity, Relation, Status } from "@/core/types";
 import type { ThemeName } from "@/core/theme";
 import {
@@ -10,6 +9,7 @@ import {
   typeColors,
 } from "@/core/theme";
 import { api } from "@/core/api";
+import { renderMarkdown } from "@/core/markdown";
 import {
   IconGlobe,
   IconInstagram,
@@ -18,8 +18,6 @@ import {
   IconPhone,
   IconWhatsapp,
 } from "@/core/icons";
-
-marked.setOptions({ breaks: true });
 
 interface Props {
   id: string;
@@ -115,7 +113,7 @@ export default function EntityPanel({
 
   const bodyHtml = useMemo(() => {
     if (!entity) return "";
-    return marked.parse(stripFrontmatter(entity.body)) as string;
+    return renderMarkdown(stripFrontmatter(entity.body));
   }, [entity]);
 
   const RelRow = (r: Relation) => (

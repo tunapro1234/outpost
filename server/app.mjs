@@ -21,7 +21,7 @@ import { reachRoutes } from "./modules/reach/routes.mjs";
 
 const SERVER_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_WEB_DIST = path.resolve(SERVER_DIRECTORY, "../web/dist");
-const DEFAULT_WORKSPACES = path.resolve(SERVER_DIRECTORY, "../../workspaces");
+const DEFAULT_WORKSPACES = path.resolve(SERVER_DIRECTORY, "../data/workspaces");
 
 function scopedResolver(registry) {
   return (request) => {
@@ -76,6 +76,8 @@ export async function createApp({
   metricsNow,
   usersPath,
   htpasswdPath,
+  defaultUser = process.env.OUTPOST_DEFAULT_USER,
+  exampleVaultPath,
   logger = false,
 } = {}) {
   const app = Fastify({ logger });
@@ -85,6 +87,11 @@ export async function createApp({
         workspacesPath,
         outpostVault,
         defaultWorkspace,
+        exampleVaultPath,
+        onSeed: ({ id, directory, source }) => app.log.info(
+          { workspace: id, directory, source },
+          "Demo workspace seeded from example-vault",
+        ),
         watch,
       });
 
@@ -125,13 +132,19 @@ export async function createApp({
   });
   app.get("/api/workspaces", async () => registry.list());
 
-  await app.register(profileRoutes, { prefix: "/api", usersPath, htpasswdPath });
+  await app.register(profileRoutes, {
+    prefix: "/api",
+    usersPath,
+    htpasswdPath,
+    defaultUser,
+  });
   const resolveScopedWorkspace = scopedResolver(registry);
   await mountApi(app, "/api/ws/:ws", resolveScopedWorkspace, { gatherRunner, metricsNow });
   await app.register(copilotRoutes, {
     prefix: "/api/ws/:ws",
     resolveWorkspace: resolveScopedWorkspace,
     runner: copilotRunner,
+    defaultUser,
   });
   await app.register(mailRoutes, {
     prefix: "/api/ws/:ws",

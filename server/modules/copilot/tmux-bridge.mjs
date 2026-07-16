@@ -13,6 +13,15 @@ const DEFAULTS = {
   outboxPollMs: 500,
   timeoutMs: 180_000,
 };
+let bridgeQueue = Promise.resolve();
+
+async function acquireBridge() {
+  const previous = bridgeQueue;
+  let release;
+  bridgeQueue = new Promise((resolve) => { release = resolve; });
+  await previous;
+  return release;
+}
 
 function defaultSleep(milliseconds, signal) {
   return new Promise((resolve, reject) => {
@@ -63,6 +72,19 @@ async function readOutput(file, fileSystem) {
     if (error?.code === "ENOENT") return Buffer.alloc(0);
     throw error;
   }
+}
+
+async function removeIfPresent(file, fileSystem) {
+  try {
+    await fileSystem.unlink(file);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+}
+
+async function secureDirectory(directory, fileSystem) {
+  await fileSystem.mkdir(directory, { recursive: true, mode: 0o700 });
+  await fileSystem.chmod(directory, 0o700);
 }
 
 function lastFiveLines(value) {
@@ -151,6 +173,9 @@ export function createTmuxBridge({
     if (!await sessionExists()) return null;
     throwIfAborted(signal);
 
+    const release = await acquireBridge();
+    let streamOwnsCleanup = false;
+
     const id = idFactory();
     const copilotDirectory = path.join(workspace.directory, "copilot");
     const inboxDirectory = path.join(copilotDirectory, "inbox");
@@ -159,22 +184,53 @@ export function createTmuxBridge({
     const outboxFile = path.join(outboxDirectory, `${id}.md`);
     const doneFile = path.join(outboxDirectory, `${id}.done`);
 
-    await Promise.all([
-      fileSystem.mkdir(inboxDirectory, { recursive: true }),
-      fileSystem.mkdir(outboxDirectory, { recursive: true }),
-    ]);
-    await fileSystem.writeFile(inboxFile, prompt, "utf8");
+    const cleanup = async () => {
+      await Promise.all([
+        removeIfPresent(inboxFile, fileSystem),
+        removeIfPresent(outboxFile, fileSystem),
+        removeIfPresent(doneFile, fileSystem),
+      ]);
+    };
 
-    if (!await waitUntilIdle(signal)) {
-      logger?.warn?.(
-        { session, id },
-        "Copilot tmux oturumu meşgul; headless runner kullanılacak",
-      );
-      return null;
+    try {
+      await secureDirectory(copilotDirectory, fileSystem);
+      await Promise.all([
+        secureDirectory(inboxDirectory, fileSystem),
+        secureDirectory(outboxDirectory, fileSystem),
+      ]);
+      await fileSystem.writeFile(inboxFile, prompt, { encoding: "utf8", mode: 0o600 });
+
+      if (!await waitUntilIdle(signal)) {
+        logger?.warn?.(
+          { session, id },
+          "Copilot tmux oturumu meşgul; headless runner kullanılacak",
+        );
+        return null;
+      }
+
+      await exec("tmux", ["send-keys", "-t", session, "-l", commandFor(id)]);
+      await exec("tmux", ["send-keys", "-t", session, "Enter"]);
+      streamOwnsCleanup = true;
+      const output = streamOutput(outboxFile, doneFile, signal);
+      return (async function* queuedOutput() {
+        try {
+          yield* output;
+        } finally {
+          try {
+            await cleanup();
+          } finally {
+            release();
+          }
+        }
+      })();
+    } finally {
+      if (!streamOwnsCleanup) {
+        try {
+          await cleanup();
+        } finally {
+          release();
+        }
+      }
     }
-
-    await exec("tmux", ["send-keys", "-t", session, "-l", commandFor(id)]);
-    await exec("tmux", ["send-keys", "-t", session, "Enter"]);
-    return streamOutput(outboxFile, doneFile, signal);
   };
 }

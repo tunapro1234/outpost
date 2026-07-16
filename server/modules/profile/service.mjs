@@ -28,6 +28,21 @@ function publicProfile(user) {
   };
 }
 
+function runWithInput(file, args, input) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error, stdout, stderr) => {
+      if (settled) return;
+      settled = true;
+      if (error) reject(error);
+      else resolve({ stdout, stderr });
+    };
+    const child = execFile(file, args, finish);
+    child.stdin.once("error", (error) => finish(error));
+    child.stdin.end(input);
+  });
+}
+
 export class UserStore {
   constructor(filePath) {
     this.filePath = filePath;
@@ -82,7 +97,7 @@ export async function changePassword(filePath, username, current, next) {
   }
 
   try {
-    await run("htpasswd", ["-b", filePath, username, next]);
+    await runWithInput("htpasswd", ["-i", filePath, username], next);
   } catch {
     fail(500, "Şifre güncellenemedi");
   }

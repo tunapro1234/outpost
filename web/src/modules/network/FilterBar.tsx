@@ -58,6 +58,7 @@ export default function FilterBar(props: Props) {
   const [popOpen, setPopOpen] = useState(false);
   const [presetOpen, setPresetOpen] = useState(false);
   const [presetName, setPresetName] = useState("");
+  const [queryInput, setQueryInput] = useState(f.q);
   const barRef = useRef<HTMLDivElement>(null);
 
   const set = (patch: Partial<FilterState>) => setFilters({ ...f, ...patch });
@@ -72,6 +73,18 @@ export default function FilterBar(props: Props) {
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
+
+  useEffect(() => {
+    setQueryInput(f.q);
+  }, [f.q]);
+
+  useEffect(() => {
+    if (queryInput === f.q) return;
+    const timer = window.setTimeout(() => {
+      setFilters({ ...f, q: queryInput });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [queryInput, f, setFilters]);
 
   // ---- active filter chips ----
   const chips: Chip[] = [];
@@ -190,9 +203,9 @@ export default function FilterBar(props: Props) {
       <div className="fb-search">
         <span className="fb-funnel">⧩</span>
         <input
-          value={f.q}
+          value={queryInput}
           placeholder="Filter by text…"
-          onChange={(e) => set({ q: e.target.value })}
+          onChange={(e) => setQueryInput(e.target.value)}
         />
       </div>
 

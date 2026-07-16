@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import type { WorkspaceInfo } from "@/core/types";
-import { api } from "@/core/api";
 
 export type NavKey =
   | "overview"
@@ -16,6 +15,8 @@ interface Props {
   collapsed: boolean;
   onToggleCollapse: () => void;
   workspace: string;
+  workspaces: WorkspaceInfo[];
+  onWorkspaceChange: (id: string) => void;
 }
 
 const S = (p: { d: string; size?: number }) => (
@@ -87,24 +88,11 @@ export default function Sidebar({
   collapsed,
   onToggleCollapse,
   workspace,
+  workspaces,
+  onWorkspaceChange,
 }: Props) {
   const [wsOpen, setWsOpen] = useState(false);
-  const [workspaces, setWorkspaces] = useState<WorkspaceInfo[] | null>(null);
   const wsRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    api.workspaces().then((list) => {
-      const base: WorkspaceInfo[] =
-        list && list.length
-          ? list.map((w) => ({ ...w, active: w.id === workspace }))
-          : [{ id: workspace, name: workspace, active: true }];
-      // ensure the "compec — coming soon" placeholder is present
-      if (!base.some((w) => w.id === "compec")) {
-        base.push({ id: "compec", name: "compec", comingSoon: true });
-      }
-      setWorkspaces(base);
-    });
-  }, [workspace]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -152,23 +140,29 @@ export default function Sidebar({
         {wsOpen && (
           <div className="ws-pop">
             <div className="ws-pop-label">Workspace</div>
-            {(workspaces ?? []).map((w) => (
-              <button
-                key={w.id}
-                className={`ws-pop-item ${w.active ? "active" : ""} ${
-                  w.comingSoon ? "disabled" : ""
-                }`}
-                disabled={w.comingSoon}
-                onClick={() => {
-                  if (!w.comingSoon) setWsOpen(false);
-                }}
-              >
-                <span className="ws-pop-dot" />
-                <span className="ws-pop-name">{w.name}</span>
-                {w.active && <span className="badge ok">active</span>}
-                {w.comingSoon && <span className="badge muted">soon</span>}
-              </button>
-            ))}
+            {workspaces.map((w) => {
+              const active = w.id === workspace;
+              return (
+                <button
+                  key={w.id}
+                  className={`ws-pop-item ${active ? "active" : ""} ${
+                    w.comingSoon ? "disabled" : ""
+                  }`}
+                  disabled={w.comingSoon}
+                  onClick={() => {
+                    if (!w.comingSoon) {
+                      onWorkspaceChange(w.id);
+                      setWsOpen(false);
+                    }
+                  }}
+                >
+                  <span className="ws-pop-dot" />
+                  <span className="ws-pop-name">{w.name}</span>
+                  {active && <span className="badge ok">active</span>}
+                  {w.comingSoon && <span className="badge muted">soon</span>}
+                </button>
+              );
+            })}
           </div>
         )}
         <button

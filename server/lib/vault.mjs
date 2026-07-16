@@ -17,6 +17,56 @@ const DIRECTORY_TYPES = Object.fromEntries(
   Object.entries(TYPE_DIRECTORIES).map(([type, directory]) => [directory, type]),
 );
 const VALID_TYPES = new Set(Object.keys(TYPE_DIRECTORIES));
+const WATCH_BATCH_MS = 150;
+
+function outsideRoot(root, target) {
+  const relative = path.relative(root, target);
+  return relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+}
+
+function unsafeVaultPath(message) {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+}
+
+export async function assertSafeVaultPath(vaultPath, filePath, { allowMissing = false } = {}) {
+  const lexicalRoot = path.resolve(vaultPath);
+  const lexicalTarget = path.resolve(filePath);
+  if (outsideRoot(lexicalRoot, lexicalTarget)) {
+    throw unsafeVaultPath("Vault yolu kök dışında");
+  }
+
+  const canonicalRoot = await fs.realpath(lexicalRoot);
+  for (
+    let directory = path.dirname(lexicalTarget);
+    directory !== lexicalRoot && !outsideRoot(lexicalRoot, directory);
+    directory = path.dirname(directory)
+  ) {
+    try {
+      if ((await fs.lstat(directory)).isSymbolicLink()) {
+        throw unsafeVaultPath("Vault symlink dizinleri reddedilir");
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+  try {
+    const stat = await fs.lstat(lexicalTarget);
+    if (stat.isSymbolicLink()) throw unsafeVaultPath("Vault symlink dosyaları reddedilir");
+    const canonicalTarget = await fs.realpath(lexicalTarget);
+    if (outsideRoot(canonicalRoot, canonicalTarget)) {
+      throw unsafeVaultPath("Vault dosyası canonical kök dışında");
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT" || !allowMissing) throw error;
+    const canonicalParent = await fs.realpath(path.dirname(lexicalTarget));
+    if (outsideRoot(canonicalRoot, canonicalParent)) {
+      throw unsafeVaultPath("Vault hedef dizini canonical kök dışında");
+    }
+  }
+  return lexicalTarget;
+}
 
 function cleanWikilink(raw) {
   return raw.split("|", 1)[0].split("#", 1)[0].trim();
@@ -155,6 +205,9 @@ export class VaultIndex {
     this.degrees = new Map();
     this.warnings = [];
     this.watcher = null;
+    this.watcherTimer = null;
+    this.watcherEvents = new Map();
+    this.watcherFlush = Promise.resolve();
   }
 
   async load() {
@@ -178,6 +231,7 @@ export class VaultIndex {
 
     const previousId = this.pathToId.get(absolutePath);
     try {
+      await assertSafeVaultPath(this.vaultPath, absolutePath);
       const entity = parseMarkdown(await fs.readFile(absolutePath, "utf8"), absolutePath);
       if (!entity.meta || typeof entity.meta !== "object") {
         throw new Error("frontmatter bulunamadı");
@@ -203,12 +257,12 @@ export class VaultIndex {
     if (rebuild) this.rebuildGraph();
   }
 
-  removeFile(filePath) {
+  removeFile(filePath, rebuild = true) {
     const absolutePath = path.resolve(filePath);
     const id = this.pathToId.get(absolutePath);
     if (id) this.entities.delete(id);
     this.pathToId.delete(absolutePath);
-    this.rebuildGraph();
+    if (rebuild) this.rebuildGraph();
   }
 
   rebuildGraph() {
@@ -282,21 +336,49 @@ export class VaultIndex {
     if (this.watcher) return;
     this.watcher = chokidar.watch(this.vaultPath, {
       depth: 1,
+      followSymlinks: false,
       ignoreInitial: true,
       awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 25 },
     });
-    this.watcher.on("add", (filePath) => void this.loadFile(filePath));
-    this.watcher.on("change", (filePath) => void this.loadFile(filePath));
-    this.watcher.on("unlink", (filePath) => this.removeFile(filePath));
+    this.watcher.on("add", (filePath) => this.queueWatcherEvent("load", filePath));
+    this.watcher.on("change", (filePath) => this.queueWatcherEvent("load", filePath));
+    this.watcher.on("unlink", (filePath) => this.queueWatcherEvent("unlink", filePath));
     await new Promise((resolve, reject) => {
       this.watcher.once("ready", resolve);
       this.watcher.once("error", reject);
     });
   }
 
+  queueWatcherEvent(event, filePath) {
+    this.watcherEvents.set(path.resolve(filePath), event);
+    if (this.watcherTimer) clearTimeout(this.watcherTimer);
+    this.watcherTimer = setTimeout(() => {
+      this.watcherTimer = null;
+      this.watcherFlush = this.watcherFlush
+        .then(() => this.flushWatcherEvents())
+        .catch((error) => this.warnings.push(`watcher: ${error.message}`));
+    }, WATCH_BATCH_MS);
+    this.watcherTimer.unref?.();
+  }
+
+  async flushWatcherEvents() {
+    if (!this.watcherEvents.size) return;
+    const events = [...this.watcherEvents];
+    this.watcherEvents.clear();
+    for (const [filePath, event] of events) {
+      if (event === "unlink") this.removeFile(filePath, false);
+      else await this.loadFile(filePath, false);
+    }
+    this.rebuildGraph();
+  }
+
   async close() {
     await this.watcher?.close();
     this.watcher = null;
+    if (this.watcherTimer) clearTimeout(this.watcherTimer);
+    this.watcherTimer = null;
+    await this.watcherFlush;
+    await this.flushWatcherEvents();
   }
 
   entityDetail(id) {

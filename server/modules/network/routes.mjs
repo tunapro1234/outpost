@@ -1,7 +1,11 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { TYPE_DIRECTORIES, serializeMarkdown } from "../../lib/vault.mjs";
-import { normalizeSearch } from "../../lib/slug.mjs";
+import {
+  TYPE_DIRECTORIES,
+  assertSafeVaultPath,
+  serializeMarkdown,
+} from "../../lib/vault.mjs";
+import { normalizeSearch, slugify } from "../../lib/slug.mjs";
 import { mailStats, workspaceTrafficMails } from "../reach/mails.mjs";
 import {
   VALID_TYPES,
@@ -100,10 +104,12 @@ export async function networkRoutes(app, { resolveWorkspace }) {
 
     const body = payload.body ?? entity.body;
     let filePath = entity.filePath;
+    await assertSafeVaultPath(index.vaultPath, entity.filePath);
     if (meta.type !== entity.meta.type) {
       const directory = path.join(index.vaultPath, TYPE_DIRECTORIES[meta.type]);
       await fs.mkdir(directory, { recursive: true });
       filePath = path.join(directory, `${entity.id}.md`);
+      await assertSafeVaultPath(index.vaultPath, filePath, { allowMissing: true });
       await fs.writeFile(filePath, serializeMarkdown(body, meta), {
         encoding: "utf8",
         flag: "wx",
@@ -135,18 +141,35 @@ export async function networkRoutes(app, { resolveWorkspace }) {
       fail(400, "body metin olmalı");
     }
 
-    const id = index.nextId(payload.name);
     const extraMeta = { ...(payload.meta ?? {}) };
     delete extraMeta.type;
     delete extraMeta.name;
     const meta = { type: payload.type, name: payload.name, ...extraMeta };
     const directory = path.join(index.vaultPath, TYPE_DIRECTORIES[payload.type]);
-    const filePath = path.join(directory, `${id}.md`);
     await fs.mkdir(directory, { recursive: true });
-    await fs.writeFile(filePath, serializeMarkdown(payload.body ?? "", meta), {
-      encoding: "utf8",
-      flag: "wx",
-    });
+    const initialId = index.nextId(payload.name);
+    const base = slugify(payload.name) || "entity";
+    let suffix = initialId === base ? 2 : Number(initialId.slice(base.length + 1)) + 1;
+    let id = initialId;
+    let filePath;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      filePath = path.join(directory, `${id}.md`);
+      await assertSafeVaultPath(index.vaultPath, filePath, { allowMissing: true });
+      try {
+        await fs.writeFile(filePath, serializeMarkdown(payload.body ?? "", meta), {
+          encoding: "utf8",
+          flag: "wx",
+        });
+        break;
+      } catch (error) {
+        if (error.code !== "EEXIST") throw error;
+        if (attempt === 4) fail(409, "Entity adı eşzamanlı oluşturma nedeniyle çakıştı");
+        do {
+          id = `${base}-${suffix}`;
+          suffix += 1;
+        } while (index.entities.has(id));
+      }
+    }
     await index.loadFile(filePath);
     return reply.code(201).send(index.entityDetail(id));
   });

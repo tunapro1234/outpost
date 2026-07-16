@@ -191,3 +191,54 @@ test("okunamayan Maildir boş rapor döndürür ve workspace'e dosya yazmaz", as
   assert.deepEqual(scanned.records, []);
   assert.equal(warnings.length, 1);
 });
+
+test("MailIngestor eksik Maildir için süreç boyunca yalnızca bir kez uyarır", async (t) => {
+  const root = await temporaryDirectory("outpost-mail-warn-once-");
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const workspace = {
+    id: "fixture",
+    mailIngestedPath: path.join(root, "mails", "ingested.jsonl"),
+  };
+  const warnings = [];
+  const ingestor = new MailIngestor(
+    { workspaces: new Map([[workspace.id, workspace]]) },
+    {
+      mailDataPath: path.join(root, "missing"),
+      onWarn: (error, context) => warnings.push({ error, context }),
+    },
+  );
+
+  await ingestor.refreshAll();
+  await ingestor.refreshAll();
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0].context, /^Maildir okunamadı:/);
+});
+
+test("MailIngestor başarılı taramadan sonra unavailable uyarı kilidini sıfırlar", async (t) => {
+  const root = await temporaryDirectory("outpost-mail-warn-reset-");
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const workspace = {
+    id: "fixture",
+    mailIngestedPath: path.join(root, "mails", "ingested.jsonl"),
+  };
+  const warnings = [];
+  let scanNumber = 0;
+  const scan = async (_mailDataPath, { onWarn }) => {
+    scanNumber += 1;
+    const unavailable = scanNumber !== 2;
+    if (unavailable) onWarn(new Error("missing"), "Maildir okunamadı: /missing");
+    return {
+      records: [],
+      report: { unavailable },
+    };
+  };
+  const ingestor = new MailIngestor(
+    { workspaces: new Map([[workspace.id, workspace]]) },
+    { scan, onWarn: (error, context) => warnings.push({ error, context }) },
+  );
+
+  await ingestor.refreshAll();
+  await ingestor.refreshAll();
+  await ingestor.refreshAll();
+  assert.equal(warnings.length, 2);
+});

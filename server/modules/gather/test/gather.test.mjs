@@ -8,7 +8,13 @@ import { temporaryDirectory, writeEntity } from "../../../test-support/helpers.m
 import { createApp } from "../../../app.mjs";
 import { createRunRecord, listRuns, readRun, writeRun } from "../journal.mjs";
 import { readAgentRegistry } from "../registry.mjs";
-import { GatherRunner, parseClassifyJson } from "../runner.mjs";
+import {
+  GatherRunner,
+  assertPublicSiteUrl,
+  codexClassify,
+  openBrowserSession,
+  parseClassifyJson,
+} from "../runner.mjs";
 import { GatherScheduler, cronMatches } from "../scheduler.mjs";
 import { decideStage, listStage } from "../stage.mjs";
 
@@ -69,6 +75,138 @@ test("agent registry YAML listesini parse eder ve eksik dosyada boş döner", as
     schedule: "manual",
     enabled: false,
   }]);
+});
+
+test("gather browser yapılandırması yoksa anlaşılır hata döner", async (t) => {
+  const root = await temporaryDirectory("outpost-browser-missing-");
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await assert.rejects(
+    openBrowserSession({ tokenPath: path.join(root, "missing-token") }),
+    /Gather browser is not configured \(missing token:/,
+  );
+});
+
+test("site URL doğrulaması tüm DNS cevaplarında private ağları ve IP literal hedefleri reddeder", async () => {
+  const lookup = async (hostname, options) => {
+    assert.equal(hostname, "public.example");
+    assert.deepEqual(options, { all: true, verbatim: true });
+    return [
+      { address: "203.0.113.8", family: 4 },
+      { address: "10.2.3.4", family: 4 },
+    ];
+  };
+  await assert.rejects(
+    assertPublicSiteUrl("https://public.example", { lookup }),
+    /private veya yerel hedefe/,
+  );
+  for (const url of [
+    "http://127.1.2.3",
+    "http://169.254.1.1",
+    "http://172.31.255.1",
+    "http://192.168.1.1",
+    "http://[::1]",
+    "http://[fd00::1]",
+    "http://[fe80::1234]",
+  ]) {
+    await assert.rejects(assertPublicSiteUrl(url), /private veya yerel hedefe/);
+  }
+  await assert.rejects(assertPublicSiteUrl("ftp://example.com"), /HTTP\(S\)/);
+  assert.equal(
+    await assertPublicSiteUrl("example.com", {
+      lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    }),
+    "https://example.com/",
+  );
+});
+
+test("browser redirect sonrası private final URL sonucunu reddeder", async (t) => {
+  const root = await temporaryDirectory("outpost-browser-redirect-");
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const tokenPath = path.join(root, "token");
+  await fs.writeFile(tokenPath, "test-token\n", "utf8");
+  let pageClosed = false;
+  const page = {
+    currentUrl: "about:blank",
+    async goto() {
+      this.currentUrl = "http://127.0.0.1/internal";
+    },
+    url() { return this.currentUrl; },
+    async close() { pageClosed = true; },
+  };
+  const context = {
+    async addInitScript() {},
+    async newPage() { return page; },
+    async close() {},
+  };
+  const browser = {
+    async newContext() { return context; },
+    async close() {},
+  };
+  const session = await openBrowserSession({
+    tokenPath,
+    chromium: { connect: async () => browser },
+    lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+  });
+  await assert.rejects(session.browse("https://example.com"), /private veya yerel hedefe/);
+  assert.equal(pageClosed, true);
+  await session.close();
+});
+
+test("codex classify workspace yerine geçici izole cwd kullanır ve girdiyi stdin'den alır", async (t) => {
+  const root = await temporaryDirectory("outpost-classify-test-");
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const bin = path.join(root, "fake-codex.mjs");
+  const cwdCapture = path.join(root, "cwd.txt");
+  const promptCapture = path.join(root, "prompt.txt");
+  await fs.writeFile(bin, `#!/usr/bin/env node
+import fs from "node:fs";
+fs.writeFileSync(${JSON.stringify(cwdCapture)}, process.cwd());
+let input = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { input += chunk; });
+process.stdin.on("end", () => {
+  fs.writeFileSync(${JSON.stringify(promptCapture)}, input);
+  process.stdout.write('{"emails":[],"phones":[],"people":[],"summary":"ok"}');
+});
+`, { mode: 0o700 });
+  const workspaceDirectory = path.join(root, "workspace-with-secrets");
+  await fs.mkdir(workspaceDirectory);
+  await fs.writeFile(path.join(workspaceDirectory, "secret.txt"), "secret", "utf8");
+
+  const result = await codexClassify({
+    workspace: { directory: workspaceDirectory },
+    agent: { model: "test-model" },
+    entity: { meta: { name: "Örnek" } },
+    pageData: {
+      sourceUrl: "https://example.com/",
+      directLinks: [],
+      text: "İletişim metni",
+    },
+    bin,
+    timeoutMs: 5_000,
+  });
+  assert.equal(result.summary, "ok");
+  const classifyCwd = await fs.readFile(cwdCapture, "utf8");
+  assert.notEqual(classifyCwd, workspaceDirectory);
+  assert.match(path.basename(classifyCwd), /^outpost-classify-/);
+  assert.match(await fs.readFile(promptCapture, "utf8"), /İletişim metni/);
+  await assert.rejects(fs.access(classifyCwd), { code: "ENOENT" });
+});
+
+test("codex stdin erken kapanırsa child hatası process'i düşürmeden completion'a bağlanır", async (t) => {
+  const root = await temporaryDirectory("outpost-classify-epipe-");
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const bin = path.join(root, "early-exit.mjs");
+  await fs.writeFile(bin, "#!/usr/bin/env node\nprocess.stdin.destroy();\nprocess.exit(1);\n", {
+    mode: 0o700,
+  });
+  await assert.rejects(codexClassify({
+    agent: { model: "test-model" },
+    entity: { meta: { name: "Örnek" } },
+    pageData: { sourceUrl: "https://example.com", directLinks: [], text: "x".repeat(30_000) },
+    bin,
+    timeoutMs: 5_000,
+  }), /codex classify (?:I\/O hatası|başarısız)/);
 });
 
 test("agent registry kind/source doğrular ve repo şablonlarını okur", async (t) => {

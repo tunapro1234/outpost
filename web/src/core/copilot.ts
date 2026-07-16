@@ -3,9 +3,7 @@
 // button is hidden entirely when disabled. Streaming replies arrive over SSE
 // from a POST body, so we read the response stream by hand (EventSource can't
 // POST).
-import { WORKSPACE } from "./api";
-
-const BASE = `/api/ws/${WORKSPACE}`;
+import { getWorkspace, workspaceBase } from "./api";
 const MOCK = import.meta.env.VITE_MOCK === "1";
 
 export type CopilotRole = "user" | "assistant" | "error";
@@ -20,7 +18,7 @@ export interface CopilotMessage {
 export async function copilotEnabled(): Promise<boolean> {
   if (MOCK) return false;
   try {
-    const res = await fetch(`${BASE}/copilot/enabled`);
+    const res = await fetch(`${workspaceBase()}/copilot/enabled`);
     if (!res.ok) return false;
     const body = (await res.json()) as { enabled?: boolean };
     return !!body?.enabled;
@@ -44,7 +42,7 @@ export async function streamCopilot(
   signal: AbortSignal,
   handlers: CopilotHandlers
 ): Promise<void> {
-  const res = await fetch(`${BASE}/copilot`, {
+  const res = await fetch(`${workspaceBase()}/copilot`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -101,20 +99,26 @@ export async function streamCopilot(
 }
 
 // ---- per-workspace persistence -----------------------------------------
-const THREAD_KEY = `outpost.copilot.thread.${WORKSPACE}`;
-const MSGS_KEY = `outpost.copilot.msgs.${WORKSPACE}`;
 const WIDTH_KEY = "outpost.copilot.width";
 
+function threadKey(): string {
+  return `outpost.copilot.thread.${getWorkspace()}`;
+}
+
+function messagesKey(): string {
+  return `outpost.copilot.msgs.${getWorkspace()}`;
+}
+
 export function loadThread(): string | null {
-  return localStorage.getItem(THREAD_KEY);
+  return localStorage.getItem(threadKey());
 }
 export function saveThread(id: string | null): void {
-  if (id) localStorage.setItem(THREAD_KEY, id);
-  else localStorage.removeItem(THREAD_KEY);
+  if (id) localStorage.setItem(threadKey(), id);
+  else localStorage.removeItem(threadKey());
 }
 export function loadMessages(): CopilotMessage[] {
   try {
-    const raw = localStorage.getItem(MSGS_KEY);
+    const raw = localStorage.getItem(messagesKey());
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as CopilotMessage[]) : [];
@@ -126,7 +130,7 @@ export function saveMessages(msgs: CopilotMessage[]): void {
   try {
     // Never persist the error notes — they are transient session feedback.
     localStorage.setItem(
-      MSGS_KEY,
+      messagesKey(),
       JSON.stringify(msgs.filter((m) => m.role !== "error"))
     );
   } catch {
@@ -134,8 +138,8 @@ export function saveMessages(msgs: CopilotMessage[]): void {
   }
 }
 export function clearConversation(): void {
-  localStorage.removeItem(MSGS_KEY);
-  localStorage.removeItem(THREAD_KEY);
+  localStorage.removeItem(messagesKey());
+  localStorage.removeItem(threadKey());
 }
 
 export function loadWidth(): number {

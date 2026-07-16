@@ -252,29 +252,135 @@ test("POST slug çakışmasına -2 ekler, DELETE .trash'a taşır", async (t) =>
   );
 });
 
-test("chokidar değişiklikleri tam tarama olmadan indekse alır", async (t) => {
+test("POST eşzamanlı dosya EEXIST yarışında sınırlı suffix retry yapar", async (t) => {
+  const vault = await temporaryDirectory();
+  t.after(() => fs.rm(vault, { recursive: true, force: true }));
+  const app = await createApp({ vaultPath: vault, watch: false });
+  t.after(() => app.close());
+
+  await writeEntity(
+    vault,
+    "companies",
+    "race-entity",
+    "---\ntype: company\nname: Yarıştaki Dosya\n---\n",
+  );
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/entities",
+    payload: { type: "company", name: "Race Entity" },
+  });
+  assert.equal(response.statusCode, 201);
+  assert.equal(response.json().id, "race-entity-2");
+});
+
+test("vault index ve PATCH/create symlink ile canonical kök dışına çıkmayı reddeder", async (t) => {
+  const vault = await temporaryDirectory("outpost-vault-symlink-");
+  const outside = await temporaryDirectory("outpost-vault-outside-");
+  t.after(() => fs.rm(vault, { recursive: true, force: true }));
+  t.after(() => fs.rm(outside, { recursive: true, force: true }));
+  const outsideFile = path.join(outside, "outside.md");
+  await fs.writeFile(
+    outsideFile,
+    "---\ntype: company\nname: Dışarıdaki\n---\nDış içerik.\n",
+    "utf8",
+  );
+  const indexedFile = await writeEntity(
+    vault,
+    "people",
+    "indexed",
+    "---\ntype: person\nname: Indexed\n---\nİç içerik.\n",
+  );
+  await fs.mkdir(path.join(vault, "companies"), { recursive: true });
+  await fs.symlink(outsideFile, path.join(vault, "companies", "linked.md"));
+
+  const app = await createApp({ vaultPath: vault, watch: false });
+  t.after(() => app.close());
+  assert.equal(app.vaultIndex.entities.has("linked"), false);
+
+  await fs.unlink(indexedFile);
+  await fs.symlink(outsideFile, indexedFile);
+  const patchResponse = await app.inject({
+    method: "PATCH",
+    url: "/api/entities/indexed",
+    payload: { body: "Ezilmemeli" },
+  });
+  assert.equal(patchResponse.statusCode, 400);
+  assert.match(patchResponse.json().error, /symlink/);
+  assert.match(await fs.readFile(outsideFile, "utf8"), /Dış içerik/);
+
+  await fs.rm(path.join(vault, "schools"), { recursive: true, force: true });
+  await fs.symlink(outside, path.join(vault, "schools"), "dir");
+  const createResponse = await app.inject({
+    method: "POST",
+    url: "/api/entities",
+    payload: { type: "school", name: "Kök Dışı" },
+  });
+  assert.equal(createResponse.statusCode, 400);
+  assert.match(createResponse.json().error, /(?:symlink dizinleri|canonical kök dışında)/);
+  await assert.rejects(fs.access(path.join(outside, "kok-disi.md")), { code: "ENOENT" });
+});
+
+test("chokidar değişikliklerini 150ms batch ile tek graph rebuild'de indekse alır", async (t) => {
   const vault = await temporaryDirectory();
   await fs.mkdir(path.join(vault, "people"), { recursive: true });
   t.after(() => fs.rm(vault, { recursive: true, force: true }));
   const app = await createApp({ vaultPath: vault, watch: true, schedule: false });
   t.after(() => app.close());
+  const originalRebuild = app.vaultIndex.rebuildGraph.bind(app.vaultIndex);
+  let rebuilds = 0;
+  app.vaultIndex.rebuildGraph = () => {
+    rebuilds += 1;
+    return originalRebuild();
+  };
 
-  await writeEntity(
-    vault,
-    "people",
-    "izlenen-kisi",
-    "---\ntype: person\nname: İzlenen Kişi\n---\nWatcher gövdesi.\n",
-  );
+  await Promise.all([
+    writeEntity(
+      vault,
+      "people",
+      "izlenen-kisi",
+      "---\ntype: person\nname: İzlenen Kişi\n---\nWatcher gövdesi.\n",
+    ),
+    writeEntity(
+      vault,
+      "people",
+      "ikinci-kisi",
+      "---\ntype: person\nname: İkinci Kişi\n---\nWatcher gövdesi.\n",
+    ),
+  ]);
   let found = false;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 50));
-    const response = await app.inject({ url: "/api/entities/izlenen-kisi" });
-    if (response.statusCode === 200) {
+    const [first, second] = await Promise.all([
+      app.inject({ url: "/api/entities/izlenen-kisi" }),
+      app.inject({ url: "/api/entities/ikinci-kisi" }),
+    ]);
+    if (first.statusCode === 200 && second.statusCode === 200) {
       found = true;
       break;
     }
   }
   assert.equal(found, true);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(rebuilds, 1);
+});
+
+test("statik dosya servisi webDist dışına çıkan symlink hedefini 404 yapar", async (t) => {
+  const vault = await temporaryDirectory("outpost-static-vault-");
+  const webDist = await temporaryDirectory("outpost-static-dist-");
+  const outside = await temporaryDirectory("outpost-static-outside-");
+  t.after(() => fs.rm(vault, { recursive: true, force: true }));
+  t.after(() => fs.rm(webDist, { recursive: true, force: true }));
+  t.after(() => fs.rm(outside, { recursive: true, force: true }));
+  await fs.writeFile(path.join(webDist, "index.html"), "<h1>Outpost</h1>", "utf8");
+  await fs.writeFile(path.join(outside, "secret.txt"), "çok gizli", "utf8");
+  await fs.symlink(path.join(outside, "secret.txt"), path.join(webDist, "secret.txt"));
+  const app = await createApp({ vaultPath: vault, webDist, watch: false });
+  t.after(() => app.close());
+
+  const response = await app.inject({ url: "/secret.txt" });
+  assert.equal(response.statusCode, 404);
+  assert.deepEqual(response.json(), { error: "Dosya bulunamadı" });
+  assert.doesNotMatch(response.body, /çok gizli/);
 });
 
 test("API hataları ortak JSON şeklini kullanır", async (t) => {

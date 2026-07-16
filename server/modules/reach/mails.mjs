@@ -138,12 +138,7 @@ export function mailStats(mails) {
     if (!mail.entity_id || !["in", "out"].includes(mail.direction)) continue;
     let stats = byEntity.get(mail.entity_id);
     if (!stats) {
-      stats = {
-        mail_count: 0,
-        last_mail_date: null,
-        last_mail_direction: null,
-        last_mail_from: null,
-      };
+      stats = emptyMailStats();
       byEntity.set(mail.entity_id, stats);
     }
     stats.mail_count += 1;

@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
+import { lookup as dnsLookup } from "node:dns/promises";
 import { promises as fs } from "node:fs";
+import { BlockList, isIP } from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRunRecord, writeRun } from "./journal.mjs";
@@ -12,6 +15,20 @@ const BROWSER_MODULE = "/srv/browser/node_modules/playwright/index.mjs";
 const BROWSER_TOKEN = "/srv/browser/.ws_token";
 const MAX_CODEX_OUTPUT = 1024 * 1024;
 const EMPTY_VALUES = new Set(["", "-", "yok", "none", "null"]);
+const PRIVATE_ADDRESSES = new BlockList();
+
+for (const [network, prefix] of [
+  ["127.0.0.0", 8],
+  ["10.0.0.0", 8],
+  ["172.16.0.0", 12],
+  ["192.168.0.0", 16],
+  ["169.254.0.0", 16],
+]) {
+  PRIVATE_ADDRESSES.addSubnet(network, prefix, "ipv4");
+}
+PRIVATE_ADDRESSES.addAddress("::1", "ipv6");
+PRIVATE_ADDRESSES.addSubnet("fc00::", 7, "ipv6");
+PRIVATE_ADDRESSES.addSubnet("fe80::", 10, "ipv6");
 
 function statusError(statusCode, message) {
   const error = new Error(message);
@@ -48,9 +65,36 @@ export function selectTargets(workspace, params = {}) {
 function normalizeSite(raw) {
   const value = String(raw ?? "").trim();
   if (!present(value)) throw new Error("site alanı boş");
-  const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
+  const url = new URL(/^[a-z][a-z\d+.-]*:/i.test(value) ? value : `https://${value}`);
   if (!["http:", "https:"].includes(url.protocol)) throw new Error("site HTTP(S) olmalı");
   return url.href;
+}
+
+function bareHostname(hostname) {
+  return hostname.startsWith("[") && hostname.endsWith("]")
+    ? hostname.slice(1, -1)
+    : hostname;
+}
+
+function privateAddress(address, family) {
+  const normalizedFamily = family === 4 || family === "IPv4" ? "ipv4" : "ipv6";
+  return PRIVATE_ADDRESSES.check(address, normalizedFamily);
+}
+
+export async function assertPublicSiteUrl(rawUrl, { lookup = dnsLookup } = {}) {
+  const normalized = normalizeSite(rawUrl);
+  const url = new URL(normalized);
+  const hostname = bareHostname(url.hostname);
+  const literalFamily = isIP(hostname);
+  const addresses = literalFamily
+    ? [{ address: hostname, family: literalFamily }]
+    : await lookup(hostname, { all: true, verbatim: true });
+  if (!addresses.length) throw new Error(`site DNS sonucu döndürmedi: ${hostname}`);
+  const blocked = addresses.find(({ address, family }) => privateAddress(address, family));
+  if (blocked) {
+    throw new Error(`site private veya yerel hedefe çözümleniyor: ${blocked.address}`);
+  }
+  return normalized;
 }
 
 function contactScore(link) {
@@ -63,16 +107,39 @@ function contactScore(link) {
 export async function openBrowserSession({
   tokenPath = BROWSER_TOKEN,
   browserModule = BROWSER_MODULE,
+  chromium: providedChromium,
+  lookup = dnsLookup,
 } = {}) {
-  const token = (await fs.readFile(tokenPath, "utf8")).trim();
+  let token;
+  try {
+    token = (await fs.readFile(tokenPath, "utf8")).trim();
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      throw new Error(`Gather browser is not configured (missing token: ${tokenPath})`);
+    }
+    throw new Error(`Gather browser token could not be read: ${tokenPath}`, { cause: error });
+  }
   if (!token) throw new Error("Merkezi browser token dosyası boş");
-  const { chromium } = await import(pathToFileURL(browserModule).href);
+  let chromium = providedChromium;
+  if (!chromium) {
+    try {
+      ({ chromium } = await import(pathToFileURL(browserModule).href));
+    } catch (error) {
+      if (error.code === "ERR_MODULE_NOT_FOUND") {
+        throw new Error(`Gather browser integration is not installed: ${browserModule}`);
+      }
+      throw error;
+    }
+  }
   let browser;
   try {
     browser = await chromium.connect(`ws://127.0.0.1:3333/${token}`);
   } catch (error) {
-    error.browserToken = token;
-    throw error;
+    const unavailable = new Error("Gather browser is unavailable at ws://127.0.0.1:3333", {
+      cause: error,
+    });
+    unavailable.browserToken = token;
+    throw unavailable;
   }
   const context = await browser.newContext({
     locale: "tr-TR",
@@ -89,8 +156,9 @@ export async function openBrowserSession({
     async browse(rawUrl) {
       const page = await context.newPage();
       try {
-        const sourceUrl = normalizeSite(rawUrl);
+        const sourceUrl = await assertPublicSiteUrl(rawUrl, { lookup });
         await page.goto(sourceUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+        await assertPublicSiteUrl(page.url(), { lookup });
         const webdriverHidden = await page.evaluate(() => navigator.webdriver === undefined);
         const links = await page.locator("a").evaluateAll((anchors) =>
           anchors.slice(0, 500).map((anchor) => ({
@@ -106,6 +174,7 @@ export async function openBrowserSession({
           .sort((left, right) => right.score - left.score)[0];
         if (contact && contact.href !== page.url()) {
           await page.goto(contact.href, { waitUntil: "domcontentloaded", timeout: 30_000 });
+          await assertPublicSiteUrl(page.url(), { lookup });
         }
         const text = (await page.locator("body").innerText({ timeout: 10_000 }))
           .replace(/\s+\n/g, "\n")
@@ -190,52 +259,82 @@ Sayfa metni:
 ${pageData.text.slice(0, 25_000)}`;
 }
 
-export async function codexClassify({ workspace, agent, entity, pageData }) {
-  const args = [
-    "exec",
-    "-m", agent.model,
-    "-c", 'model_reasoning_effort="medium"',
-    "--sandbox", "read-only",
-    "--ephemeral",
-    "--skip-git-repo-check",
-    "--output-schema", CLASSIFY_SCHEMA,
-    "-C", workspace.directory,
-    "-",
-  ];
-  const child = spawn("codex", args, {
-    cwd: workspace.directory,
-    env: process.env,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  const chunks = [];
-  const errors = [];
-  let size = 0;
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    child.kill("SIGKILL");
-  }, 120_000);
-  child.stdout.on("data", (chunk) => {
-    size += chunk.length;
-    if (size <= MAX_CODEX_OUTPUT) chunks.push(chunk);
-    else child.kill("SIGKILL");
-  });
-  child.stderr.on("data", (chunk) => {
-    if (errors.reduce((total, item) => total + item.length, 0) < 32_000) errors.push(chunk);
-  });
-  child.stdin.end(classifierPrompt(entity, pageData));
+export async function codexClassify({
+  agent,
+  entity,
+  pageData,
+  bin = "codex",
+  timeoutMs = 120_000,
+}) {
+  const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "outpost-classify-"));
+  try {
+    const schemaPath = path.join(temporaryDirectory, "classify-schema.json");
+    await fs.copyFile(CLASSIFY_SCHEMA, schemaPath);
+    const args = [
+      "exec",
+      "-m", agent.model,
+      "-c", 'model_reasoning_effort="medium"',
+      "--sandbox", "read-only",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "--output-schema", schemaPath,
+      "-C", temporaryDirectory,
+      "-",
+    ];
+    const child = spawn(bin, args, {
+      cwd: temporaryDirectory,
+      env: process.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const chunks = [];
+    const errors = [];
+    let size = 0;
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, timeoutMs);
+    timer.unref?.();
+    child.stdout.on("data", (chunk) => {
+      size += chunk.length;
+      if (size <= MAX_CODEX_OUTPUT) chunks.push(chunk);
+      else child.kill("SIGKILL");
+    });
+    child.stderr.on("data", (chunk) => {
+      if (errors.reduce((total, item) => total + item.length, 0) < 32_000) errors.push(chunk);
+    });
 
-  const result = await new Promise((resolve, reject) => {
-    child.once("error", reject);
-    child.once("close", (code, signal) => resolve({ code, signal }));
-  }).finally(() => clearTimeout(timer));
-  if (timedOut) throw new Error("codex classify 120 saniyede zaman aşımına uğradı");
-  if (size > MAX_CODEX_OUTPUT) throw new Error("codex classify çıktısı fazla büyük");
-  if (result.code !== 0) {
-    const detail = Buffer.concat(errors).toString("utf8").trim().slice(-1000);
-    throw new Error(`codex classify başarısız (${result.code ?? result.signal})${detail ? `: ${detail}` : ""}`);
+    let settled = false;
+    let finish;
+    const closed = new Promise((resolve) => child.once("close", resolve));
+    const completed = new Promise((resolve) => {
+      finish = (result) => {
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
+    });
+    child.once("error", (error) => finish({ error }));
+    child.once("close", (code, signal) => finish({ code, signal }));
+    child.stdin.once("error", (error) => finish({ error }));
+    child.stdin.end(classifierPrompt(entity, pageData));
+
+    const result = await completed.finally(() => clearTimeout(timer));
+    if (timedOut) throw new Error(`codex classify ${timeoutMs / 1000} saniyede zaman aşımına uğradı`);
+    if (size > MAX_CODEX_OUTPUT) throw new Error("codex classify çıktısı fazla büyük");
+    if (result.error) {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+      await closed;
+      throw new Error(`codex classify I/O hatası: ${result.error.message}`);
+    }
+    if (result.code !== 0) {
+      const detail = Buffer.concat(errors).toString("utf8").trim().slice(-1000);
+      throw new Error(`codex classify başarısız (${result.code ?? result.signal})${detail ? `: ${detail}` : ""}`);
+    }
+    return parseClassifyJson(Buffer.concat(chunks).toString("utf8"));
+  } finally {
+    await fs.rm(temporaryDirectory, { recursive: true, force: true });
   }
-  return parseClassifyJson(Buffer.concat(chunks).toString("utf8"));
 }
 
 function safeMessage(error) {
