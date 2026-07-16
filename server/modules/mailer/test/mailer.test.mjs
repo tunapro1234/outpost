@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createApp } from "../../../app.mjs";
 import { serializeMarkdown } from "../../../lib/vault.mjs";
 import { temporaryDirectory } from "../../../test-support/helpers.mjs";
-import { inferAuthority } from "../service.mjs";
+import { inferAuthority, resolveCompany } from "../service.mjs";
 import {
   createMailDraftStage,
   listMailDraftRecords,
@@ -55,6 +55,53 @@ test("authority yoksa role/rol metninden belirtilen yetki seviyesini çıkarır"
   assert.deepEqual(inferAuthority({ authority: "exec", role: "uzman" }), {
     authority: "exec", inferred: false,
   });
+});
+
+test("şirketi frontmatter yerine wikilink kenarından çözer ve en önemli komşuyu seçer", async (t) => {
+  const root = await temporaryDirectory("outpost-mailer-company-edge-");
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.cp(path.join(FIXTURE_WORKSPACES, "fixture"), path.join(root, "fixture"), {
+    recursive: true,
+  });
+  await fs.writeFile(
+    path.join(root, "fixture/vault/people/kenar-adayi.md"),
+    serializeMarkdown([
+      "## İlişkiler",
+      "- [[Skorlu Şirket]] — danışmanı",
+      "- [[Acil Şirket]] — yöneticisi",
+      "",
+    ].join("\n"), {
+      type: "person",
+      name: "Kenar Adayı",
+      company: "Öncelikli Şirket",
+      mail: "kenar@example.com",
+      scan_state: "partial",
+      mail_state: "none",
+    }),
+    "utf8",
+  );
+  const app = await createApp({
+    workspacesPath: root,
+    outpostVault: null,
+    watch: false,
+    mailSchedule: false,
+  });
+  t.after(() => app.close());
+  const workspace = app.workspaceRegistry.get("fixture");
+  const candidate = workspace.index.entities.get("kenar-adayi");
+
+  assert.equal(resolveCompany(candidate, workspace.index)?.id, "acil");
+  const result = (await app.inject({ url: "/api/ws/fixture/mailqueue" })).json();
+  assert.deepEqual(
+    result.awaitingScan.find(({ id }) => id === candidate.id),
+    {
+      id: "kenar-adayi",
+      name: "Kenar Adayı",
+      company_id: "acil",
+      company_name: "Acil Şirket",
+      companyImportance: 95,
+    },
+  );
 });
 
 test("GET mailqueue skor bileşenlerini açıklar, uygunluğu süzer ve awaitingScan'i sıralar", async (t) => {

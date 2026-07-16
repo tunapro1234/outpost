@@ -82,13 +82,6 @@ export function inferAuthority(meta = {}) {
   return { authority: "staff", inferred: true };
 }
 
-function entityMatchesReference(entity, reference) {
-  if (!entity || typeof reference !== "string") return false;
-  const cleaned = reference.replace(/^\[\[/, "").replace(/\]\]$/, "").split("|", 1)[0].trim();
-  return normalizeSearch(entity.id) === normalizeSearch(cleaned) ||
-    normalizeSearch(entity.meta.name) === normalizeSearch(cleaned);
-}
-
 function adjacentEntities(person, index) {
   const ids = new Set();
   for (const edge of index.edges) {
@@ -98,20 +91,17 @@ function adjacentEntities(person, index) {
   return [...ids].map((id) => index.entities.get(id)).filter(Boolean);
 }
 
+// Kişinin "kurumu" her org tipi olabilir (vault'ta işveren çoğu zaman
+// institution/school): tip önceliği company > institution > school,
+// aynı tip içinde importance yüksek olan kazanır.
+const ORG_TYPE_RANK = { company: 0, institution: 1, school: 2 };
+
 export function resolveCompany(person, index) {
-  const companies = [...index.entities.values()]
-    .filter((entity) => entity.meta.type === "company");
-  const references = [person.meta.company_id, person.meta.company]
-    .flat(Infinity)
-    .filter((value) => typeof value === "string" && value.trim());
-  for (const reference of references) {
-    const company = companies.find((entity) => entityMatchesReference(entity, reference));
-    if (company) return company;
-  }
   return adjacentEntities(person, index)
-    .filter((entity) => entity.meta.type === "company")
-    .sort((left, right) => companyImportance(right).value - companyImportance(left).value ||
-      left.meta.name.localeCompare(right.meta.name, "tr", { sensitivity: "base" }))[0] ?? null;
+    .filter((entity) => entity.meta.type in ORG_TYPE_RANK)
+    .sort((left, right) =>
+      (ORG_TYPE_RANK[left.meta.type] - ORG_TYPE_RANK[right.meta.type]) ||
+      (companyImportance(right).value - companyImportance(left).value))[0] ?? null;
 }
 
 export function companyImportance(company) {
