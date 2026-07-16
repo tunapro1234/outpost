@@ -30,6 +30,10 @@ export interface GraphNode {
   mailSource?: string | null;
   closeness?: number | null;
   hook?: string | null;
+  mail_count?: number;
+  last_mail_date?: string | null;
+  last_mail_direction?: "out" | "in" | null;
+  last_mail_from?: string | null;
   hub?: boolean; // marked at render time
   // force-graph mutates these at runtime
   x?: number;
@@ -62,6 +66,10 @@ export interface EntityListItem {
   city?: string | null;
   mail?: string | null;
   degree: number;
+  mail_count?: number;
+  last_mail_date?: string | null;
+  last_mail_direction?: "out" | "in" | null;
+  last_mail_from?: string | null;
 }
 
 export interface Relation {
@@ -124,14 +132,21 @@ export interface Facets {
   degree: { max: number; p99: number };
 }
 
-// ---- mails (server /api/mails) ------------------------------------------
+// ---- mails (server /api/ws/:ws/mails) -----------------------------------
 export interface MailItem {
-  person_id: string;
-  person_name: string;
+  id: string;
+  entity_id: string;
+  entity_name: string | null;
+  person_id?: string;
+  person_name?: string | null;
+  direction: "out" | "in";
   date: string | null;
-  direction: "out" | "in" | "unknown";
+  from: string | null;
+  to: string | null;
+  subject: string | null;
   summary: string;
-  raw: string;
+  source: "import" | "vault" | "manual";
+  raw?: string;
 }
 
 // legacy graph-fetch filters (server-side) — retained for the api layer

@@ -26,6 +26,7 @@ interface Props {
   theme: ThemeName;
   onClose: () => void;
   onGoto: (id: string) => void;
+  onOpenFull: (id: string) => void;
   onChanged: () => void;
   onEgo: (id: string) => void;
   egoActive: boolean;
@@ -45,6 +46,7 @@ export default function EntityPanel({
   theme,
   onClose,
   onGoto,
+  onOpenFull,
   onChanged,
   onEgo,
   egoActive,
@@ -176,6 +178,12 @@ export default function EntityPanel({
       ) : (
         <div className="panel-body">
           <div className="panel-actions">
+            <button
+              className="btn primary open-full"
+              onClick={() => onOpenFull(entity.id)}
+            >
+              Open full page →
+            </button>
             <button
               className={`btn ego-btn ${egoActive ? "on" : ""}`}
               onClick={() => onEgo(entity.id)}

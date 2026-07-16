@@ -8,6 +8,7 @@ import EntityPanel from "@/modules/network/EntityPanel";
 import PhysicsPanel from "@/modules/network/PhysicsPanel";
 import LegendOverlay from "@/modules/network/LegendOverlay";
 import ReachView from "@/modules/reach/ReachView";
+import EntityPage from "@/modules/entity/EntityPage";
 import GatherView from "@/modules/gather/GatherView";
 import IntegrationsView from "@/modules/integrations/IntegrationsView";
 import ProfileView from "@/modules/profile/ProfileView";
@@ -34,6 +35,7 @@ import {
 } from "@/core/filters";
 import type { Physics } from "@/core/physics";
 import { loadPhysics, savePhysics } from "@/core/physics";
+import { useRoute, navigate, entityPath } from "@/core/router";
 
 const EMPTY: GraphData = { nodes: [], edges: [] };
 const WORKSPACE = "probot";
@@ -63,8 +65,10 @@ export default function App() {
     () => localStorage.getItem("outpost.physicsOpen") === "1"
   );
 
+  const route = useRoute();
   const [full, setFull] = useState<GraphData>(EMPTY);
   const [facets, setFacets] = useState<Facets>(() => deriveFacets([]));
+  const [entityList, setEntityList] = useState<EntityListItem[]>([]);
   const [mails, setMails] = useState<MailItem[] | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,8 +125,19 @@ export default function App() {
         for (const it of list) meta.set(it.id, it);
         const nodes: GraphNode[] = graph.nodes.map((n) => {
           const m = meta.get(n.id);
-          return m ? { ...n, city: m.city ?? null, mail: m.mail ?? null } : n;
+          return m
+            ? {
+                ...n,
+                city: m.city ?? null,
+                mail: m.mail ?? null,
+                mail_count: m.mail_count ?? 0,
+                last_mail_date: m.last_mail_date ?? null,
+                last_mail_direction: m.last_mail_direction ?? null,
+                last_mail_from: m.last_mail_from ?? null,
+              }
+            : n;
         });
+        setEntityList(list);
         setFull({ nodes, edges: graph.edges });
         setFacets(serverFacets ?? deriveFacets(nodes));
         setLoaded(true);
@@ -183,6 +198,7 @@ export default function App() {
   }, [selectedId, filters, setFilters]);
 
   const gotoNode = useCallback((id: string) => {
+    if (window.location.pathname !== "/") navigate("/");
     setSelectedId(id);
     setNav("network");
     setGraphMode("graph");
@@ -235,9 +251,17 @@ export default function App() {
         city: n.city ?? null,
         mail: n.mail ?? null,
         degree: n.degree,
+        mail_count: n.mail_count ?? 0,
+        last_mail_date: n.last_mail_date ?? null,
+        last_mail_direction: n.last_mail_direction ?? null,
+        last_mail_from: n.last_mail_from ?? null,
       })),
     [result]
   );
+
+  const openFull = useCallback((id: string) => {
+    navigate(entityPath(id));
+  }, []);
 
   const egoNode = filters.egoId
     ? full.nodes.find((n) => n.id === filters.egoId)
@@ -245,11 +269,49 @@ export default function App() {
 
   const isNetwork = nav === "network";
 
+  const navigateHome = useCallback((k: NavKey) => {
+    if (window.location.pathname !== "/") navigate("/");
+    setNav(k);
+  }, []);
+
+  // ---- full entity page route ----
+  if (route.name === "entity") {
+    return (
+      <div className="app">
+        <Sidebar
+          active={nav}
+          onNavigate={navigateHome}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
+          workspace={WORKSPACE}
+        />
+        <div className="main">
+          <EntityPage
+            id={route.id}
+            theme={theme}
+            onToggleTheme={() =>
+              setTheme((t) => (t === "dark" ? "light" : "dark"))
+            }
+            mails={mails}
+            graph={full}
+            onChanged={onDataChanged}
+          />
+        </div>
+        {error && (
+          <div className="err-toast">
+            {error}
+            {api.mock ? "" : " — is the server on 127.0.0.1:3002 running?"}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <Sidebar
         active={nav}
-        onNavigate={setNav}
+        onNavigate={navigateHome}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
         workspace={WORKSPACE}
@@ -356,6 +418,7 @@ export default function App() {
                 items={listItems}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
+                onOpenFull={openFull}
                 onChanged={onDataChanged}
               />
             )}
@@ -391,7 +454,11 @@ export default function App() {
           </div>
 
           {nav === "reach" && (
-            <ReachView mails={mails} onPickPerson={gotoNode} />
+            <ReachView
+              mails={mails}
+              entities={entityList}
+              onOpenEntity={openFull}
+            />
           )}
           {nav === "gather" && <GatherView />}
           {nav === "integrations" && <IntegrationsView />}
@@ -404,6 +471,7 @@ export default function App() {
               theme={theme}
               onClose={() => setSelectedId(null)}
               onGoto={gotoNode}
+              onOpenFull={openFull}
               onChanged={onDataChanged}
               onEgo={onEgo}
               egoActive={result.egoActive && filters.egoId === selectedId}

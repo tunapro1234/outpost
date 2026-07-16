@@ -1,128 +1,331 @@
-import { useMemo, useState } from "react";
-import type { MailItem } from "@/core/types";
+import { useEffect, useMemo, useState } from "react";
+import type { EntityListItem, MailItem } from "@/core/types";
+import { STATUS_COLORS, STATUS_LABELS, TYPE_LABELS } from "@/core/theme";
 import { trNormalize } from "@/core/normalize";
+import { api } from "@/core/api";
 
 interface Props {
   mails: MailItem[] | null; // null = endpoint not available yet
-  onPickPerson: (id: string) => void;
+  entities: EntityListItem[];
+  onOpenEntity: (id: string) => void;
 }
 
-type Dir = "all" | "out" | "in";
+type Tab = "sent" | "candidates" | "inbound";
+type CandSort = "score" | "name";
 
-export default function ReachView({ mails, onPickPerson }: Props) {
+const CANDIDATE_SCORE_MIN = 15;
+
+function hasMail(mail: string | null | undefined): boolean {
+  const m = (mail ?? "").trim();
+  return m !== "" && m !== "-" && m !== "yok";
+}
+
+export default function ReachView({ mails, entities, onOpenEntity }: Props) {
+  const [tab, setTab] = useState<Tab>("sent");
   const [q, setQ] = useState("");
-  const [dir, setDir] = useState<Dir>("all");
-  const [asc, setAsc] = useState(false);
+  const [candSort, setCandSort] = useState<CandSort>("score");
+  const [candAsc, setCandAsc] = useState(false);
+  const [hooks, setHooks] = useState<Record<string, string | null>>({});
 
-  const rows = useMemo(() => {
-    const src = mails ?? [];
+  const list = mails ?? [];
+  const sent = useMemo(() => list.filter((m) => m.direction === "out"), [list]);
+  const inbound = useMemo(() => list.filter((m) => m.direction === "in"), [list]);
+
+  // ---- KPIs (derived from the mail log) ----
+  const kpis = useMemo(() => {
+    const contacted = new Set(sent.map((m) => m.entity_id));
+    const replied = new Set(inbound.map((m) => m.entity_id));
+    const repliedContacted = [...replied].filter((id) => contacted.has(id));
+    const rate = contacted.size
+      ? Math.round((repliedContacted.length / contacted.size) * 100)
+      : 0;
+    const pending = contacted.size - repliedContacted.length;
+    return {
+      sent: sent.length,
+      replied: inbound.length,
+      rate,
+      pending: Math.max(0, pending),
+    };
+  }, [sent, inbound]);
+
+  // ---- candidates: has mail, never written, score >= threshold ----
+  const candidates = useMemo(() => {
     const nq = trNormalize(q);
-    let out = src.filter((m) => {
-      if (dir !== "all" && m.direction !== dir) return false;
-      if (nq) {
-        const hay = trNormalize(`${m.person_name} ${m.summary} ${m.raw}`);
-        if (!hay.includes(nq)) return false;
-      }
-      return true;
-    });
+    let out = entities.filter(
+      (e) =>
+        hasMail(e.mail) &&
+        (e.mail_count ?? 0) === 0 &&
+        (e.score ?? 0) >= CANDIDATE_SCORE_MIN
+    );
+    if (nq) {
+      out = out.filter((e) =>
+        trNormalize(`${e.name} ${e.city ?? ""} ${e.subtype ?? ""}`).includes(nq)
+      );
+    }
     out = [...out].sort((a, b) => {
-      const da = a.date ?? "";
-      const db = b.date ?? "";
-      const cmp = da.localeCompare(db);
-      return asc ? cmp : -cmp;
+      const cmp =
+        candSort === "name"
+          ? a.name.localeCompare(b.name, "tr")
+          : (a.score ?? 0) - (b.score ?? 0);
+      return candAsc ? cmp : -cmp;
     });
     return out;
-  }, [mails, q, dir, asc]);
+  }, [entities, q, candSort, candAsc]);
 
-  if (mails === null) {
-    return (
-      <div className="view-pad">
-        <div className="empty-state">
-          <div className="es-title">Mail service coming online</div>
-          <div className="es-sub">
-            The <code>/api/mails</code> endpoint is not live yet. Once it ships,
-            mail records will be listed here.
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // lazily fetch hooks ("why candidate") for the candidate set
+  useEffect(() => {
+    if (tab !== "candidates") return;
+    const missing = candidates.filter((c) => !(c.id in hooks)).map((c) => c.id);
+    if (missing.length === 0) return;
+    let alive = true;
+    const queue = [...missing];
+    const results: Record<string, string | null> = {};
+    const worker = async () => {
+      while (queue.length) {
+        const id = queue.shift();
+        if (!id) break;
+        try {
+          const e = await api.entity(id);
+          results[id] = (e.meta.hook as string | undefined) ?? null;
+        } catch {
+          results[id] = null;
+        }
+      }
+    };
+    Promise.all(Array.from({ length: 6 }, worker)).then(() => {
+      if (alive) setHooks((h) => ({ ...h, ...results }));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [tab, candidates, hooks]);
 
-  if (mails.length === 0) {
-    return (
-      <div className="view-pad">
-        <div className="empty-state">
-          <div className="es-title">No mail records yet</div>
-          <div className="es-sub">
-            As entries are added to the <code>## Mailler</code> section of
-            person notes, they will appear here.
-          </div>
-        </div>
-      </div>
+  const filteredSent = useMemo(() => {
+    const nq = trNormalize(q);
+    if (!nq) return sent;
+    return sent.filter((m) =>
+      trNormalize(
+        `${m.entity_name ?? ""} ${m.person_name ?? ""} ${m.subject ?? ""} ${m.summary}`
+      ).includes(nq)
     );
-  }
+  }, [sent, q]);
+
+  const filteredInbound = useMemo(() => {
+    const nq = trNormalize(q);
+    if (!nq) return inbound;
+    return inbound.filter((m) =>
+      trNormalize(
+        `${m.entity_name ?? ""} ${m.person_name ?? ""} ${m.subject ?? ""} ${m.summary}`
+      ).includes(nq)
+    );
+  }, [inbound, q]);
+
+  const KPI = ({ label, value, tone }: { label: string; value: string; tone?: string }) => (
+    <div className="kpi">
+      <div className="kpi-v" style={tone ? { color: tone } : undefined}>
+        {value}
+      </div>
+      <div className="kpi-k">{label}</div>
+    </div>
+  );
+
+  const MailTable = ({ rows }: { rows: MailItem[] }) => (
+    <table className="grid mails-grid">
+      <thead>
+        <tr>
+          <th style={{ width: 108 }}>Date</th>
+          <th>Person</th>
+          <th>Company</th>
+          <th>Subject</th>
+          <th style={{ width: 92 }}>Direction</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((m) => (
+          <tr key={m.id}>
+            <td className="mono">{m.date ?? "—"}</td>
+            <td>{m.person_name ?? "—"}</td>
+            <td>
+              {m.entity_id ? (
+                <button className="link-btn" onClick={() => onOpenEntity(m.entity_id)}>
+                  {m.entity_name ?? m.entity_id}
+                </button>
+              ) : (
+                "—"
+              )}
+            </td>
+            <td>{m.subject ?? "—"}</td>
+            <td>
+              <span className={`dir-tag ${m.direction}`}>
+                {m.direction === "out" ? "→ out" : "← in"}
+              </span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 
   return (
-    <div className="view-pad mails">
-      <div className="mails-bar">
+    <div className="view-pad reach">
+      {/* KPI strip */}
+      <div className="kpi-strip">
+        <KPI label="Total sent" value={String(kpis.sent)} />
+        <KPI label="Replied" value={String(kpis.replied)} tone="var(--ok)" />
+        <KPI label="Reply rate" value={`${kpis.rate}%`} />
+        <KPI label="Pending follow-up" value={String(kpis.pending)} tone="var(--warn)" />
+      </div>
+
+      <div className="reach-bar">
+        <div className="tabs">
+          <button className={tab === "sent" ? "on" : ""} onClick={() => setTab("sent")}>
+            Sent
+            {sent.length > 0 && <span className="tab-badge">{sent.length}</span>}
+          </button>
+          <button
+            className={tab === "candidates" ? "on" : ""}
+            onClick={() => setTab("candidates")}
+          >
+            Candidates
+            {candidates.length > 0 && (
+              <span className="tab-badge">{candidates.length}</span>
+            )}
+          </button>
+          <button
+            className={tab === "inbound" ? "on" : ""}
+            onClick={() => setTab("inbound")}
+          >
+            Inbound
+            {inbound.length > 0 && <span className="tab-badge">{inbound.length}</span>}
+          </button>
+        </div>
         <input
-          className="np-input"
-          style={{ maxWidth: 320 }}
-          placeholder="Search mail — person, subject, content"
+          className="np-input reach-search"
+          placeholder={
+            tab === "candidates" ? "Search candidates…" : "Search mail…"
+          }
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <div className="seg">
-          {(["all", "out", "in"] as Dir[]).map((d) => (
-            <button
-              key={d}
-              className={dir === d ? "on" : ""}
-              onClick={() => setDir(d)}
-            >
-              {d === "all" ? "All" : d === "out" ? "→ Outbound" : "← Inbound"}
-            </button>
-          ))}
-        </div>
-        <span className="mails-count">{rows.length} records</span>
       </div>
 
-      <table className="grid mails-grid">
-        <thead>
-          <tr>
-            <th className="sortable" onClick={() => setAsc((a) => !a)}>
-              Date <span className="arrow">{asc ? "▲" : "▼"}</span>
-            </th>
-            <th>Direction</th>
-            <th>Person</th>
-            <th>Summary</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((m, i) => (
-            <tr key={`${m.person_id}-${i}`}>
-              <td className="mono">{m.date ?? "—"}</td>
-              <td>
-                <span className={`dir-tag ${m.direction}`}>
-                  {m.direction === "out"
-                    ? "→ out"
-                    : m.direction === "in"
-                    ? "← in"
-                    : "•"}
-                </span>
-              </td>
-              <td>
-                <button
-                  className="link-btn"
-                  onClick={() => onPickPerson(m.person_id)}
-                >
-                  {m.person_name}
-                </button>
-              </td>
-              <td className="summary">{m.summary || m.raw}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {mails === null && tab !== "candidates" ? (
+        <div className="empty-state">
+          <div className="es-title">Mail service coming online</div>
+          <div className="es-sub">
+            The <code>/api/ws/probot/mails</code> endpoint is not reachable yet.
+          </div>
+        </div>
+      ) : tab === "sent" ? (
+        filteredSent.length === 0 ? (
+          <div className="empty-state">
+            <div className="es-title">No mail sent yet</div>
+            <div className="es-sub">
+              Once outreach mail is logged, every message shows up here with its
+              target entity.
+            </div>
+          </div>
+        ) : (
+          <MailTable rows={filteredSent} />
+        )
+      ) : tab === "inbound" ? (
+        filteredInbound.length === 0 ? (
+          <div className="empty-state">
+            <div className="es-title">No replies yet</div>
+            <div className="es-sub">
+              Inbound replies to your outreach will be collected on this tab.
+            </div>
+          </div>
+        ) : (
+          <MailTable rows={filteredInbound} />
+        )
+      ) : (
+        // candidates
+        <div className="cand-wrap">
+          <div className="cand-head">
+            <span className="cand-count">{candidates.length} candidates</span>
+            <span className="cand-hint">
+              has mail · never contacted · score ≥ {CANDIDATE_SCORE_MIN}
+            </span>
+            <div className="seg" style={{ marginLeft: "auto" }}>
+              <button
+                className={candSort === "score" ? "on" : ""}
+                onClick={() => {
+                  if (candSort === "score") setCandAsc((a) => !a);
+                  else {
+                    setCandSort("score");
+                    setCandAsc(false);
+                  }
+                }}
+              >
+                Score {candSort === "score" && (candAsc ? "▲" : "▼")}
+              </button>
+              <button
+                className={candSort === "name" ? "on" : ""}
+                onClick={() => {
+                  if (candSort === "name") setCandAsc((a) => !a);
+                  else {
+                    setCandSort("name");
+                    setCandAsc(true);
+                  }
+                }}
+              >
+                Name {candSort === "name" && (candAsc ? "▲" : "▼")}
+              </button>
+            </div>
+          </div>
+
+          {candidates.length === 0 ? (
+            <div className="empty-state">
+              <div className="es-title">No candidates right now</div>
+              <div className="es-sub">
+                Entities with a mail address, a score of at least{" "}
+                {CANDIDATE_SCORE_MIN}, and no mail sent yet appear here.
+              </div>
+            </div>
+          ) : (
+            <div className="cand-list">
+              {candidates.map((c) => {
+                const hook = hooks[c.id];
+                return (
+                  <button
+                    key={c.id}
+                    className="cand-card"
+                    onClick={() => onOpenEntity(c.id)}
+                  >
+                    <div className="cand-top">
+                      <span className="cand-name">{c.name}</span>
+                      <span className="cand-score">{c.score ?? "—"}</span>
+                    </div>
+                    <div className="cand-meta">
+                      <span className="cand-type">{TYPE_LABELS[c.type]}</span>
+                      {c.subtype && <span>· {c.subtype}</span>}
+                      {c.city && <span>· {c.city}</span>}
+                      {c.status && (
+                        <span className="cand-status">
+                          <span
+                            className="ring"
+                            style={{ background: STATUS_COLORS[c.status] }}
+                          />
+                          {STATUS_LABELS[c.status]}
+                        </span>
+                      )}
+                    </div>
+                    <div className="cand-mail">{c.mail}</div>
+                    {hook === undefined ? (
+                      <div className="cand-why loading">Loading reason…</div>
+                    ) : hook ? (
+                      <div className="cand-why">
+                        <span className="cand-why-k">Why</span> {hook}
+                      </div>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

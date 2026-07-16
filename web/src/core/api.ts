@@ -18,6 +18,11 @@ import { TYPE_LABELS } from "./theme";
 
 const MOCK = import.meta.env.VITE_MOCK === "1";
 
+// Workspace-scoped API base. The server keeps /api/* as a legacy alias, but new
+// UI code targets the ws-scoped routes explicitly.
+export const WORKSPACE = "probot";
+const BASE = `/api/ws/${WORKSPACE}`;
+
 // ---- mock data (bundled) ----
 import mockGraphRaw from "../../mock/graph.json";
 import mockEntitiesRaw from "../../mock/entities.json";
@@ -134,6 +139,10 @@ function mockEntityList(params: {
         city: (full?.meta.city as string | undefined) ?? null,
         mail: (full?.meta.mail as string | undefined) ?? null,
         degree: n.degree,
+        mail_count: 0,
+        last_mail_date: null,
+        last_mail_direction: null,
+        last_mail_from: null,
       };
     });
   const sort = params.sort ?? "score";
@@ -195,20 +204,20 @@ export const api = {
 
   async graph(filters: GraphFilters): Promise<GraphData> {
     if (MOCK) return filterGraph(filters);
-    return json<GraphData>(`/api/graph${buildGraphQuery(filters)}`);
+    return json<GraphData>(`${BASE}/graph${buildGraphQuery(filters)}`);
   },
 
   // Full unfiltered graph — v2 loads this once and filters client-side.
   async fullGraph(): Promise<GraphData> {
     if (MOCK) return filterGraph({ types: [], statuses: [], minScore: null, q: "" });
-    return json<GraphData>(`/api/graph`);
+    return json<GraphData>(`${BASE}/graph`);
   },
 
   // Server-provided facets. Returns null on 404 so the caller derives them.
   async facets(): Promise<Facets | null> {
     if (MOCK) return null;
     try {
-      const res = await fetch(`/api/facets`);
+      const res = await fetch(`${BASE}/facets`);
       if (!res.ok) return null;
       return (await res.json()) as Facets;
     } catch {
@@ -220,7 +229,7 @@ export const api = {
   async mails(): Promise<MailItem[] | null> {
     if (MOCK) return [];
     try {
-      const res = await fetch(`/api/mails`);
+      const res = await fetch(`${BASE}/mails`);
       if (!res.ok) return null;
       return (await res.json()) as MailItem[];
     } catch {
@@ -243,12 +252,12 @@ export const api = {
     if (params.sort) p.set("sort", params.sort);
     if (params.order) p.set("order", params.order);
     const s = p.toString();
-    return json<EntityListItem[]>(`/api/entities${s ? `?${s}` : ""}`);
+    return json<EntityListItem[]>(`${BASE}/entities${s ? `?${s}` : ""}`);
   },
 
   async entity(id: string): Promise<Entity> {
     if (MOCK) return mockEntities[id] ?? fallbackEntity(id);
-    return json<Entity>(`/api/entities/${encodeURIComponent(id)}`);
+    return json<Entity>(`${BASE}/entities/${encodeURIComponent(id)}`);
   },
 
   async patchEntity(
@@ -273,7 +282,7 @@ export const api = {
       mockEntities[id] = next;
       return next;
     }
-    return json<Entity>(`/api/entities/${encodeURIComponent(id)}`, {
+    return json<Entity>(`${BASE}/entities/${encodeURIComponent(id)}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(patch),
@@ -309,7 +318,7 @@ export const api = {
       }
       return ent;
     }
-    return json<Entity>(`/api/entities`, {
+    return json<Entity>(`${BASE}/entities`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -318,6 +327,6 @@ export const api = {
 
   async stats(): Promise<Stats> {
     if (MOCK) return mockStats();
-    return json<Stats>(`/api/stats`);
+    return json<Stats>(`${BASE}/stats`);
   },
 };
