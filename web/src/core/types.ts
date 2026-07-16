@@ -70,6 +70,11 @@ export interface EntityListItem {
   last_mail_date?: string | null;
   last_mail_direction?: "out" | "in" | null;
   last_mail_from?: string | null;
+  // enriched client-side / server-optional (used by list presets)
+  role?: string | null;
+  closeness?: number | null;
+  connected_org?: string | null;
+  connected_org_id?: string | null;
 }
 
 export interface Relation {
@@ -147,6 +152,72 @@ export interface MailItem {
   summary: string;
   source: "import" | "vault" | "manual";
   raw?: string;
+}
+
+// ---- gather: agents / runs / stage --------------------------------------
+export interface RunSummary {
+  id: string;
+  started: string | null;
+  ended: string | null;
+  status: "ok" | "error" | "running" | string;
+  items_in: number;
+  items_out: number;
+  staged: number;
+  warnings: number;
+  note?: string | null;
+}
+
+export interface Agent {
+  id: string;
+  name: string;
+  zone: "gathering" | "network" | string;
+  model: string;
+  task: string;
+  integration: string;
+  params: Record<string, unknown>;
+  schedule: string;
+  enabled: boolean;
+  last_run: RunSummary | null;
+}
+
+export interface AgentRun {
+  id: string;
+  agent_id: string;
+  started: string | null;
+  ended: string | null;
+  status: "ok" | "error" | "running" | string;
+  items_in: number;
+  items_out: number;
+  staged: number;
+  warnings: string[];
+  log_tail: string;
+  note?: string | null;
+}
+
+export interface StageItem {
+  file: string;
+  entity_hint: string;
+  summary: string;
+  fields: Record<string, string>;
+}
+
+// ---- profile (global /api/profile) --------------------------------------
+export interface Profile {
+  username: string;
+  name: string;
+  mail: string;
+  phone: string;
+  role: string;
+}
+
+// ---- workspaces (global /api/workspaces) --------------------------------
+export interface WorkspaceInfo {
+  id: string;
+  name: string;
+  entities?: number;
+  default?: boolean;
+  active?: boolean;
+  comingSoon?: boolean;
 }
 
 // legacy graph-fetch filters (server-side) — retained for the api layer

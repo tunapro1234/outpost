@@ -1,4 +1,6 @@
 import type {
+  Agent,
+  AgentRun,
   Entity,
   EntityListItem,
   EntityMeta,
@@ -9,9 +11,12 @@ import type {
   GraphFilters,
   GraphNode,
   MailItem,
+  Profile,
   Relation,
+  StageItem,
   Stats,
   Status,
+  WorkspaceInfo,
 } from "./types";
 import { trNormalize } from "./normalize";
 import { TYPE_LABELS } from "./theme";
@@ -328,5 +333,103 @@ export const api = {
   async stats(): Promise<Stats> {
     if (MOCK) return mockStats();
     return json<Stats>(`${BASE}/stats`);
+  },
+
+  // ---- gather: agents / runs / stage ------------------------------------
+  async agents(): Promise<Agent[]> {
+    if (MOCK) return [];
+    return json<Agent[]>(`${BASE}/agents`);
+  },
+
+  async runAgent(id: string): Promise<{ runId: string }> {
+    return json<{ runId: string }>(
+      `${BASE}/agents/${encodeURIComponent(id)}/run`,
+      { method: "POST" }
+    );
+  },
+
+  async runs(agentId: string): Promise<AgentRun[]> {
+    if (MOCK) return [];
+    return json<AgentRun[]>(`${BASE}/runs?agent=${encodeURIComponent(agentId)}`);
+  },
+
+  async run(runId: string): Promise<AgentRun> {
+    return json<AgentRun>(`${BASE}/runs/${encodeURIComponent(runId)}`);
+  },
+
+  async stage(): Promise<StageItem[]> {
+    if (MOCK) return [];
+    return json<StageItem[]>(`${BASE}/stage`);
+  },
+
+  async stageDecision(
+    file: string,
+    decision: "accept" | "reject",
+    note?: string
+  ): Promise<{ ok: boolean }> {
+    return json<{ ok: boolean }>(`${BASE}/stage/decision`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file, decision, ...(note ? { note } : {}) }),
+    });
+  },
+
+  // ---- workspaces (global) ----------------------------------------------
+  async workspaces(): Promise<WorkspaceInfo[] | null> {
+    if (MOCK) return null;
+    try {
+      const res = await fetch(`/api/workspaces`);
+      if (!res.ok) return null;
+      return (await res.json()) as WorkspaceInfo[];
+    } catch {
+      return null;
+    }
+  },
+
+  // ---- profile (global) --------------------------------------------------
+  // Returns null when the endpoint is not deployed yet (graceful fallback).
+  async profile(): Promise<Profile | null> {
+    if (MOCK) return null;
+    try {
+      const res = await fetch(`/api/profile`);
+      if (!res.ok) return null;
+      return (await res.json()) as Profile;
+    } catch {
+      return null;
+    }
+  },
+
+  async patchProfile(patch: {
+    name?: string;
+    mail?: string;
+    phone?: string;
+  }): Promise<Profile> {
+    return json<Profile>(`/api/profile`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+  },
+
+  // Resolves on success; throws Error(message) with a friendly reason on 4xx.
+  async changePassword(current: string, next: string): Promise<{ ok: boolean }> {
+    const res = await fetch(`/api/profile/password`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ current, next }),
+    });
+    if (res.status === 401) throw new Error("Current password is incorrect");
+    if (res.status === 400) throw new Error("New password is too short");
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try {
+        const b = await res.json();
+        if (b?.error) msg = b.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    return (await res.json()) as { ok: boolean };
   },
 };

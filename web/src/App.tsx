@@ -12,7 +12,6 @@ import EntityPage from "@/modules/entity/EntityPage";
 import GatherView from "@/modules/gather/GatherView";
 import IntegrationsView from "@/modules/integrations/IntegrationsView";
 import ProfileView from "@/modules/profile/ProfileView";
-import WorkspaceView from "@/modules/workspace/WorkspaceView";
 import { api } from "@/core/api";
 import type {
   EntityListItem,
@@ -46,7 +45,6 @@ const TITLES: Record<NavKey, string> = {
   gather: "Gather",
   integrations: "Integrations",
   profile: "Profile",
-  workspace: "Workspace",
 };
 
 function loadTheme(): ThemeName {
@@ -239,24 +237,50 @@ export default function App() {
     [filters, setFilters]
   );
 
+  // first org each entity is connected to (for the People list preset)
+  const orgByEntity = useMemo(() => {
+    const ORG = new Set(["company", "institution", "school", "channel"]);
+    const type = new Map(full.nodes.map((n) => [n.id, n]));
+    const map = new Map<string, { id: string; name: string }>();
+    for (const e of full.edges) {
+      if (e.kind !== "relation") continue;
+      const s = typeof e.source === "string" ? e.source : e.source.id;
+      const t = typeof e.target === "string" ? e.target : e.target.id;
+      const sn = type.get(s);
+      const tn = type.get(t);
+      if (sn?.type === "person" && tn && ORG.has(tn.type) && !map.has(s))
+        map.set(s, { id: tn.id, name: tn.name });
+      if (tn?.type === "person" && sn && ORG.has(sn.type) && !map.has(t))
+        map.set(t, { id: sn.id, name: sn.name });
+    }
+    return map;
+  }, [full]);
+
   const listItems: EntityListItem[] = useMemo(
     () =>
-      result.nodes.map((n) => ({
-        id: n.id,
-        name: n.name,
-        type: n.type,
-        subtype: n.subtype ?? null,
-        status: n.status ?? null,
-        score: n.score ?? null,
-        city: n.city ?? null,
-        mail: n.mail ?? null,
-        degree: n.degree,
-        mail_count: n.mail_count ?? 0,
-        last_mail_date: n.last_mail_date ?? null,
-        last_mail_direction: n.last_mail_direction ?? null,
-        last_mail_from: n.last_mail_from ?? null,
-      })),
-    [result]
+      result.nodes.map((n) => {
+        const org = orgByEntity.get(n.id);
+        return {
+          id: n.id,
+          name: n.name,
+          type: n.type,
+          subtype: n.subtype ?? null,
+          status: n.status ?? null,
+          score: n.score ?? null,
+          city: n.city ?? null,
+          mail: n.mail ?? null,
+          degree: n.degree,
+          mail_count: n.mail_count ?? 0,
+          last_mail_date: n.last_mail_date ?? null,
+          last_mail_direction: n.last_mail_direction ?? null,
+          last_mail_from: n.last_mail_from ?? null,
+          role: (n.subtype as string | null) ?? null,
+          closeness: n.closeness ?? null,
+          connected_org: org?.name ?? null,
+          connected_org_id: org?.id ?? null,
+        };
+      }),
+    [result, orgByEntity]
   );
 
   const openFull = useCallback((id: string) => {
@@ -463,7 +487,6 @@ export default function App() {
           {nav === "gather" && <GatherView />}
           {nav === "integrations" && <IntegrationsView />}
           {nav === "profile" && <ProfileView />}
-          {nav === "workspace" && <WorkspaceView />}
 
           {selectedId && isNetwork && (
             <EntityPanel

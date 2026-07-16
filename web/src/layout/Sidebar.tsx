@@ -1,10 +1,13 @@
+import { useEffect, useRef, useState } from "react";
+import type { WorkspaceInfo } from "@/core/types";
+import { api } from "@/core/api";
+
 export type NavKey =
   | "network"
   | "reach"
   | "gather"
   | "integrations"
-  | "profile"
-  | "workspace";
+  | "profile";
 
 interface Props {
   active: NavKey;
@@ -56,14 +59,6 @@ const Icons: Record<NavKey, JSX.Element> = {
       <path d="M5 20a7 7 0 0 1 14 0" />
     </svg>
   ),
-  workspace: (
-    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3.5" y="4" width="7" height="7" rx="1.4" />
-      <rect x="13.5" y="4" width="7" height="7" rx="1.4" />
-      <rect x="3.5" y="14" width="7" height="6" rx="1.4" />
-      <rect x="13.5" y="14" width="7" height="6" rx="1.4" />
-    </svg>
-  ),
 };
 
 const TOP: { k: NavKey; label: string }[] = [
@@ -74,7 +69,6 @@ const TOP: { k: NavKey; label: string }[] = [
 const BOTTOM: { k: NavKey; label: string }[] = [
   { k: "integrations", label: "Integrations" },
   { k: "profile", label: "Profile" },
-  { k: "workspace", label: "Workspace" },
 ];
 
 export default function Sidebar({
@@ -84,6 +78,33 @@ export default function Sidebar({
   onToggleCollapse,
   workspace,
 }: Props) {
+  const [wsOpen, setWsOpen] = useState(false);
+  const [workspaces, setWorkspaces] = useState<WorkspaceInfo[] | null>(null);
+  const wsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    api.workspaces().then((list) => {
+      const base: WorkspaceInfo[] =
+        list && list.length
+          ? list.map((w) => ({ ...w, active: w.id === workspace }))
+          : [{ id: workspace, name: workspace, active: true }];
+      // ensure the "compec — coming soon" placeholder is present
+      if (!base.some((w) => w.id === "compec")) {
+        base.push({ id: "compec", name: "compec", comingSoon: true });
+      }
+      setWorkspaces(base);
+    });
+  }, [workspace]);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (wsRef.current && !wsRef.current.contains(e.target as Node))
+        setWsOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
   const Item = ({ k, label }: { k: NavKey; label: string }) => (
     <button
       className={`side-item ${active === k ? "on" : ""}`}
@@ -117,19 +138,44 @@ export default function Sidebar({
         ))}
       </div>
 
-      <button
-        className="side-ws"
-        onClick={() => onNavigate("workspace")}
-        title={collapsed ? `Workspace · ${workspace}` : undefined}
-      >
-        <span className="ws-dot" />
-        {!collapsed && (
-          <span className="ws-meta">
-            <span className="ws-k">Workspace</span>
-            <span className="ws-v">{workspace}</span>
-          </span>
+      <div className="side-ws-wrap" ref={wsRef}>
+        {wsOpen && (
+          <div className="ws-pop">
+            <div className="ws-pop-label">Workspace</div>
+            {(workspaces ?? []).map((w) => (
+              <button
+                key={w.id}
+                className={`ws-pop-item ${w.active ? "active" : ""} ${
+                  w.comingSoon ? "disabled" : ""
+                }`}
+                disabled={w.comingSoon}
+                onClick={() => {
+                  if (!w.comingSoon) setWsOpen(false);
+                }}
+              >
+                <span className="ws-pop-dot" />
+                <span className="ws-pop-name">{w.name}</span>
+                {w.active && <span className="badge ok">active</span>}
+                {w.comingSoon && <span className="badge muted">soon</span>}
+              </button>
+            ))}
+          </div>
         )}
-      </button>
+        <button
+          className={`side-ws ${wsOpen ? "open" : ""}`}
+          onClick={() => setWsOpen((o) => !o)}
+          title={collapsed ? `Workspace · ${workspace}` : undefined}
+        >
+          <span className="ws-dot" />
+          {!collapsed && (
+            <span className="ws-meta">
+              <span className="ws-k">Workspace</span>
+              <span className="ws-v">{workspace}</span>
+            </span>
+          )}
+          {!collapsed && <span className="ws-caret">▾</span>}
+        </button>
+      </div>
 
       <button className="side-collapse" onClick={onToggleCollapse}>
         {collapsed ? "»" : "«"}
