@@ -127,7 +127,9 @@ export default function GraphView({
     const charge = fg.d3Force("charge");
     if (charge) {
       charge.strength(-physics.charge);
-      charge.distanceMax(700);
+      // full-range repulsion: capping distanceMax made far nodes ignore each
+      // other and collapsed the layout into ring/arc shells (Tuna repro)
+      charge.distanceMax(Infinity);
     }
     const link = fg.d3Force("link");
     if (link) link.distance(physics.linkDistance);

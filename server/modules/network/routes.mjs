@@ -8,6 +8,7 @@ import {
   entityListItem,
   facets,
   graph,
+  networkStats,
 } from "./service.mjs";
 
 function fail(statusCode, message) {
@@ -173,21 +174,5 @@ export async function networkRoutes(app, { resolveWorkspace }) {
     return reply.send({ ok: true });
   });
 
-  app.get("/stats", async (request) => {
-    const index = resolveWorkspace(request).index;
-    const byType = {};
-    const byStatus = {};
-    for (const entity of index.entities.values()) {
-      const type = entity.meta.type;
-      const status = entity.meta.status;
-      byType[type] = (byType[type] ?? 0) + 1;
-      if (status) byStatus[status] = (byStatus[status] ?? 0) + 1;
-    }
-    return {
-      total: index.entities.size,
-      byType,
-      byStatus,
-      edgeCount: index.edges.length,
-    };
-  });
+  app.get("/stats", async (request) => networkStats(resolveWorkspace(request).index));
 }

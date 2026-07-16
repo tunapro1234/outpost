@@ -10,6 +10,7 @@ import {
   typeColors,
 } from "@/core/theme";
 import { api } from "@/core/api";
+import { trNormalize } from "@/core/normalize";
 import { navigate, entityPath } from "@/core/router";
 import {
   IconGlobe,
@@ -36,6 +37,24 @@ interface Props {
 
 function stripFrontmatter(body: string): string {
   return body.replace(/^---\n[\s\S]*?\n---\n?/, "");
+}
+
+// Vault notes open with an `# Title` H1 that duplicates the entity name. That
+// heading is already shown as the page title, so strip the single leading H1
+// (plus the blank space it leaves) before rendering the note body. Only the
+// title-matching H1 is removed — genuine in-body H1s are left intact.
+function stripLeadingTitle(body: string, name?: string | null): string {
+  const src = stripFrontmatter(body);
+  const lines = src.split(/\n/);
+  let i = 0;
+  while (i < lines.length && !lines[i].trim()) i++;
+  const m = lines[i]?.trim().match(/^#\s+(.+?)\s*$/);
+  if (!m) return src;
+  const matches = !name || trNormalize(m[1]) === trNormalize(name);
+  if (!matches) return src;
+  lines.splice(0, i + 1);
+  while (lines.length && !lines[0].trim()) lines.shift();
+  return lines.join("\n");
 }
 
 function ext(url: string): string {
@@ -146,7 +165,9 @@ export default function EntityPage({
   );
   const bodyHtml = useMemo(() => {
     if (!entity) return "";
-    return marked.parse(stripFrontmatter(entity.body)) as string;
+    return marked.parse(
+      stripLeadingTitle(entity.body, entity.meta.name)
+    ) as string;
   }, [entity]);
 
   const entityMails = useMemo(() => {
@@ -172,11 +193,11 @@ export default function EntityPage({
   return (
     <div className="entity-page">
       <div className="ep-topbar">
-        <button className="ep-back" onClick={() => navigate("/")}>
+        <button className="ep-back" onClick={() => navigate("/network")}>
           ← Back
         </button>
         <div className="ep-crumb">
-          <button className="ep-crumb-link" onClick={() => navigate("/")}>
+          <button className="ep-crumb-link" onClick={() => navigate("/network")}>
             Network
           </button>
           <span className="ep-crumb-sep">/</span>

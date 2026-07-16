@@ -154,6 +154,40 @@ export interface MailItem {
   raw?: string;
 }
 
+// ---- overview metrics (server GET /api/ws/:ws/metrics) ------------------
+export interface MetricsDailyPoint {
+  date: string; // YYYY-MM-DD
+  count: number;
+}
+
+export interface Metrics {
+  totals: {
+    entities: number;
+    byType: Partial<Record<EntityType, number>>;
+    withMail: number;
+    withoutMail: number;
+  };
+  outreach: {
+    mailsSent: number;
+    uniqueRecipients: number;
+    firstMailAt: string | null;
+    lastMailAt: string | null;
+    activeDays: number;
+    avgPerActiveDay: number;
+    daily: MetricsDailyPoint[]; // last 30 days, empty days = 0
+    byStatus?: Record<string, number>;
+  };
+  gather: {
+    staged: number;
+    acceptedTotal: number;
+    agents: number;
+    running: number;
+  };
+  reach: {
+    candidates: number;
+  };
+}
+
 // ---- gather: agents / runs / stage --------------------------------------
 export interface RunSummary {
   id: string;

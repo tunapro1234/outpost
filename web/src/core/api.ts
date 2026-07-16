@@ -12,6 +12,7 @@ import type {
   GraphFilters,
   GraphNode,
   MailItem,
+  Metrics,
   Profile,
   Relation,
   StageItem,
@@ -178,6 +179,39 @@ function mockStats(): Stats {
   };
 }
 
+// Derive a plausible metrics payload from the bundled mock graph so the
+// Overview page renders in mock/dev mode without a live server.
+function mockMetrics(): Metrics {
+  const byType: Record<string, number> = {};
+  for (const n of mockGraph.nodes) byType[n.type] = (byType[n.type] ?? 0) + 1;
+  const today = new Date();
+  const daily = Array.from({ length: 30 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (29 - i));
+    return { date: d.toISOString().slice(0, 10), count: 0 };
+  });
+  return {
+    totals: {
+      entities: mockGraph.nodes.length,
+      byType,
+      withMail: 0,
+      withoutMail: mockGraph.nodes.length,
+    },
+    outreach: {
+      mailsSent: 0,
+      uniqueRecipients: 0,
+      firstMailAt: null,
+      lastMailAt: null,
+      activeDays: 0,
+      avgPerActiveDay: 0,
+      daily,
+      byStatus: {},
+    },
+    gather: { staged: 0, acceptedTotal: 0, agents: 0, running: 0 },
+    reach: { candidates: 0 },
+  };
+}
+
 // ---- real-mode helpers ----
 function buildGraphQuery(f: GraphFilters): string {
   const p = new URLSearchParams();
@@ -238,6 +272,19 @@ export const api = {
       const res = await fetch(`${BASE}/mails`);
       if (!res.ok) return null;
       return (await res.json()) as MailItem[];
+    } catch {
+      return null;
+    }
+  },
+
+  // Overview metrics. Returns null on 404 / error (endpoint may still be
+  // shipping) so the dashboard degrades to a graceful empty state.
+  async metrics(): Promise<Metrics | null> {
+    if (MOCK) return mockMetrics();
+    try {
+      const res = await fetch(`${BASE}/metrics`);
+      if (!res.ok) return null;
+      return (await res.json()) as Metrics;
     } catch {
       return null;
     }

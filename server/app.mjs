@@ -9,6 +9,7 @@ import { gatherRoutes } from "./modules/gather/routes.mjs";
 import { GatherRunner } from "./modules/gather/runner.mjs";
 import { GatherScheduler } from "./modules/gather/scheduler.mjs";
 import { networkRoutes } from "./modules/network/routes.mjs";
+import { overviewRoutes } from "./modules/overview/routes.mjs";
 import { profileRoutes } from "./modules/profile/routes.mjs";
 import { reachRoutes } from "./modules/reach/routes.mjs";
 
@@ -40,8 +41,9 @@ async function mountApi(
   app,
   prefix,
   resolveWorkspace,
-  { legacy = false, gatherRunner } = {},
+  { legacy = false, gatherRunner, metricsNow } = {},
 ) {
+  await app.register(overviewRoutes, { prefix, resolveWorkspace, now: metricsNow });
   await app.register(networkRoutes, { prefix, resolveWorkspace });
   await app.register(reachRoutes, {
     prefix,
@@ -61,6 +63,7 @@ export async function createApp({
   schedule = watch,
   gatherRunner = new GatherRunner(),
   copilotRunner = runClaude,
+  metricsNow,
   usersPath,
   htpasswdPath,
   logger = false,
@@ -106,7 +109,7 @@ export async function createApp({
 
   await app.register(profileRoutes, { prefix: "/api", usersPath, htpasswdPath });
   const resolveScopedWorkspace = scopedResolver(registry);
-  await mountApi(app, "/api/ws/:ws", resolveScopedWorkspace, { gatherRunner });
+  await mountApi(app, "/api/ws/:ws", resolveScopedWorkspace, { gatherRunner, metricsNow });
   await app.register(copilotRoutes, {
     prefix: "/api/ws/:ws",
     resolveWorkspace: resolveScopedWorkspace,
@@ -115,6 +118,7 @@ export async function createApp({
   await mountApi(app, "/api", defaultResolver(registry), {
     legacy: true,
     gatherRunner,
+    metricsNow,
   });
 
   app.get("/*", async (request, reply) => serveWeb(request, reply, path.resolve(webDist)));

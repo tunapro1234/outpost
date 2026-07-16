@@ -4,6 +4,23 @@ import { emptyMailStats } from "../reach/mails.mjs";
 
 export const VALID_TYPES = new Set(Object.keys(TYPE_DIRECTORIES));
 
+export function networkStats(index) {
+  const byType = {};
+  const byStatus = {};
+  for (const entity of index.entities.values()) {
+    const type = entity.meta.type;
+    const status = entity.meta.status;
+    byType[type] = (byType[type] ?? 0) + 1;
+    if (status) byStatus[status] = (byStatus[status] ?? 0) + 1;
+  }
+  return {
+    total: index.entities.size,
+    byType,
+    byStatus,
+    edgeCount: index.edges.length,
+  };
+}
+
 export function csv(value) {
   if (typeof value !== "string" || !value.trim()) return null;
   return new Set(value.split(",").map((item) => item.trim()).filter(Boolean));

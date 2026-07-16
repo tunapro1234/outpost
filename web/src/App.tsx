@@ -12,6 +12,7 @@ import EntityPage from "@/modules/entity/EntityPage";
 import GatherView from "@/modules/gather/GatherView";
 import IntegrationsView from "@/modules/integrations/IntegrationsView";
 import ProfileView from "@/modules/profile/ProfileView";
+import OverviewView from "@/modules/overview/OverviewView";
 import CopilotDrawer from "@/modules/copilot/CopilotDrawer";
 import { copilotEnabled } from "@/core/copilot";
 import { IconCopilot } from "@/core/icons";
@@ -37,12 +38,13 @@ import {
 } from "@/core/filters";
 import type { Physics } from "@/core/physics";
 import { loadPhysics, savePhysics } from "@/core/physics";
-import { useRoute, navigate, entityPath } from "@/core/router";
+import { useRoute, navigate, entityPath, viewPath } from "@/core/router";
 
 const EMPTY: GraphData = { nodes: [], edges: [] };
 const WORKSPACE = "probot";
 
 const TITLES: Record<NavKey, string> = {
+  overview: "Overview",
   network: "Network",
   reach: "Reach",
   gather: "Gather",
@@ -57,7 +59,6 @@ function loadTheme(): ThemeName {
 
 export default function App() {
   const [theme, setTheme] = useState<ThemeName>(loadTheme);
-  const [nav, setNav] = useState<NavKey>("network");
   const [graphMode, setGraphMode] = useState<"graph" | "list">("graph");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem("outpost.sidebarCollapsed") === "1"
@@ -67,6 +68,12 @@ export default function App() {
   );
 
   const route = useRoute();
+  // Active view is derived from the path. On the entity page (/e/:id) we keep
+  // the last visited view so the sidebar highlight stays put behind it.
+  const lastViewRef = useRef<NavKey>("overview");
+  if (route.name === "view") lastViewRef.current = route.key;
+  const view: NavKey = route.name === "view" ? route.key : lastViewRef.current;
+
   const [full, setFull] = useState<GraphData>(EMPTY);
   const [facets, setFacets] = useState<Facets>(() => deriveFacets([]));
   const [entityList, setEntityList] = useState<EntityListItem[]>([]);
@@ -219,9 +226,8 @@ export default function App() {
   }, [selectedId, filters, setFilters, copilotAllowed, copilotOpen]);
 
   const gotoNode = useCallback((id: string) => {
-    if (window.location.pathname !== "/") navigate("/");
+    if (window.location.pathname !== viewPath("network")) navigate(viewPath("network"));
     setSelectedId(id);
-    setNav("network");
     setGraphMode("graph");
     setFocusNodeId(null);
     setTimeout(() => setFocusNodeId(id), 0);
@@ -314,11 +320,10 @@ export default function App() {
     ? full.nodes.find((n) => n.id === filters.egoId)
     : null;
 
-  const isNetwork = nav === "network";
+  const isNetwork = view === "network";
 
   const navigateHome = useCallback((k: NavKey) => {
-    if (window.location.pathname !== "/") navigate("/");
-    setNav(k);
+    navigate(viewPath(k));
   }, []);
 
   // Copilot lives at layout level so it is reachable from every view. The edge
@@ -347,7 +352,7 @@ export default function App() {
     return (
       <div className="app">
         <Sidebar
-          active={nav}
+          active={view}
           onNavigate={navigateHome}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
@@ -379,7 +384,7 @@ export default function App() {
   return (
     <div className="app">
       <Sidebar
-        active={nav}
+        active={view}
         onNavigate={navigateHome}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
@@ -388,7 +393,7 @@ export default function App() {
 
       <div className="main">
         <TopBar
-          title={TITLES[nav]}
+          title={TITLES[view]}
           showGraphToggle={isNetwork}
           graphMode={graphMode}
           onGraphMode={setGraphMode}
@@ -522,16 +527,24 @@ export default function App() {
             )}
           </div>
 
-          {nav === "reach" && (
+          {view === "overview" && (
+            <OverviewView
+              theme={theme}
+              mails={mails}
+              onOpenEntity={openFull}
+              onNavigate={navigateHome}
+            />
+          )}
+          {view === "reach" && (
             <ReachView
               mails={mails}
               entities={entityList}
               onOpenEntity={openFull}
             />
           )}
-          {nav === "gather" && <GatherView />}
-          {nav === "integrations" && <IntegrationsView />}
-          {nav === "profile" && <ProfileView />}
+          {view === "gather" && <GatherView />}
+          {view === "integrations" && <IntegrationsView />}
+          {view === "profile" && <ProfileView />}
 
           {selectedId && isNetwork && (
             <EntityPanel

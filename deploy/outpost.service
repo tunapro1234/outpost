@@ -9,6 +9,12 @@ Environment=NODE_ENV=production
 Environment=OUTPOST_PORT=3002
 Environment=OUTPOST_WORKSPACES=/srv/outpost/workspaces
 Environment=OUTPOST_CLAUDE_BIN=/root/.local/bin/claude
+Environment=OUTPOST_MAIL_DATA=/srv/mailserver/data/probotstudio.com
+Environment=OUTPOST_MAIL_LOG=/srv/mailserver/logs/mail.log
+# Mail erisimi SADECE okuma: bu bind'lar servis namespace'inde ro mount olur,
+# okuma yolu uzerinden gonderim/yazim yapisal olarak imkansiz (Tuna-onay kurali).
+BindReadOnlyPaths=/srv/mailserver/data/probotstudio.com
+BindReadOnlyPaths=/srv/mailserver/logs/mail.log
 ExecStart=/usr/bin/node /srv/outpost/outpost/server/index.mjs
 Restart=always
 RestartSec=3

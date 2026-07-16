@@ -3,6 +3,7 @@ import type { WorkspaceInfo } from "@/core/types";
 import { api } from "@/core/api";
 
 export type NavKey =
+  | "overview"
   | "network"
   | "reach"
   | "gather"
@@ -33,6 +34,14 @@ const S = (p: { d: string; size?: number }) => (
 );
 
 const Icons: Record<NavKey, JSX.Element> = {
+  overview: (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="9" rx="1.4" />
+      <rect x="14" y="3" width="7" height="5" rx="1.4" />
+      <rect x="14" y="12" width="7" height="9" rx="1.4" />
+      <rect x="3" y="16" width="7" height="5" rx="1.4" />
+    </svg>
+  ),
   network: (
     <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
       <circle cx="6" cy="7" r="2.2" />
@@ -62,6 +71,7 @@ const Icons: Record<NavKey, JSX.Element> = {
 };
 
 const TOP: { k: NavKey; label: string }[] = [
+  { k: "overview", label: "Overview" },
   { k: "network", label: "Network" },
   { k: "reach", label: "Reach" },
   { k: "gather", label: "Gather" },
