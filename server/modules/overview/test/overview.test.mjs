@@ -157,6 +157,7 @@ test("GET /api/ws/:ws/metrics tüm modül metriklerini kontrat şeklinde derler"
       activeDays: 3,
       avgPerActiveDay: 1,
       byStatus: { sent: 3, replied: 1 },
+      mailbox: { sent: 3, received: 1 },
     },
   );
   assert.equal(metrics.outreach.daily.length, 30);
@@ -203,6 +204,7 @@ test("metrics eksik kaynaklarda sıfır döner ve daily boş günleri tam 30 gü
       count: 0,
     })),
     byStatus: { sent: 0, replied: 0 },
+    mailbox: { sent: 0, received: 0 },
   });
   assert.deepEqual(metrics.gather, {
     staged: 0,

@@ -30,7 +30,14 @@ function recipientKeys(mail) {
 }
 
 export function outreachMetrics(mails, { now = () => new Date() } = {}) {
-  const outgoing = mails.filter((mail) => mail.direction === "out");
+  // outreach = vault'taki bir entity'yle eşleşen trafik; mailbox'taki alakasız
+  // gönderimler (tedarikçi teklifi, test maili) KPI'lara sayılmaz
+  const outgoing = mails.filter((mail) => mail.direction === "out" && mail.entity_id);
+  const inboundMatched = mails.filter((mail) => mail.direction === "in" && mail.entity_id);
+  const mailbox = {
+    sent: mails.filter((mail) => mail.direction === "out").length,
+    received: mails.filter((mail) => mail.direction === "in").length,
+  };
   const dated = outgoing
     .map((mail) => ({ value: mail.date, date: parsedDate(mail.date) }))
     .filter((entry) => entry.date !== null)
@@ -61,8 +68,9 @@ export function outreachMetrics(mails, { now = () => new Date() } = {}) {
     daily: [...dailyByDate].map(([date, count]) => ({ date, count })),
     byStatus: {
       sent: outgoing.length,
-      replied: mails.filter((mail) => mail.direction === "in").length,
+      replied: inboundMatched.length,
     },
+    mailbox,
   };
 }
 
