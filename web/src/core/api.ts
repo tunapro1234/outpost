@@ -3,10 +3,12 @@ import type {
   EntityListItem,
   EntityMeta,
   EntityType,
+  Facets,
   GraphData,
   GraphEdge,
   GraphFilters,
   GraphNode,
+  MailItem,
   Relation,
   Stats,
   Status,
@@ -17,8 +19,8 @@ import { TYPE_LABELS } from "./theme";
 const MOCK = import.meta.env.VITE_MOCK === "1";
 
 // ---- mock data (bundled) ----
-import mockGraphRaw from "../mock/graph.json";
-import mockEntitiesRaw from "../mock/entities.json";
+import mockGraphRaw from "../../mock/graph.json";
+import mockEntitiesRaw from "../../mock/entities.json";
 
 const mockGraph = mockGraphRaw as unknown as GraphData;
 const mockEntities = mockEntitiesRaw as unknown as Record<string, Entity>;
@@ -194,6 +196,36 @@ export const api = {
   async graph(filters: GraphFilters): Promise<GraphData> {
     if (MOCK) return filterGraph(filters);
     return json<GraphData>(`/api/graph${buildGraphQuery(filters)}`);
+  },
+
+  // Full unfiltered graph — v2 loads this once and filters client-side.
+  async fullGraph(): Promise<GraphData> {
+    if (MOCK) return filterGraph({ types: [], statuses: [], minScore: null, q: "" });
+    return json<GraphData>(`/api/graph`);
+  },
+
+  // Server-provided facets. Returns null on 404 so the caller derives them.
+  async facets(): Promise<Facets | null> {
+    if (MOCK) return null;
+    try {
+      const res = await fetch(`/api/facets`);
+      if (!res.ok) return null;
+      return (await res.json()) as Facets;
+    } catch {
+      return null;
+    }
+  },
+
+  // Mail log. Returns null on 404 (endpoint not deployed yet) vs [] (no mails).
+  async mails(): Promise<MailItem[] | null> {
+    if (MOCK) return [];
+    try {
+      const res = await fetch(`/api/mails`);
+      if (!res.ok) return null;
+      return (await res.json()) as MailItem[];
+    } catch {
+      return null;
+    }
   },
 
   async entities(params: {

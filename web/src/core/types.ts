@@ -24,11 +24,20 @@ export interface GraphNode {
   status?: Status | null;
   score?: number | null;
   degree: number;
+  // enriched client-side from the entity list (city/mail) — optional
+  city?: string | null;
+  mail?: string | null;
+  mailSource?: string | null;
+  closeness?: number | null;
+  hook?: string | null;
+  hub?: boolean; // marked at render time
   // force-graph mutates these at runtime
   x?: number;
   y?: number;
   vx?: number;
   vy?: number;
+  fx?: number;
+  fy?: number;
 }
 
 export interface GraphEdge {
@@ -106,6 +115,26 @@ export interface Stats {
   edgeCount: number;
 }
 
+// ---- facets (server /api/facets, or derived client-side) ----------------
+export interface Facets {
+  subtypes: Partial<Record<EntityType, Record<string, number>>>;
+  statuses: Record<string, number>;
+  cities: Record<string, number>;
+  mail_sources: Record<string, number>;
+  degree: { max: number; p99: number };
+}
+
+// ---- mails (server /api/mails) ------------------------------------------
+export interface MailItem {
+  person_id: string;
+  person_name: string;
+  date: string | null;
+  direction: "out" | "in" | "unknown";
+  summary: string;
+  raw: string;
+}
+
+// legacy graph-fetch filters (server-side) — retained for the api layer
 export interface GraphFilters {
   types: EntityType[];
   statuses: Status[];

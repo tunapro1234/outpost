@@ -1,20 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
-import type { EntityListItem, EntityType, Status } from "./types";
+import { useMemo, useState } from "react";
+import type { EntityListItem, EntityType, Status } from "@/core/types";
 import {
   STATUS_COLORS,
   STATUS_LABELS,
   TYPE_COLORS,
   TYPE_LABELS,
-} from "./theme";
-import { api } from "./api";
+} from "@/core/theme";
+import { api } from "@/core/api";
 
 type SortKey = "name" | "type" | "subtype" | "status" | "score" | "city" | "degree";
 
 interface Props {
+  items: EntityListItem[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onChanged: () => void;
-  refreshKey: number;
 }
 
 const TYPES: EntityType[] = [
@@ -26,21 +26,16 @@ const TYPES: EntityType[] = [
 ];
 
 export default function ListView({
+  items,
   selectedId,
   onSelect,
   onChanged,
-  refreshKey,
 }: Props) {
-  const [items, setItems] = useState<EntityListItem[]>([]);
   const [sort, setSort] = useState<SortKey>("score");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
   const [showNew, setShowNew] = useState(false);
   const [newType, setNewType] = useState<EntityType>("person");
   const [newName, setNewName] = useState("");
-
-  useEffect(() => {
-    api.entities({}).then(setItems);
-  }, [refreshKey]);
 
   const sorted = useMemo(() => {
     const arr = [...items];
@@ -101,21 +96,21 @@ export default function ListView({
   return (
     <div className="listwrap">
       <div className="list-head">
-        <h2>Varlıklar</h2>
-        <span className="count">{sorted.length} kayıt</span>
+        <h2>Entities</h2>
+        <span className="count">{sorted.length} records</span>
         <button
           className="btn"
           style={{ marginLeft: "auto" }}
           onClick={() => setShowNew((s) => !s)}
         >
-          + Yeni
+          + New
         </button>
       </div>
 
       {showNew && (
         <div className="newform">
           <div className="field">
-            <label>Tip</label>
+            <label>Type</label>
             <select
               value={newType}
               onChange={(e) => setNewType(e.target.value as EntityType)}
@@ -128,17 +123,17 @@ export default function ListView({
             </select>
           </div>
           <div className="field" style={{ flex: 1, minWidth: 200 }}>
-            <label>Ad</label>
+            <label>Name</label>
             <input
               value={newName}
               autoFocus
-              placeholder="Ad girin..."
+              placeholder="Enter name…"
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && create()}
             />
           </div>
           <button className="btn primary" onClick={create}>
-            Oluştur
+            Create
           </button>
         </div>
       )}
@@ -146,13 +141,13 @@ export default function ListView({
       <table className="grid">
         <thead>
           <tr>
-            {th("name", "Ad")}
-            {th("type", "Tip")}
-            {th("subtype", "Alt tip")}
-            {th("status", "Durum")}
-            {th("score", "Skor", true)}
-            {th("city", "Şehir")}
-            {th("degree", "Bağlantı", true)}
+            {th("name", "Name")}
+            {th("type", "Type")}
+            {th("subtype", "Subtype")}
+            {th("status", "Status")}
+            {th("score", "Score", true)}
+            {th("city", "City")}
+            {th("degree", "Connections", true)}
             <th>Mail</th>
           </tr>
         </thead>

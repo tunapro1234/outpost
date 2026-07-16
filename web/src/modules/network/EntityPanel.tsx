@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { marked } from "marked";
-import type { Entity, Relation, Status } from "./types";
+import type { Entity, Relation, Status } from "@/core/types";
+import type { ThemeName } from "@/core/theme";
 import {
-  STATUS_COLORS,
   STATUS_LABELS,
   STATUS_ORDER,
-  TYPE_COLORS,
   TYPE_LABELS,
-} from "./theme";
-import { api } from "./api";
+  statusColors,
+  typeColors,
+} from "@/core/theme";
+import { api } from "@/core/api";
 import {
   IconGlobe,
   IconInstagram,
@@ -16,15 +17,18 @@ import {
   IconMail,
   IconPhone,
   IconWhatsapp,
-} from "./icons";
+} from "@/core/icons";
 
 marked.setOptions({ breaks: true });
 
 interface Props {
   id: string;
+  theme: ThemeName;
   onClose: () => void;
   onGoto: (id: string) => void;
   onChanged: () => void;
+  onEgo: (id: string) => void;
+  egoActive: boolean;
 }
 
 function stripFrontmatter(body: string): string {
@@ -36,7 +40,17 @@ function ext(url: string): string {
   return /^https?:\/\//.test(url) ? url : `https://${url}`;
 }
 
-export default function EntityPanel({ id, onClose, onGoto, onChanged }: Props) {
+export default function EntityPanel({
+  id,
+  theme,
+  onClose,
+  onGoto,
+  onChanged,
+  onEgo,
+  egoActive,
+}: Props) {
+  const TYPE_COLORS = typeColors(theme);
+  const STATUS_COLORS = statusColors(theme);
   const [entity, setEntity] = useState<Entity | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusOpen, setStatusOpen] = useState(false);
@@ -122,8 +136,8 @@ export default function EntityPanel({ id, onClose, onGoto, onChanged }: Props) {
         </button>
         {loading || !meta ? (
           <>
-            <div className="panel-type" style={{ background: "#16203a" }}>
-              yükleniyor
+            <div className="panel-type" style={{ background: "var(--surface-2)" }}>
+              loading
             </div>
             <h1>&nbsp;</h1>
           </>
@@ -161,9 +175,18 @@ export default function EntityPanel({ id, onClose, onGoto, onChanged }: Props) {
         <div className="panel-body" />
       ) : (
         <div className="panel-body">
+          <div className="panel-actions">
+            <button
+              className={`btn ego-btn ${egoActive ? "on" : ""}`}
+              onClick={() => onEgo(entity.id)}
+            >
+              {egoActive ? "Neighborhood active" : "Show only its neighborhood"}
+            </button>
+          </div>
+
           {/* status + score */}
           <div className="sec">
-            <div className="sec-title">Durum</div>
+            <div className="sec-title">Status</div>
             <div style={{ position: "relative" }}>
               <button
                 className="status-pill"
@@ -174,17 +197,20 @@ export default function EntityPanel({ id, onClose, onGoto, onChanged }: Props) {
                   style={{
                     background: meta.status
                       ? STATUS_COLORS[meta.status]
-                      : "#3a4763",
+                      : "var(--text-faint)",
                   }}
                 />
-                {meta.status ? STATUS_LABELS[meta.status] : "Durum yok"}
+                {meta.status ? STATUS_LABELS[meta.status] : "No status"}
                 <span className="caret">▾</span>
               </button>
               {statusOpen && (
                 <div className="status-menu">
                   <button onClick={() => setStatus(null)}>
-                    <span className="ring" style={{ background: "#3a4763" }} />
-                    Yok
+                    <span
+                      className="ring"
+                      style={{ background: "var(--text-faint)" }}
+                    />
+                    None
                   </button>
                   {STATUS_ORDER.map((s) => (
                     <button key={s} onClick={() => setStatus(s)}>
@@ -201,14 +227,14 @@ export default function EntityPanel({ id, onClose, onGoto, onChanged }: Props) {
 
             <div className="stat-row" style={{ marginTop: 12 }}>
               <div className="stat-box">
-                <div className="k">Skor</div>
+                <div className="k">Score</div>
                 <div className="v">
                   {meta.score != null ? meta.score : "—"}
                 </div>
               </div>
               {type === "person" && (
                 <div className="stat-box">
-                  <div className="k">Yakınlık</div>
+                  <div className="k">Closeness</div>
                   <div className="v" style={{ paddingTop: 4 }}>
                     <span className="dots">
                       {[0, 1, 2, 3, 4].map((i) => (
@@ -229,7 +255,7 @@ export default function EntityPanel({ id, onClose, onGoto, onChanged }: Props) {
           {/* hook */}
           {meta.hook && (
             <div className="sec">
-              <div className="sec-title">Kanca</div>
+              <div className="sec-title">Hook</div>
               <div className="hook">{meta.hook}</div>
             </div>
           )}
@@ -242,7 +268,7 @@ export default function EntityPanel({ id, onClose, onGoto, onChanged }: Props) {
             meta.instagram ||
             meta.linkedin) && (
             <div className="sec">
-              <div className="sec-title">İletişim</div>
+              <div className="sec-title">Contact</div>
               <div className="contact">
                 {meta.mail && (
                   <a href={`mailto:${meta.mail}`}>
@@ -318,18 +344,18 @@ export default function EntityPanel({ id, onClose, onGoto, onChanged }: Props) {
             mentions.length > 0 ||
             unresolved.length > 0) && (
             <div className="sec">
-              <div className="sec-title">İlişkiler</div>
+              <div className="sec-title">Relations</div>
               {relOut.map(RelRow)}
               {relIn.map(RelRow)}
               {mentions.length > 0 && (
                 <>
-                  <div className="rel-group-label">Bahsedilenler</div>
+                  <div className="rel-group-label">Mentions</div>
                   {mentions.map(RelRow)}
                 </>
               )}
               {unresolved.length > 0 && (
                 <>
-                  <div className="rel-group-label">Çözülemeyen</div>
+                  <div className="rel-group-label">Unresolved</div>
                   {unresolved.map((u) => (
                     <div key={u} className="unresolved-item">
                       {u}
@@ -342,7 +368,7 @@ export default function EntityPanel({ id, onClose, onGoto, onChanged }: Props) {
 
           {/* note / body */}
           <div className="sec">
-            <div className="sec-title">Not</div>
+            <div className="sec-title">Note</div>
             {editing ? (
               <div className="note-edit">
                 <textarea
@@ -356,13 +382,13 @@ export default function EntityPanel({ id, onClose, onGoto, onChanged }: Props) {
                     onClick={saveBody}
                     disabled={saving}
                   >
-                    {saving ? "Kaydediliyor..." : "Kaydet"}
+                    {saving ? "Saving…" : "Save"}
                   </button>
                   <button
                     className="btn ghost"
                     onClick={() => setEditing(false)}
                   >
-                    Vazgeç
+                    Cancel
                   </button>
                 </div>
               </div>
@@ -380,7 +406,7 @@ export default function EntityPanel({ id, onClose, onGoto, onChanged }: Props) {
                       setEditing(true);
                     }}
                   >
-                    Notu düzenle
+                    Edit note
                   </button>
                 </div>
               </>
