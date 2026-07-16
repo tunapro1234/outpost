@@ -153,6 +153,13 @@ export async function importProbot({
   };
 
   const existing = await readMailLog(workspace.mailsPath);
+  let outputExists = true;
+  try {
+    await fs.access(workspace.mailsPath);
+  } catch (error) {
+    if (error.code === "ENOENT") outputExists = false;
+    else throw error;
+  }
   const byKey = new Map(existing.map((record) => [mailDedupKey(record), record]));
   const before = byKey.size;
   for (const record of [...sent, ...replies, ...vault]) {
@@ -164,7 +171,7 @@ export async function importProbot({
   report.new_records = records.length - before;
   report.matched_entities = new Set(records.map((record) => record.entity_id)).size;
 
-  if (write) {
+  if (write && (report.new_records > 0 || !outputExists)) {
     await fs.mkdir(path.dirname(workspace.mailsPath), { recursive: true });
     const temporary = `${workspace.mailsPath}.tmp-${process.pid}`;
     await fs.writeFile(

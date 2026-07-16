@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "emails": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "phones": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "people": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "role": { "type": ["string", "null"] }
+        },
+        "required": ["name", "role"]
+      }
+    },
+    "summary": { "type": "string" }
+  },
+  "required": ["emails", "phones", "people", "summary"]
+}

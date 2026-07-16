@@ -1,0 +1,14 @@
+- id: site-scanner
+  name: Site Scanner
+  zone: gathering
+  model: gpt-5.6-luna
+  task: scrape-classify
+  integration: browser
+  params:
+    filter:
+      type: company
+      has_site: true
+      has_mail: false
+    limit: 5
+  schedule: manual
+  enabled: false

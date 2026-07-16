@@ -4,12 +4,14 @@ import Fastify from "fastify";
 import { WorkspaceRegistry } from "./lib/config.mjs";
 import { apiError, serveWeb } from "./lib/http.mjs";
 import { gatherRoutes } from "./modules/gather/routes.mjs";
+import { GatherRunner } from "./modules/gather/runner.mjs";
+import { GatherScheduler } from "./modules/gather/scheduler.mjs";
 import { networkRoutes } from "./modules/network/routes.mjs";
 import { reachRoutes } from "./modules/reach/routes.mjs";
 
 const SERVER_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_WEB_DIST = path.resolve(SERVER_DIRECTORY, "../web/dist");
-const DEFAULT_WORKSPACES = path.resolve(SERVER_DIRECTORY, "../workspaces");
+const DEFAULT_WORKSPACES = path.resolve(SERVER_DIRECTORY, "../../workspaces");
 
 function scopedResolver(registry) {
   return (request) => {
@@ -31,14 +33,19 @@ function defaultResolver(registry) {
   };
 }
 
-async function mountApi(app, prefix, resolveWorkspace, { legacy = false } = {}) {
+async function mountApi(
+  app,
+  prefix,
+  resolveWorkspace,
+  { legacy = false, gatherRunner } = {},
+) {
   await app.register(networkRoutes, { prefix, resolveWorkspace });
   await app.register(reachRoutes, {
     prefix,
     resolveWorkspace,
     includeUnknownVault: legacy,
   });
-  await app.register(gatherRoutes, { prefix, resolveWorkspace });
+  await app.register(gatherRoutes, { prefix, resolveWorkspace, runner: gatherRunner });
 }
 
 export async function createApp({
@@ -48,6 +55,8 @@ export async function createApp({
   defaultWorkspace,
   webDist = DEFAULT_WEB_DIST,
   watch = true,
+  schedule = watch,
+  gatherRunner = new GatherRunner(),
   logger = false,
 } = {}) {
   const app = Fastify({ logger });
@@ -62,7 +71,15 @@ export async function createApp({
 
   app.decorate("workspaceRegistry", registry);
   app.decorate("vaultIndex", registry.getDefault()?.index ?? null);
-  app.addHook("onClose", async () => registry.close());
+  app.decorate("gatherRunner", gatherRunner);
+  const gatherScheduler = new GatherScheduler(registry, gatherRunner, {
+    onError: (error) => app.log.warn({ err: error }, "Gather scheduler error"),
+  });
+  if (schedule) gatherScheduler.start();
+  app.addHook("onClose", async () => {
+    gatherScheduler.stop();
+    await registry.close();
+  });
   app.setErrorHandler((error, _request, reply) => {
     const status = Number.isInteger(error.statusCode) ? error.statusCode : 500;
     return apiError(reply, status, error.message || "Sunucu hatası");
@@ -80,8 +97,11 @@ export async function createApp({
   });
   app.get("/api/workspaces", async () => registry.list());
 
-  await mountApi(app, "/api/ws/:ws", scopedResolver(registry));
-  await mountApi(app, "/api", defaultResolver(registry), { legacy: true });
+  await mountApi(app, "/api/ws/:ws", scopedResolver(registry), { gatherRunner });
+  await mountApi(app, "/api", defaultResolver(registry), {
+    legacy: true,
+    gatherRunner,
+  });
 
   app.get("/*", async (request, reply) => serveWeb(request, reply, path.resolve(webDist)));
   return app;

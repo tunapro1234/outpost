@@ -142,6 +142,25 @@ atölyeleri göster" → FilterState).
   `workspaces/` (veri) ve gerçek-veri screenshot'ları gitignore'da — kişisel veri public repoya
   ASLA girmez.
 
+## 6.6 Tuna ek direktifleri (2026-07-16, üçüncü tur)
+
+- **Auth basit kalır**: nginx basic auth (kasma). **Default şifre herkes için `tunapro1234`**
+  (`/etc/nginx/.htpasswd-outpost`, user `tuna`; ayarlandı). Profile'dan şifre değiştirme:
+  server endpoint `POST /api/profile/password` → htpasswd satırını yeniden yazar (htpasswd -b);
+  sadece giriş yapan kullanıcı ($remote_user) kendi şifresini değiştirir.
+- **Profile sayfası GERÇEK içerik**: kullanıcı bilgileri (ad/kullanıcı adı, kullanılan mail,
+  telefon), şifre değiştirme formu (eski → yeni → tekrar; POST /api/profile/password).
+  Kullanıcı profili `workspaces/<ws>/config.yaml` yerine global `/srv/outpost/users.yaml`
+  (repo dışı) — v1: tek kullanıcı tuna {name, mail, phone, role: owner}.
+- **Workspace SEKMESİ sidebar'dan KALKAR** (şimdilik). Ama **alttaki workspace selector KALIR**
+  (rozet + tık ile workspace değiştir/liste). Sidebar alt grubu artık: Integrations · Profile.
+- **List görünümü DERİNLEŞİR** (filtrelerin ötesinde): tipe-özel görünümler — Companies /
+  People / Institutions / Schools / Channels için farklı kolon setleri ve düzenler (ör. Companies:
+  ad, şehir, skor, mail durumu, son temas, degree; People: ad, rol, bağlı olduğu kurum, yakınlık,
+  mail; Channels: ad, tür, bağlı kurum sayısı). View seçici (tip presetleri) + kolon göster/gizle +
+  gruplama (ör. şehre/subtype'a göre) + kayıtlı liste görünümleri. Amaç: liste graf kadar birinci
+  sınıf bir çalışma yüzeyi olsun.
+
 ## 7. Değişmezler (tekrar)
 İnsan onaysız mail yok · kendi relay'den probe yok · login'li scraping yok · /srv/probot salt-okur ·
 secrets repoya girmez · scrape düşük rate/polite.
