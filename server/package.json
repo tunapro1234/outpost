@@ -1,0 +1,19 @@
+{
+  "name": "outpost-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "chokidar": "^4.0.3",
+    "fastify": "^5.4.0",
+    "gray-matter": "^4.0.3",
+    "js-yaml": "^3.14.1"
+  }
+}
