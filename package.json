@@ -4,15 +4,10 @@
   "private": true,
   "description": "Graf-merkezli outreach aracı: markdown vault + ilişki grafı + araştırma scraper'ı",
   "type": "module",
-  "workspaces": [
-    "server",
-    "web",
-    "scraper"
-  ],
   "scripts": {
-    "dev": "node server/index.mjs",
-    "build": "npm run build -w web",
-    "test": "npm test -w server",
+    "dev": "npm --prefix server run dev",
+    "build": "npm --prefix web run build",
+    "test": "npm --prefix server test",
     "import": "node server/importer.mjs"
   },
   "engines": {

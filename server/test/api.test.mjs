@@ -45,6 +45,7 @@ test("entities, stats, detail ve health endpointleri sözleşme şeklini döndü
   assert.equal(entities.length, 3);
   assert.deepEqual(Object.keys(entities[0]), [
     "id", "name", "type", "subtype", "status", "score", "city", "mail", "degree",
+    "mail_count", "last_mail_date", "last_mail_direction", "last_mail_from",
   ]);
   assert.ok(entities[0].score >= entities[1].score);
 
@@ -132,7 +133,17 @@ name: Posta Şirketi
 
   const response = await app.inject({ url: "/api/mails" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), [
+  const mails = response.json();
+  assert.equal(mails.length, 4);
+  assert.ok(mails.every((mail) => mail.source === "vault"));
+  assert.deepEqual(mails.map((mail) => ({
+    person_id: mail.person_id,
+    person_name: mail.person_name,
+    date: mail.date,
+    direction: mail.direction,
+    summary: mail.summary,
+    raw: mail.raw,
+  })), [
     {
       person_id: "posta-kisisi",
       person_name: "Posta Kişisi",

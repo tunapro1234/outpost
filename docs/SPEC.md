@@ -3,7 +3,8 @@
 Outpost = graf-merkezli outreach aracı. Veri = markdown vault (Obsidian uyumlu).
 Sunucu vault'u parse eder, graf + REST API verir, web UI'ı serve eder.
 
-Monorepo (npm workspaces): `server/` `web/` `scraper/`. Node 22, ESM. TypeScript zorunlu değil
+Monorepo, ama paketler BAĞIMSIZ (workspaces yok): `server/` `web/` `scraper/` her biri kendi
+package.json + package-lock.json + node_modules'üyle. Node 22, ESM. TypeScript zorunlu değil
 (server düz JS olabilir); web Vite+React+TS.
 
 ## 1. Veri modeli (vault)
