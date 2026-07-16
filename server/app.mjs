@@ -7,6 +7,7 @@ import { gatherRoutes } from "./modules/gather/routes.mjs";
 import { GatherRunner } from "./modules/gather/runner.mjs";
 import { GatherScheduler } from "./modules/gather/scheduler.mjs";
 import { networkRoutes } from "./modules/network/routes.mjs";
+import { profileRoutes } from "./modules/profile/routes.mjs";
 import { reachRoutes } from "./modules/reach/routes.mjs";
 
 const SERVER_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
@@ -57,6 +58,8 @@ export async function createApp({
   watch = true,
   schedule = watch,
   gatherRunner = new GatherRunner(),
+  usersPath,
+  htpasswdPath,
   logger = false,
 } = {}) {
   const app = Fastify({ logger });
@@ -97,6 +100,7 @@ export async function createApp({
   });
   app.get("/api/workspaces", async () => registry.list());
 
+  await app.register(profileRoutes, { prefix: "/api", usersPath, htpasswdPath });
   await mountApi(app, "/api/ws/:ws", scopedResolver(registry), { gatherRunner });
   await mountApi(app, "/api", defaultResolver(registry), {
     legacy: true,
