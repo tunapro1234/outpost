@@ -1,5 +1,6 @@
 import { buildCopilotPrompt, redactSecrets, workspaceSummary } from "./context.mjs";
 import { appendThreadMessage, readThread, resolveThreadId } from "./threads.mjs";
+import { createTmuxBridge } from "./tmux-bridge.mjs";
 
 function remoteUser(request) {
   const value = request.headers["x-remote-user"];
@@ -42,7 +43,11 @@ async function sendEvent(reply, payload) {
   return !reply.raw.destroyed;
 }
 
-export async function copilotRoutes(app, { resolveWorkspace, runner }) {
+export async function copilotRoutes(app, {
+  resolveWorkspace,
+  runner,
+  tmuxBridge = createTmuxBridge({ logger: app.log }),
+}) {
   app.get("/copilot/enabled", async (request) => {
     resolveWorkspace(request);
     return { enabled: copilotEnabled(request) };
@@ -75,10 +80,8 @@ export async function copilotRoutes(app, { resolveWorkspace, runner }) {
       await appendThreadMessage(workspace, threadId, "user", message);
       const summary = await workspaceSummary(workspace);
       const prompt = buildCopilotPrompt({ summary, history, message });
-      const stream = await runner(prompt, {
-        signal: abortController.signal,
-        workspace,
-      });
+      const runOptions = { signal: abortController.signal, workspace };
+      const stream = await tmuxBridge(prompt, runOptions) ?? await runner(prompt, runOptions);
       for await (const rawDelta of stream) {
         const delta = String(rawDelta ?? "");
         if (!delta) continue;

@@ -1,6 +1,6 @@
 import { latestRun, listRuns, readRun } from "./journal.mjs";
-import { readAgentRegistry } from "./registry.mjs";
-import { decideStage, listStage } from "./stage.mjs";
+import { GATHER_KINDS, readAgentRegistry } from "./registry.mjs";
+import { decideStage, listStage, stageStats } from "./stage.mjs";
 
 function fail(statusCode, message) {
   const error = new Error(message);
@@ -23,7 +23,48 @@ function runSummary(run) {
   };
 }
 
+function runSummaryText(run) {
+  if (!run) return null;
+  if (["error", "fail", "failed"].includes(run.status)) {
+    return run.note ? `Failed: ${run.note}` : "Run failed";
+  }
+  if (run.status === "running") return "Run in progress";
+  if (run.note) return run.note;
+  const warnings = Array.isArray(run.warnings) ? run.warnings.length : 0;
+  return [
+    `${run.items_out ?? 0} processed`,
+    `${run.staged ?? 0} staged`,
+    ...(warnings ? [`${warnings} warnings`] : []),
+  ].join(" · ");
+}
+
 export async function gatherRoutes(app, { resolveWorkspace, runner }) {
+  app.get("/gather/overview", async (request) => {
+    const workspace = resolveWorkspace(request);
+    const agents = await readAgentRegistry(workspace);
+    const { counts, stagedByAgent } = await stageStats(workspace, GATHER_KINDS);
+    return {
+      agents: await Promise.all(agents.map(async (agent) => {
+        const activity = runner.getActivity?.(workspace, agent.id) ?? null;
+        const lastRun = await latestRun(workspace, agent.id);
+        const failed = ["error", "fail", "failed"].includes(lastRun?.status);
+        return {
+          id: agent.id,
+          name: agent.name,
+          kind: agent.kind,
+          ...(agent.source ? { source: agent.source } : {}),
+          enabled: agent.enabled,
+          status: activity ? "running" : failed ? "error" : "idle",
+          currentTask: activity?.currentTask ?? null,
+          lastRunAt: lastRun?.started ?? null,
+          lastRunSummary: runSummaryText(lastRun),
+          stagedCount: stagedByAgent.get(agent.id) ?? 0,
+        };
+      })),
+      counts,
+    };
+  });
+
   app.get("/agents", async (request) => {
     const workspace = resolveWorkspace(request);
     const agents = await readAgentRegistry(workspace);

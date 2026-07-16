@@ -250,6 +250,29 @@ function randomDelay() {
   return 2_000 + Math.floor(Math.random() * 3_001);
 }
 
+function initialTask(agent) {
+  const brief = typeof agent.params.brief === "string" ? agent.params.brief.trim() : "";
+  const target = typeof agent.params.target === "string" ? agent.params.target.trim() : "";
+  if (agent.kind === "discover-company") {
+    return brief || "Yeni şirketler aranıyor";
+  }
+  if (agent.kind === "discover-person") {
+    if (agent.source === "company") {
+      return target ? `${target} ekibi aranıyor` : "Şirket çalışanları aranıyor";
+    }
+    return brief || "Bağımsız kişiler aranıyor";
+  }
+  return "Zenginleştirme hedefleri hazırlanıyor";
+}
+
+function targetTask(entity) {
+  try {
+    return `${new URL(normalizeSite(entity.meta.site)).hostname.replace(/^www\./i, "")} taranıyor`;
+  } catch {
+    return `${entity.meta.name} taranıyor`;
+  }
+}
+
 async function acquireRunLock(workspace, agentId) {
   const directory = path.join(workspace.directory, "agent-runs", agentId);
   const lockPath = path.join(directory, ".run.lock");
@@ -307,10 +330,20 @@ export class GatherRunner {
     this.sleep = sleep;
     this.now = now;
     this.active = new Map();
+    this.activities = new Map();
   }
 
   lockKey(workspace, agentId) {
     return `${path.resolve(workspace.directory)}\0${agentId}`;
+  }
+
+  getActivity(workspace, agentId) {
+    return this.activities.get(this.lockKey(workspace, agentId)) ?? null;
+  }
+
+  setCurrentTask(workspace, agentId, currentTask) {
+    const activity = this.activities.get(this.lockKey(workspace, agentId));
+    if (activity) activity.currentTask = currentTask;
   }
 
   async start(workspace, agentId, { params: paramOverrides } = {}) {
@@ -328,14 +361,20 @@ export class GatherRunner {
     const run = createRunRecord(agent.id, { now: this.now });
     try {
       await writeRun(workspace, run);
+      this.activities.set(key, {
+        runId: run.id,
+        currentTask: initialTask(agent),
+      });
       const promise = this.execute(workspace, agent, run)
         .finally(async () => {
           this.active.delete(key);
+          this.activities.delete(key);
           await releaseLock();
         });
       this.active.set(key, promise);
       return { run, promise };
     } catch (error) {
+      this.activities.delete(key);
       await releaseLock();
       throw error;
     }
@@ -368,6 +407,7 @@ export class GatherRunner {
       try {
         for (const [index, entity] of targets.entries()) {
           try {
+            this.setCurrentTask(workspace, agent.id, targetTask(entity));
             const pageData = await browser.browse(entity.meta.site);
             log.push(`${entity.id}: ${pageData.sourceUrl} gezildi; webdriver=${pageData.webdriverHidden ? "hidden" : "visible"}`);
             const classification = await this.classify({

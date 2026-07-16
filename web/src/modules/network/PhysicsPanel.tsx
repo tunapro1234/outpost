@@ -10,6 +10,35 @@ interface Props {
 
 const LS_POS = "outpost.physicsPanelPos";
 
+// Module-level: defining this inside the component remounts the <input> on
+// every render, which kills an in-progress slider drag after one step.
+function Row(p: {
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  onChange: (v: number) => void;
+  fmt?: (v: number) => string;
+}) {
+  return (
+    <div className="np-phys-row">
+      <span className="np-phys-label">{p.label}</span>
+      <input
+        type="range"
+        min={p.min}
+        max={p.max}
+        step={p.step}
+        value={p.value}
+        onChange={(e) => p.onChange(Number(e.target.value))}
+      />
+      <span className="np-val">
+        {p.fmt ? p.fmt(p.value) : Math.round(p.value)}
+      </span>
+    </div>
+  );
+}
+
 export default function PhysicsPanel({ physics, setPhysics, onClose }: Props) {
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
     try {
@@ -67,31 +96,6 @@ export default function PhysicsPanel({ physics, setPhysics, onClose }: Props) {
     drag.current = { dx: e.clientX - r.left, dy: e.clientY - r.top };
     document.body.style.userSelect = "none";
   };
-
-  const Row = (p: {
-    label: string;
-    min: number;
-    max: number;
-    step: number;
-    value: number;
-    onChange: (v: number) => void;
-    fmt?: (v: number) => string;
-  }) => (
-    <div className="np-phys-row">
-      <span className="np-phys-label">{p.label}</span>
-      <input
-        type="range"
-        min={p.min}
-        max={p.max}
-        step={p.step}
-        value={p.value}
-        onChange={(e) => p.onChange(Number(e.target.value))}
-      />
-      <span className="np-val">
-        {p.fmt ? p.fmt(p.value) : Math.round(p.value)}
-      </span>
-    </div>
-  );
 
   return (
     <div

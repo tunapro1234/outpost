@@ -8,6 +8,11 @@ import { serializeMarkdown } from "../../../lib/vault.mjs";
 import { temporaryDirectory, writeEntity } from "../../../test-support/helpers.mjs";
 import { createRunRecord, writeRun } from "../../gather/journal.mjs";
 import { buildCopilotPrompt, workspaceSummary } from "../context.mjs";
+import { createTmuxBridge } from "../tmux-bridge.mjs";
+
+// createApp köprüyü varsayılan bağımlılıklarıyla kurar. Test sürecinde canlı bir
+// outpost-copilot oturumuna hiçbir koşulda mesaj göndermemek için benzersiz ad kullan.
+process.env.OUTPOST_COPILOT_TMUX = `outpost-copilot-test-${process.pid}`;
 
 async function fixture(t) {
   const root = await temporaryDirectory("outpost-copilot-");
@@ -235,4 +240,131 @@ test("runner hatası HTTP 500 yerine error ve done SSE eventleriyle kapanır", a
     { error: "Claude geçici olarak yok" },
     { done: true, thread_id: "thread-1" },
   ]);
+});
+
+test("tmux köprüsü promptu yazar, literal komut ve Enter yollar, dosya eklerini stream eder", async (t) => {
+  const { directory } = await fixture(t);
+  const calls = [];
+  const id = "cp-1234-abcd";
+  const outboxDirectory = path.join(directory, "copilot", "outbox");
+  const outboxFile = path.join(outboxDirectory, `${id}.md`);
+  const doneFile = path.join(outboxDirectory, `${id}.done`);
+  let poll = 0;
+
+  const exec = async (command, args) => {
+    calls.push([command, args]);
+    if (args[0] === "capture-pane") return { stdout: "agent hazır\n>\n" };
+    return { stdout: "" };
+  };
+  const sleep = async (milliseconds) => {
+    assert.equal(milliseconds, 500);
+    poll += 1;
+    if (poll === 1) {
+      await fs.writeFile(outboxFile, Buffer.from("Merhaba \xf0\x9f", "binary"));
+    } else {
+      await fs.appendFile(outboxFile, Buffer.from("\x91\x8b", "binary"));
+      await fs.writeFile(doneFile, "", "utf8");
+    }
+  };
+  const bridge = createTmuxBridge({
+    exec,
+    sleep,
+    idFactory: () => id,
+    session: "fake-copilot",
+  });
+
+  const stream = await bridge("TAM PROMPT", { workspace: { directory } });
+  assert.ok(stream);
+  const deltas = [];
+  for await (const delta of stream) deltas.push(delta);
+
+  assert.equal(
+    await fs.readFile(path.join(directory, "copilot", "inbox", `${id}.md`), "utf8"),
+    "TAM PROMPT",
+  );
+  assert.equal(deltas.join(""), "Merhaba 👋");
+  assert.deepEqual(calls, [
+    ["tmux", ["has-session", "-t", "fake-copilot"]],
+    ["tmux", ["capture-pane", "-p", "-t", "fake-copilot"]],
+    ["tmux", [
+      "send-keys",
+      "-t",
+      "fake-copilot",
+      "-l",
+      `[copilot ${id}] Soru: copilot/inbox/${id}.md oku; cevabı copilot/outbox/${id}.md dosyasına markdown olarak yaz; bitince copilot/outbox/${id}.done oluştur.`,
+    ]],
+    ["tmux", ["send-keys", "-t", "fake-copilot", "Enter"]],
+  ]);
+});
+
+test("tmux köprüsü meşgul oturumu 2 saniyede bir bekler ve 20 saniye sonunda fallback döndürür", async (t) => {
+  const { directory } = await fixture(t);
+  const calls = [];
+  const warnings = [];
+  let clock = 10_000;
+  const exec = async (_command, args) => {
+    calls.push(args);
+    if (args[0] === "capture-pane") {
+      return { stdout: "eski satır\nesc to interrupt\nsatır 3\nsatır 4\nsatır 5\n>\n" };
+    }
+    return { stdout: "" };
+  };
+  const bridge = createTmuxBridge({
+    exec,
+    now: () => clock,
+    sleep: async (milliseconds) => {
+      assert.equal(milliseconds, 2_000);
+      clock += milliseconds;
+    },
+    idFactory: () => "cp-busy-0000",
+    logger: { warn: (...args) => warnings.push(args) },
+  });
+
+  assert.equal(await bridge("prompt", { workspace: { directory } }), null);
+  assert.equal(calls.filter((args) => args[0] === "capture-pane").length, 11);
+  assert.equal(calls.some((args) => args[0] === "send-keys"), false);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0][1], /headless runner/);
+  assert.equal(
+    await fs.readFile(
+      path.join(directory, "copilot", "inbox", "cp-busy-0000.md"),
+      "utf8",
+    ),
+    "prompt",
+  );
+});
+
+test("tmux session yoksa köprü sessizce fallback döndürür ve journal dizini oluşturmaz", async (t) => {
+  const { directory } = await fixture(t);
+  const bridge = createTmuxBridge({
+    exec: async () => {
+      const error = new Error("can't find session");
+      error.code = 1;
+      throw error;
+    },
+  });
+
+  assert.equal(await bridge("prompt", { workspace: { directory } }), null);
+  await assert.rejects(fs.access(path.join(directory, "copilot")), { code: "ENOENT" });
+});
+
+test("tmux outbox 180 saniyede tamamlanmazsa zaman aşımı hatası verir", async (t) => {
+  const { directory } = await fixture(t);
+  let clock = 0;
+  const bridge = createTmuxBridge({
+    exec: async (_command, args) => ({
+      stdout: args[0] === "capture-pane" ? "hazır" : "",
+    }),
+    now: () => clock,
+    sleep: async (milliseconds) => {
+      clock += milliseconds;
+    },
+    idFactory: () => "cp-timeout-0000",
+  });
+  const stream = await bridge("prompt", { workspace: { directory } });
+
+  await assert.rejects(async () => {
+    for await (const _delta of stream) { /* tüket */ }
+  }, /180 saniyede zaman aşımına uğradı/);
+  assert.equal(clock, 180_000);
 });

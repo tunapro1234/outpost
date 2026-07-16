@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { Agent, AgentRun, StageItem } from "@/core/types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  Agent,
+  AgentRun,
+  GatherKind,
+  GatherOverview,
+  OverviewAgent,
+  StageItem,
+} from "@/core/types";
 import { api } from "@/core/api";
+import AgentsStrip from "./AgentsStrip";
 
 // ---- helpers -------------------------------------------------------------
 function timeAgo(iso: string | null): string {
@@ -35,6 +43,34 @@ const TASK_DESC: Record<string, string> = {
 
 function taskDesc(task: string): string {
   return TASK_DESC[task] ?? task;
+}
+
+// ---- tab taxonomy (SPEC-GATHER2 §1 + §3) --------------------------------
+interface KindTab {
+  key: GatherKind;
+  label: string;
+  flow: string;
+}
+const TABS: KindTab[] = [
+  {
+    key: "discover-company",
+    label: "Discover Companies",
+    flow: "Web search · directories → classify → stage → vault",
+  },
+  {
+    key: "discover-person",
+    label: "Discover People",
+    flow: "Team pages · search → classify → stage → vault",
+  },
+  {
+    key: "enrich",
+    label: "Enrich",
+    flow: "Existing entities → fill missing fields → vault",
+  },
+];
+
+function stageKind(s: StageItem): GatherKind {
+  return s.kind ?? "enrich"; // back-compat: unlabelled staging is enrichment
 }
 
 // ---- run status pill -----------------------------------------------------
@@ -74,10 +110,68 @@ function RunTimeline({ runs }: { runs: AgentRun[] }) {
   );
 }
 
+// ---- agent card (per-tab) -----------------------------------------------
+function AgentCard({
+  agent,
+  ov,
+  live,
+  selected,
+  onSelect,
+}: {
+  agent: Agent;
+  ov?: OverviewAgent;
+  live: boolean; // locally-triggered run in flight
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const lr = agent.last_run;
+  const status = live ? "running" : ov?.status ?? lr?.status;
+  const running = status === "running";
+  const currentTask = running ? ov?.currentTask : null;
+  return (
+    <button className={`g-agent ${selected ? "sel" : ""}`} onClick={onSelect}>
+      <div className="g-agent-top">
+        <StatusDot status={status} enabled={agent.enabled} />
+        <span className="g-agent-name">{agent.name}</span>
+        <span className="g-model">{agent.model}</span>
+      </div>
+      <div className="g-agent-task">
+        {currentTask ?? agent.task}
+      </div>
+      <div className="g-agent-foot">
+        {running ? (
+          <span className="g-run-live">
+            <span className="g-spin" /> {currentTask ? "Working…" : "Running…"}
+          </span>
+        ) : lr ? (
+          <>
+            <span>{timeAgo(lr.started)}</span>
+            <span className="g-dot-sep">·</span>
+            <span>{lr.items_out} items</span>
+            <span className="g-dot-sep">·</span>
+            <span>{lr.staged} staged</span>
+            {lr.warnings > 0 && (
+              <>
+                <span className="g-dot-sep">·</span>
+                <span className="g-warn">{lr.warnings} warn</span>
+              </>
+            )}
+          </>
+        ) : (
+          <span className="muted">never run</span>
+        )}
+      </div>
+    </button>
+  );
+}
+
 export default function GatherView() {
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [stage, setStage] = useState<StageItem[] | null>(null);
+  const [overview, setOverview] = useState<GatherOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<GatherKind>("discover-company");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [running, setRunning] = useState<{ agentId: string; runId: string } | null>(
@@ -102,6 +196,23 @@ export default function GatherView() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // poll the live overview every 5s (SPEC-GATHER2 §3)
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      const ov = await api.gatherOverview();
+      if (!alive) return;
+      setOverview(ov);
+      setOverviewLoading(false);
+    };
+    tick();
+    const id = window.setInterval(tick, 5000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, []);
 
   // load runs for the selected agent
   useEffect(() => {
@@ -166,11 +277,67 @@ export default function GatherView() {
     []
   );
 
-  const totalStaged = (agents ?? []).reduce(
-    (n, a) => n + (a.last_run?.staged ?? 0),
-    0
+  // overview agent lookup by id (kind / live status / currentTask)
+  const ovById = useMemo(() => {
+    const m = new Map<string, OverviewAgent>();
+    overview?.agents.forEach((a) => m.set(a.id, a));
+    return m;
+  }, [overview]);
+
+  // kind for a base agent — from overview, else enrich (back-compat)
+  const agentKind = useCallback(
+    (a: Agent): GatherKind => ovById.get(a.id)?.kind ?? "enrich",
+    [ovById]
   );
-  const pendingCount = stage?.length ?? 0;
+
+  // staged counts per kind — prefer live overview counts, else derive from stage
+  const stagedCount = useCallback(
+    (k: GatherKind): number => {
+      const fromOverview = overview?.counts?.[k]?.staged;
+      if (typeof fromOverview === "number") return fromOverview;
+      return (stage ?? []).filter((s) => stageKind(s) === k).length;
+    },
+    [overview, stage]
+  );
+
+  const tabAgents = useMemo(
+    () => (agents ?? []).filter((a) => agentKind(a) === tab),
+    [agents, agentKind, tab]
+  );
+  const tabStage = useMemo(
+    () => (stage ?? []).filter((s) => stageKind(s) === tab),
+    [stage, tab]
+  );
+
+  const renderAgentCard = (a: Agent) => (
+    <AgentCard
+      key={a.id}
+      agent={a}
+      ov={ovById.get(a.id)}
+      live={running?.agentId === a.id}
+      selected={selectedId === a.id}
+      onSelect={() => setSelectedId(a.id)}
+    />
+  );
+
+  // Discover People splits into "From company" / "Standalone" (SPEC §3)
+  const peopleGroups = useMemo(() => {
+    if (tab !== "discover-person") return null;
+    const fromCompany = tabAgents.filter(
+      (a) => ovById.get(a.id)?.source === "company"
+    );
+    const standalone = tabAgents.filter(
+      (a) => ovById.get(a.id)?.source === "standalone"
+    );
+    // agents with no declared source fall under standalone (free-brief default)
+    const untagged = tabAgents.filter((a) => {
+      const src = ovById.get(a.id)?.source;
+      return src !== "company" && src !== "standalone";
+    });
+    return { fromCompany, standalone: [...standalone, ...untagged] };
+  }, [tab, tabAgents, ovById]);
+
+  const activeTab = TABS.find((t) => t.key === tab)!;
 
   return (
     <div className="view-pad gather2">
@@ -189,135 +356,92 @@ export default function GatherView() {
 
       {error && <div className="g-error">{error}</div>}
 
-      {/* ---------- flow canvas ---------- */}
-      <div className="g-flow">
-        {/* sources column */}
-        <div className="g-col">
-          <div className="g-col-label">Sources</div>
-          <div className="g-src-node">
-            <span className="g-src-ico" aria-hidden>
-              🌐
-            </span>
-            <div className="g-src-meta">
-              <div className="g-src-name">Browser</div>
-              <div className="g-src-sub">Shared crawler</div>
-            </div>
-          </div>
-          <div className="g-src-node ghost">
-            <span className="g-src-ico" aria-hidden>
-              ＋
-            </span>
-            <div className="g-src-meta">
-              <div className="g-src-name">Add source</div>
-              <div className="g-src-sub">Places · Serper — soon</div>
-            </div>
-          </div>
-        </div>
+      {/* ---------- always-visible live agents strip ---------- */}
+      <AgentsStrip
+        agents={overview ? overview.agents : null}
+        loading={overviewLoading}
+        selectedId={selectedId}
+        localRunningId={running?.agentId ?? null}
+        onSelect={setSelectedId}
+      />
 
-        <div className="g-edge">
-          <span className="g-edge-line" />
-          <span className="g-edge-count">
-            {agents && agents.length
-              ? `${(agents[0].last_run?.items_in ?? 0)} scanned`
-              : "—"}
-          </span>
+      {/* ---------- tabs ---------- */}
+      <div className="g-tabs">
+        <div className="tabs">
+          {TABS.map((t) => {
+            const n = stagedCount(t.key);
+            return (
+              <button
+                key={t.key}
+                className={tab === t.key ? "on" : ""}
+                onClick={() => setTab(t.key)}
+              >
+                {t.label}
+                {n > 0 && <span className="tab-badge">{n}</span>}
+              </button>
+            );
+          })}
         </div>
-
-        {/* agents column */}
-        <div className="g-col agents">
-          <div className="g-col-label">Agents</div>
-          {agents === null ? (
-            <div className="g-loading">Loading…</div>
-          ) : agents.length === 0 ? (
-            <div className="g-empty">No agents configured</div>
-          ) : (
-            agents.map((a) => {
-              const lr = a.last_run;
-              const isRunning = running?.agentId === a.id;
-              const st = isRunning ? "running" : lr?.status;
-              return (
-                <button
-                  key={a.id}
-                  className={`g-agent ${selectedId === a.id ? "sel" : ""}`}
-                  onClick={() => setSelectedId(a.id)}
-                >
-                  <div className="g-agent-top">
-                    <StatusDot status={st} enabled={a.enabled} />
-                    <span className="g-agent-name">{a.name}</span>
-                    <span className="g-model">{a.model}</span>
-                  </div>
-                  <div className="g-agent-task">{a.task}</div>
-                  <div className="g-agent-foot">
-                    {isRunning ? (
-                      <span className="g-run-live">
-                        <span className="g-spin" /> Running…
-                      </span>
-                    ) : lr ? (
-                      <>
-                        <span>{timeAgo(lr.started)}</span>
-                        <span className="g-dot-sep">·</span>
-                        <span>{lr.items_out} items</span>
-                        <span className="g-dot-sep">·</span>
-                        <span>{lr.staged} staged</span>
-                        {lr.warnings > 0 && (
-                          <>
-                            <span className="g-dot-sep">·</span>
-                            <span className="g-warn">{lr.warnings} warn</span>
-                          </>
-                        )}
-                      </>
-                    ) : (
-                      <span className="muted">never run</span>
-                    )}
-                  </div>
-                </button>
-              );
-            })
-          )}
-        </div>
-
-        <div className="g-edge">
-          <span className="g-edge-line" />
-          <span className="g-edge-count">{totalStaged} staged</span>
-        </div>
-
-        {/* target */}
-        <div className="g-col">
-          <div className="g-col-label">Target</div>
-          <div className="g-target-node">
-            <span className="g-target-ico" aria-hidden>
-              ◈
-            </span>
-            <div className="g-src-meta">
-              <div className="g-src-name">Network</div>
-              <div className="g-src-sub">
-                {pendingCount > 0
-                  ? `${pendingCount} pending review`
-                  : "vault graph"}
-              </div>
-            </div>
-          </div>
-        </div>
+        <span className="g-flowhint">{activeTab.flow}</span>
       </div>
 
-      {/* ---------- staging review ---------- */}
+      {/* ---------- agents for this kind ---------- */}
+      <div className="g-tab-section">
+        {agents === null ? (
+          <div className="g-loading">Loading…</div>
+        ) : tab === "discover-person" && peopleGroups ? (
+          <>
+            <div className="g-group">
+              <div className="g-col-label">From company</div>
+              {peopleGroups.fromCompany.length === 0 ? (
+                <div className="g-empty">
+                  No company-sourced people agents yet.
+                </div>
+              ) : (
+                <div className="g-agent-grid">
+                  {peopleGroups.fromCompany.map(renderAgentCard)}
+                </div>
+              )}
+            </div>
+            <div className="g-group">
+              <div className="g-col-label">Standalone</div>
+              {peopleGroups.standalone.length === 0 ? (
+                <div className="g-empty">
+                  No standalone-brief agents yet (e.g. “STEM educators, Istanbul”).
+                </div>
+              ) : (
+                <div className="g-agent-grid">
+                  {peopleGroups.standalone.map(renderAgentCard)}
+                </div>
+              )}
+            </div>
+          </>
+        ) : tabAgents.length === 0 ? (
+          <div className="g-empty">No agents for this stage yet.</div>
+        ) : (
+          <div className="g-agent-grid">{tabAgents.map(renderAgentCard)}</div>
+        )}
+      </div>
+
+      {/* ---------- staging review (filtered to this kind) ---------- */}
       <div className="g-stage">
         <div className="g-stage-head">
           <h3>Staging review</h3>
           <span className="g-stage-count">
-            {pendingCount} pending {pendingCount === 1 ? "proposal" : "proposals"}
+            {tabStage.length} pending{" "}
+            {tabStage.length === 1 ? "proposal" : "proposals"}
           </span>
         </div>
         {stage === null ? (
           <div className="g-loading">Loading…</div>
-        ) : stage.length === 0 ? (
+        ) : tabStage.length === 0 ? (
           <div className="g-stage-empty">
             <div className="g-check">✓</div>
-            <div>Queue clear — nothing waiting for review.</div>
+            <div>Queue clear — nothing waiting for review in this stage.</div>
           </div>
         ) : (
           <div className="g-stage-grid">
-            {stage.map((s) => (
+            {tabStage.map((s) => (
               <div key={s.file} className="g-stage-card">
                 <div className="g-stage-card-top">
                   <span className="g-stage-hint">{s.entity_hint}</span>
@@ -365,7 +489,11 @@ export default function GatherView() {
           </button>
           <div className="g-panel-head">
             <StatusDot
-              status={running?.agentId === selected.id ? "running" : selected.last_run?.status}
+              status={
+                running?.agentId === selected.id
+                  ? "running"
+                  : ovById.get(selected.id)?.status ?? selected.last_run?.status
+              }
               enabled={selected.enabled}
             />
             <div>
@@ -378,11 +506,24 @@ export default function GatherView() {
 
           <div className="g-badges">
             <span className="g-model">{selected.model}</span>
+            <span className="badge muted">{agentKind(selected)}</span>
+            {ovById.get(selected.id)?.source && (
+              <span className="badge muted">
+                {ovById.get(selected.id)?.source}
+              </span>
+            )}
             <span className={`badge ${selected.enabled ? "ok" : "muted"}`}>
               {selected.enabled ? "enabled" : "disabled"}
             </span>
             <span className="badge muted">{selected.schedule}</span>
           </div>
+
+          {ovById.get(selected.id)?.currentTask && (
+            <div className="g-panel-current">
+              <span className="g-dot running" />
+              {ovById.get(selected.id)?.currentTask}
+            </div>
+          )}
 
           <p className="g-panel-desc">{taskDesc(selected.task)}</p>
 

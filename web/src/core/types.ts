@@ -194,11 +194,36 @@ export interface AgentRun {
   note?: string | null;
 }
 
+// gather taxonomy (SPEC-GATHER2 §1)
+export type GatherKind = "discover-company" | "discover-person" | "enrich";
+export type GatherSource = "company" | "standalone";
+
 export interface StageItem {
   file: string;
   entity_hint: string;
   summary: string;
   fields: Record<string, string>;
+  // propagated from the producing agent; older records omit it → treat as enrich
+  kind?: GatherKind;
+}
+
+// ---- gather overview (server GET /api/ws/:ws/gather/overview) ------------
+export interface OverviewAgent {
+  id: string;
+  name: string;
+  kind: GatherKind;
+  source?: GatherSource | null;
+  enabled: boolean;
+  status: "running" | "idle" | "error" | string;
+  currentTask: string | null;
+  lastRunAt: string | null;
+  lastRunSummary: string | null;
+  stagedCount: number;
+}
+
+export interface GatherOverview {
+  agents: OverviewAgent[];
+  counts: Record<GatherKind, { staged: number; accepted: number }>;
 }
 
 // ---- profile (global /api/profile) --------------------------------------

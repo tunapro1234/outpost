@@ -4,11 +4,14 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { parseMarkdown, serializeMarkdown, TYPE_DIRECTORIES } from "../../lib/vault.mjs";
 import { slugify } from "../../lib/slug.mjs";
+import { GATHER_KINDS } from "./registry.mjs";
 
 const execFileAsync = promisify(execFile);
+const VALID_GATHER_KINDS = new Set(GATHER_KINDS);
 const CONTROL_FIELDS = new Set([
   "entity_id",
   "source_agent",
+  "kind",
   "source_url",
   "gathered_at",
   "gather_summary",
@@ -16,6 +19,10 @@ const CONTROL_FIELDS = new Set([
 
 function stageRoot(workspace) {
   return path.join(workspace.directory, "stage");
+}
+
+function stageKind(value) {
+  return VALID_GATHER_KINDS.has(value) ? value : "enrich";
 }
 
 function safeStageFile(file) {
@@ -70,12 +77,53 @@ export async function listStage(workspace) {
     const parsed = parseMarkdown(await fs.readFile(path.join(directory, file), "utf8"), file);
     proposals.push({
       file,
+      kind: stageKind(parsed.meta.kind),
+      source_agent: parsed.meta.source_agent ?? null,
       entity_hint: parsed.meta.entity_id ?? slugify(parsed.meta.name) ?? null,
       summary: parsed.meta.gather_summary ?? bodySummary(parsed.body),
       fields: proposedFields(parsed.meta),
     });
   }
   return proposals;
+}
+
+async function readDecisions(workspace) {
+  const filePath = path.join(stageRoot(workspace), "decisions.jsonl");
+  let source;
+  try {
+    source = await fs.readFile(filePath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+  return source.split(/\r?\n/).filter(Boolean).map((line, index) => {
+    try {
+      return JSON.parse(line);
+    } catch (error) {
+      throw new Error(`${filePath}:${index + 1}: geçersiz JSON: ${error.message}`);
+    }
+  });
+}
+
+export async function stageStats(workspace, kinds) {
+  const counts = Object.fromEntries(kinds.map((kind) => [kind, { staged: 0, accepted: 0 }]));
+  const stagedByAgent = new Map();
+  for (const proposal of await listStage(workspace)) {
+    const kind = counts[proposal.kind] ? proposal.kind : "enrich";
+    counts[kind].staged += 1;
+    if (proposal.source_agent) {
+      stagedByAgent.set(
+        proposal.source_agent,
+        (stagedByAgent.get(proposal.source_agent) ?? 0) + 1,
+      );
+    }
+  }
+  for (const decision of await readDecisions(workspace)) {
+    if (decision.decision !== "accept") continue;
+    const kind = counts[decision.kind] ? decision.kind : "enrich";
+    counts[kind].accepted += 1;
+  }
+  return { counts, stagedByAgent };
 }
 
 function stageTimestamp(iso) {
@@ -122,6 +170,7 @@ export async function writeStageProposal(workspace, {
     name: entity.meta.name,
     entity_id: entity.id,
     source_agent: agent.id,
+    kind: stageKind(agent.kind),
     source_url: sourceUrl,
     gathered_at: gatheredAt,
     gather_summary: classification.summary.trim(),
@@ -244,6 +293,8 @@ export async function decideStage(workspace, {
     decision,
     note: note?.trim() || null,
     entity_id: proposal.meta.entity_id ?? null,
+    source_agent: proposal.meta.source_agent ?? null,
+    kind: stageKind(proposal.meta.kind),
     decided_at: now().toISOString(),
   };
 

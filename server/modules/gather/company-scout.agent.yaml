@@ -1,0 +1,12 @@
+- id: company-scout
+  name: Company Scout
+  zone: gathering
+  model: gpt-5.6-luna
+  task: scrape-classify
+  integration: web-search
+  kind: discover-company
+  params:
+    brief: ""
+    limit: 5
+  schedule: manual
+  enabled: false

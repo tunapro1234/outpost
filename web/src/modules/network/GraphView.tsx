@@ -178,14 +178,17 @@ export default function GraphView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [physics]);
 
-  // fit on data / explicit signal
+  // data change → let the sim resettle, refit once on engine stop
+  // (no eager timed zoomToFit here: it double-yanked the viewport)
   useEffect(() => {
     settledOnce.current = false;
-    const fg = fgRef.current;
-    if (!fg) return;
-    const t = window.setTimeout(() => fg.zoomToFit(600, 70), 400);
-    return () => window.clearTimeout(t);
-  }, [fitSignal, data]);
+  }, [data]);
+
+  // explicit fit request
+  useEffect(() => {
+    if (fitSignal === 0) return;
+    fgRef.current?.zoomToFit(600, 70);
+  }, [fitSignal]);
 
   // pan/zoom to a node
   useEffect(() => {
@@ -220,7 +223,7 @@ export default function GraphView({
       if (hoverInTimer.current) window.clearTimeout(hoverInTimer.current);
       hoverInTimer.current = window.setTimeout(() => {
         setHoverId(pendingHover.current);
-      }, 200);
+      }, 80);
     } else {
       if (hoverInTimer.current) {
         window.clearTimeout(hoverInTimer.current);
@@ -229,7 +232,7 @@ export default function GraphView({
       if (hoverOutTimer.current) window.clearTimeout(hoverOutTimer.current);
       hoverOutTimer.current = window.setTimeout(() => {
         setHoverId(null);
-      }, 300);
+      }, 150);
     }
   }, []);
   useEffect(() => () => clearTimers(), []);
@@ -241,10 +244,12 @@ export default function GraphView({
     [onSelect]
   );
 
+  // big graphs need the extra ticks to actually converge; 160 froze the
+  // layout mid-expansion on ~1.9k nodes
   const cooldownTicks = physics.frozen
     ? 0
     : data.nodes.length > 900
-    ? 160
+    ? 320
     : 220;
 
   const dimAlpha = theme === "light" ? 0.12 : 0.14;
@@ -268,7 +273,16 @@ export default function GraphView({
         graphData={graphData}
         backgroundColor={canvasBg}
         cooldownTicks={cooldownTicks}
-        warmupTicks={data.nodes.length > 900 ? 40 : 0}
+        warmupTicks={data.nodes.length > 900 ? 80 : 0}
+        onNodeDragEnd={(n) => {
+          // release after drag so an accidental pull doesn't pin the node
+          // forever; when frozen, leave it pinned at its new spot
+          if (!physics.frozen) {
+            const node = n as GraphNode;
+            node.fx = undefined;
+            node.fy = undefined;
+          }
+        }}
         d3VelocityDecay={physics.velocityDecay}
         d3AlphaDecay={0.035}
         nodeRelSize={5}

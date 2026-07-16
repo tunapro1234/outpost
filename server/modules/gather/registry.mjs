@@ -4,6 +4,9 @@ import yaml from "js-yaml";
 
 const VALID_ZONES = new Set(["gathering", "network"]);
 const VALID_TASKS = new Set(["scrape-classify", "dedup-review", "link-discovery"]);
+export const GATHER_KINDS = ["discover-company", "discover-person", "enrich"];
+const VALID_KINDS = new Set(GATHER_KINDS);
+const VALID_PERSON_SOURCES = new Set(["company", "standalone"]);
 const ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
 function fail(filePath, index, message) {
@@ -32,6 +35,18 @@ function cleanAgent(raw, index, filePath) {
   if (typeof raw.integration !== "string" || !raw.integration.trim()) {
     fail(filePath, index, "integration zorunlu");
   }
+  const kind = raw.kind === undefined ? "enrich" : raw.kind;
+  if (!VALID_KINDS.has(kind)) {
+    fail(filePath, index, "kind discover-company, discover-person veya enrich olmalı");
+  }
+  if (raw.source !== undefined) {
+    if (kind !== "discover-person") {
+      fail(filePath, index, "source yalnızca discover-person için kullanılabilir");
+    }
+    if (!VALID_PERSON_SOURCES.has(raw.source)) {
+      fail(filePath, index, "source company veya standalone olmalı");
+    }
+  }
   if (
     raw.params !== undefined &&
     (!raw.params || typeof raw.params !== "object" || Array.isArray(raw.params))
@@ -55,6 +70,8 @@ function cleanAgent(raw, index, filePath) {
     model: raw.model.trim(),
     task: raw.task,
     integration: raw.integration.trim(),
+    kind,
+    ...(raw.source !== undefined ? { source: raw.source } : {}),
     params: { ...(raw.params ?? {}) },
     schedule: raw.schedule?.trim() || "manual",
     enabled: raw.enabled === true,

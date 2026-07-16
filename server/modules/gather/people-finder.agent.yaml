@@ -1,15 +1,13 @@
-- id: site-scanner
-  name: Site Scanner
+- id: people-finder
+  name: People Finder
   zone: gathering
   model: gpt-5.6-luna
   task: scrape-classify
   integration: browser
-  kind: enrich
+  kind: discover-person
+  source: company
   params:
-    filter:
-      type: company
-      has_site: true
-      has_mail: false
+    target: ""
     limit: 5
   schedule: manual
   enabled: false

@@ -2830,6 +2830,148 @@ table.grid td.num {
   margin-bottom: 16px;
 }
 
+/* ---------- live agents strip (always visible) ---------- */
+.g-strip {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 11px 13px 12px;
+  margin-bottom: 18px;
+}
+.g-strip-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+.g-strip-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.g-strip-empty {
+  font-size: 12.5px;
+  color: var(--text-faint);
+  padding: 6px 2px 2px;
+}
+.g-strip-scroll {
+  display: flex;
+  gap: 9px;
+  overflow-x: auto;
+  padding-bottom: 3px;
+  scrollbar-width: thin;
+}
+.g-pill {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 190px;
+  max-width: 240px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  padding: 9px 11px;
+  transition: border-color 0.14s, background 0.14s;
+}
+.g-pill:hover {
+  border-color: var(--text-faint);
+}
+.g-pill.sel {
+  border-color: var(--text-dim);
+  box-shadow: 0 0 0 1px var(--text-dim) inset;
+}
+.g-pill .g-dot {
+  margin-top: 4px;
+}
+.g-pill-body {
+  min-width: 0;
+  flex: 1;
+}
+.g-pill-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.g-pill-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.g-pill-kind {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+  flex: 0 0 auto;
+}
+.g-pill-task {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* strip idle dot reads gray (spec §3), independent of card semantics */
+.g-strip .g-dot.idle {
+  background: var(--text-faint);
+  opacity: 0.85;
+}
+
+/* ---------- tabs + per-kind sections ---------- */
+.g-tabs {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.g-flowhint {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+}
+.g-tab-section {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 8px;
+}
+.g-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.g-agent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.g-panel-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 8px 11px;
+  margin-bottom: 14px;
+}
+
 .g-flow {
   display: flex;
   align-items: stretch;

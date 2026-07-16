@@ -6,6 +6,7 @@ import type {
   EntityMeta,
   EntityType,
   Facets,
+  GatherOverview,
   GraphData,
   GraphEdge,
   GraphFilters,
@@ -360,6 +361,19 @@ export const api = {
   async stage(): Promise<StageItem[]> {
     if (MOCK) return [];
     return json<StageItem[]>(`${BASE}/stage`);
+  },
+
+  // Live agents overview (SPEC-GATHER2 §2). Returns null on 404 / error so the
+  // strip can degrade to "no agents" while the endpoint is still shipping.
+  async gatherOverview(): Promise<GatherOverview | null> {
+    if (MOCK) return null;
+    try {
+      const res = await fetch(`${BASE}/gather/overview`);
+      if (!res.ok) return null;
+      return (await res.json()) as GatherOverview;
+    } catch {
+      return null;
+    }
   },
 
   async stageDecision(
