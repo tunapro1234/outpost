@@ -12,6 +12,9 @@ import EntityPage from "@/modules/entity/EntityPage";
 import GatherView from "@/modules/gather/GatherView";
 import IntegrationsView from "@/modules/integrations/IntegrationsView";
 import ProfileView from "@/modules/profile/ProfileView";
+import CopilotDrawer from "@/modules/copilot/CopilotDrawer";
+import { copilotEnabled } from "@/core/copilot";
+import { IconCopilot } from "@/core/icons";
 import { api } from "@/core/api";
 import type {
   EntityListItem,
@@ -80,6 +83,19 @@ export default function App() {
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const [fitSignal, setFitSignal] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // ---- copilot (right drawer, gated per viewer) ----
+  const [copilotAllowed, setCopilotAllowed] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    copilotEnabled().then((ok) => {
+      if (alive) setCopilotAllowed(ok);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // ---- persistence side-effects ----
   useEffect(() => {
@@ -183,17 +199,24 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const tagName = (e.target as HTMLElement)?.tagName;
       const typing = tagName === "INPUT" || tagName === "TEXTAREA";
-      if (e.key === "/" && !typing) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "j" || e.key === "J")) {
+        if (!copilotAllowed) return;
+        e.preventDefault();
+        setCopilotOpen((v) => !v);
+      } else if (e.key === "/" && !typing) {
         e.preventDefault();
         searchRef.current?.focus();
-      } else if (e.key === "Escape" && !typing) {
-        if (filters.egoId) setFilters({ ...filters, egoId: null });
-        else if (selectedId) setSelectedId(null);
+      } else if (e.key === "Escape") {
+        if (copilotOpen) setCopilotOpen(false);
+        else if (!typing) {
+          if (filters.egoId) setFilters({ ...filters, egoId: null });
+          else if (selectedId) setSelectedId(null);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, filters, setFilters]);
+  }, [selectedId, filters, setFilters, copilotAllowed, copilotOpen]);
 
   const gotoNode = useCallback((id: string) => {
     if (window.location.pathname !== "/") navigate("/");
@@ -298,6 +321,27 @@ export default function App() {
     setNav(k);
   }, []);
 
+  // Copilot lives at layout level so it is reachable from every view. The edge
+  // tab is suppressed while another right rail (entity panel) owns that edge —
+  // the drawer stays reachable via ⌘J and the tab returns on Esc/close.
+  const renderCopilot = (showFab: boolean) =>
+    copilotAllowed && (
+      <>
+        {showFab && !copilotOpen && (
+          <button
+            className="copilot-fab"
+            onClick={() => setCopilotOpen(true)}
+            title="Copilot — ⌘J"
+            aria-label="Open copilot"
+          >
+            <IconCopilot size={18} />
+            <span className="copilot-fab-label">Copilot</span>
+          </button>
+        )}
+        {copilotOpen && <CopilotDrawer onClose={() => setCopilotOpen(false)} />}
+      </>
+    );
+
   // ---- full entity page route ----
   if (route.name === "entity") {
     return (
@@ -327,6 +371,7 @@ export default function App() {
             {api.mock ? "" : " — is the server on 127.0.0.1:3002 running?"}
           </div>
         )}
+        {renderCopilot(true)}
       </div>
     );
   }
@@ -509,6 +554,7 @@ export default function App() {
           {api.mock ? "" : " — is the server on 127.0.0.1:3002 running?"}
         </div>
       )}
+      {renderCopilot(!(selectedId && isNetwork))}
     </div>
   );
 }
