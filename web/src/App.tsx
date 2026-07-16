@@ -14,7 +14,9 @@ import IntegrationsView from "@/modules/integrations/IntegrationsView";
 import ProfileView from "@/modules/profile/ProfileView";
 import OverviewView from "@/modules/overview/OverviewView";
 import CopilotDrawer from "@/modules/copilot/CopilotDrawer";
+import ControlToast from "@/components/ControlToast";
 import { copilotEnabled } from "@/core/copilot";
+import { connectControl, type ControlCommand } from "@/core/control";
 import { IconCopilot } from "@/core/icons";
 import { api, setWorkspace as configureWorkspace } from "@/core/api";
 import type {
@@ -84,6 +86,9 @@ export default function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [workspace, setWorkspaceState] = useState<string | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
+  const [controlToast, setControlToast] = useState<string | null>(null);
+  const controlToastTimer = useRef<number | null>(null);
+  const controlHandler = useRef<(command: ControlCommand) => void>(() => {});
 
   const [filters, setFiltersState] = useState<FilterState>(loadFilters);
   const [physics, setPhysicsState] = useState<Physics>(loadPhysics);
@@ -132,18 +137,72 @@ export default function App() {
 
   const changeWorkspace = useCallback(
     (id: string) => {
-      if (id === workspace) return;
+      if (id === workspace) return true;
       const next = workspaces.find((w) => w.id === id && !w.comingSoon);
-      if (!next) return;
+      if (!next) return false;
       configureWorkspace(next.id);
       localStorage.setItem(WORKSPACE_STORAGE_KEY, next.id);
       setCopilotOpen(false);
       setSelectedId(null);
       setFocusNodeId(null);
       setWorkspaceState(next.id);
+      return true;
     },
     [workspace, workspaces]
   );
+
+  const showControlToast = useCallback((message: string) => {
+    if (controlToastTimer.current !== null) {
+      window.clearTimeout(controlToastTimer.current);
+    }
+    setControlToast(message);
+    controlToastTimer.current = window.setTimeout(() => {
+      setControlToast(null);
+      controlToastTimer.current = null;
+    }, 3_500);
+  }, []);
+
+  useEffect(() => () => {
+    if (controlToastTimer.current !== null) {
+      window.clearTimeout(controlToastTimer.current);
+    }
+  }, []);
+
+  const applyControlCommand = useCallback((command: ControlCommand) => {
+    switch (command.action) {
+      case "navigate":
+        navigate(command.path);
+        showControlToast(`⌁ agent: opened ${command.path}`);
+        break;
+      case "open-entity":
+        if (command.ws && !changeWorkspace(command.ws)) {
+          showControlToast(`⌁ agent: workspace ${command.ws} is unavailable`);
+          break;
+        }
+        navigate(entityPath(command.id));
+        showControlToast(`⌁ agent: opened ${entityPath(command.id)}`);
+        break;
+      case "set-workspace":
+        showControlToast(changeWorkspace(command.ws)
+          ? `⌁ agent: selected workspace ${command.ws}`
+          : `⌁ agent: workspace ${command.ws} is unavailable`);
+        break;
+      case "set-theme":
+        setTheme(command.theme);
+        showControlToast(`⌁ agent: set theme ${command.theme}`);
+        break;
+      case "toast":
+        showControlToast(`⌁ agent: ${command.message}`);
+        break;
+    }
+  }, [changeWorkspace, showControlToast]);
+  controlHandler.current = applyControlCommand;
+
+  const controlReady = workspace !== null;
+  useEffect(() => {
+    if (!controlReady) return;
+    return connectControl((command) => controlHandler.current(command));
+  }, [controlReady]);
 
   useEffect(() => {
     if (!workspace) return;
@@ -433,6 +492,7 @@ export default function App() {
         <div className="center-msg">
           <div>{error ?? "Loading workspace…"}</div>
         </div>
+        <ControlToast message={controlToast} />
       </div>
     );
   }
@@ -469,6 +529,7 @@ export default function App() {
           </div>
         )}
         {renderCopilot(true)}
+        <ControlToast message={controlToast} />
       </div>
     );
   }
@@ -662,6 +723,7 @@ export default function App() {
         </div>
       )}
       {renderCopilot(!(selectedId && isNetwork))}
+      <ControlToast message={controlToast} />
     </div>
   );
 }

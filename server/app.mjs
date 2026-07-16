@@ -5,6 +5,8 @@ import { WorkspaceRegistry } from "./lib/config.mjs";
 import { apiError, serveWeb } from "./lib/http.mjs";
 import { copilotRoutes } from "./modules/copilot/routes.mjs";
 import { runClaude } from "./modules/copilot/runner.mjs";
+import { ControlRegistry } from "./modules/control/registry.mjs";
+import { controlRoutes } from "./modules/control/routes.mjs";
 import { gatherRoutes } from "./modules/gather/routes.mjs";
 import { GatherRunner } from "./modules/gather/runner.mjs";
 import { GatherScheduler } from "./modules/gather/scheduler.mjs";
@@ -78,6 +80,7 @@ export async function createApp({
   htpasswdPath,
   defaultUser = process.env.OUTPOST_DEFAULT_USER,
   exampleVaultPath,
+  controlRegistry,
   logger = false,
 } = {}) {
   const app = Fastify({ logger });
@@ -99,6 +102,8 @@ export async function createApp({
   app.decorate("vaultIndex", registry.getDefault()?.index ?? null);
   app.decorate("gatherRunner", gatherRunner);
   app.decorate("copilotRunner", copilotRunner);
+  const controls = controlRegistry ?? new ControlRegistry();
+  app.decorate("controlRegistry", controls);
   const gatherScheduler = new GatherScheduler(registry, gatherRunner, {
     onError: (error) => app.log.warn({ err: error }, "Gather scheduler error"),
   });
@@ -111,6 +116,7 @@ export async function createApp({
   app.decorate("mailIngestor", mailIngestor);
   if (schedule) gatherScheduler.start();
   app.addHook("onClose", async () => {
+    controls.close();
     gatherScheduler.stop();
     await mailIngestor.stop();
     await registry.close();
@@ -137,6 +143,11 @@ export async function createApp({
     usersPath,
     htpasswdPath,
     defaultUser,
+  });
+  await app.register(controlRoutes, {
+    prefix: "/api/control",
+    defaultUser,
+    registry: controls,
   });
   const resolveScopedWorkspace = scopedResolver(registry);
   await mountApi(app, "/api/ws/:ws", resolveScopedWorkspace, { gatherRunner, metricsNow });

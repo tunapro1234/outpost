@@ -2212,6 +2212,21 @@ table.grid td.num {
   z-index: 50;
   box-shadow: var(--shadow);
 }
+.control-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-dim);
+  box-shadow: var(--shadow);
+  font-size: 12.5px;
+  z-index: 250;
+  animation: fade 0.16s ease;
+}
 .hint {
   position: absolute;
   right: 16px;
