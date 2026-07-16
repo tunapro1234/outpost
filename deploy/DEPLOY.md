@@ -3,7 +3,7 @@
 Durum (2026-07-16, outpost-main): DNS + SSL + nginx HAZIR, systemd unit bu dizinde.
 
 ## Yapılanlar
-1. **DNS**: gerek yoktu — `*.trasumanar.ai` wildcard A kaydı zaten 188.3.36.176'ya işaret ediyor.
+1. **DNS**: gerek yoktu — `*.trasumanar.ai` wildcard A kaydı zaten sunucuya işaret ediyor.
 2. **Basic auth**: `/etc/nginx/.htpasswd-outpost` (kullanıcı `tuna`; parola `/srv/outpost/.web-auth.txt`,
    chmod 600, repo dışı). Veri kişisel iletişim içerdiği için (KVKK) site auth'suz açılmaz.
 3. **nginx**: `/etc/nginx/sites-available/outpost.trasumanar.ai.conf` (enabled) → proxy 127.0.0.1:3002.

@@ -68,7 +68,7 @@ SQLite'a geçiş şimdilik önerilmiyor: vault + git, agent-dostu ve Tuna'nın O
   - **görev scriptleri**: Instagram profil özeti (login'siz), site tarama (iletişim/hakkında sayfaları),
     harita dizin taraması gibi tekrar eden akışlar.
 - Anti-bot duruşu: headful (sunucu xvfb sağlıyor), insan-hızı gecikmeler (2-5sn), düşük rate,
-  tek residential IP (188.3.36.176) — IP tutarlılığı dönen proxy'den daha kritik (araştırma bulgusu).
+  tek residential IP — IP tutarlılığı dönen proxy'den daha kritik (araştırma bulgusu).
 - Etik/risk sınırı: login gerektiren scraping ve SMTP/RCPT probe YASAK (mevcut server-main direktifi
   devralınır).
 

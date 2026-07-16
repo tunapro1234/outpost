@@ -10,3 +10,6 @@ out/
 *.tsbuildinfo
 web/vite.config.d.ts
 web/vite.config.js
+workspaces/
+web/mock/live-*.png
+web/mock/v2-*.png
