@@ -150,6 +150,13 @@ export interface MailItem {
   raw?: string;
 }
 
+export interface ReachStats {
+  sent: number;
+  replied: number;
+  replyRate: number;
+  pendingFollowUp: number;
+}
+
 // ---- overview metrics (server GET /api/ws/:ws/metrics) ------------------
 export interface MetricsDailyPoint {
   date: string; // YYYY-MM-DD

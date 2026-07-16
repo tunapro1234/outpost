@@ -144,6 +144,14 @@ test("refresh endpoint ingested.jsonl dosyasına yalnızca yenileri append eder 
   const metrics = (await app.inject({ url: "/api/ws/fixture/metrics" })).json();
   assert.equal(metrics.outreach.mailsSent, 2);
   assert.equal(metrics.outreach.uniqueRecipients, 2);
+
+  const reachStats = (await app.inject({ url: "/api/ws/fixture/reach/stats" })).json();
+  assert.deepEqual(reachStats, {
+    sent: 2,
+    replied: 1,
+    replyRate: 50,
+    pendingFollowUp: 1,
+  });
 });
 
 test("MailIngestor başlangıçta ve interval süresinde tarama yapar", async (t) => {

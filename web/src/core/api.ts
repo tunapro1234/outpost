@@ -10,6 +10,7 @@ import type {
   GraphData,
   GraphNode,
   MailItem,
+  ReachStats,
   Metrics,
   Profile,
   Relation,
@@ -224,6 +225,19 @@ export const api = {
       const res = await fetch(`${workspaceBase()}/mails`);
       if (!res.ok) return null;
       return (await res.json()) as MailItem[];
+    } catch {
+      return null;
+    }
+  },
+
+  async reachStats(): Promise<ReachStats | null> {
+    if (MOCK) {
+      return { sent: 0, replied: 0, replyRate: 0, pendingFollowUp: 0 };
+    }
+    try {
+      const res = await fetch(`${workspaceBase()}/reach/stats`);
+      if (!res.ok) return null;
+      return (await res.json()) as ReachStats;
     } catch {
       return null;
     }

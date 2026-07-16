@@ -132,6 +132,23 @@ export async function workspaceTrafficMails(workspace) {
   return [...byKey.values()].sort(compareMails);
 }
 
+export function reachStats(mails) {
+  const matchedSent = mails.filter((mail) => mail.direction === "out" && mail.entity_id);
+  const matchedReplied = mails.filter((mail) => mail.direction === "in" && mail.entity_id);
+  const contacted = new Set(matchedSent.map((mail) => mail.entity_id));
+  const replied = new Set(matchedReplied.map((mail) => mail.entity_id));
+  const repliedContacted = [...replied].filter((id) => contacted.has(id)).length;
+
+  return {
+    sent: matchedSent.length,
+    replied: matchedReplied.length,
+    replyRate: matchedSent.length
+      ? Math.round((matchedReplied.length / matchedSent.length) * 100)
+      : 0,
+    pendingFollowUp: Math.max(0, contacted.size - repliedContacted),
+  };
+}
+
 export function mailStats(mails) {
   const byEntity = new Map();
   for (const mail of mails) {

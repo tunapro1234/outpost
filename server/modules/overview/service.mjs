@@ -1,5 +1,5 @@
 import { networkStats } from "../network/service.mjs";
-import { workspaceTrafficMails } from "../reach/mails.mjs";
+import { reachStats, workspaceTrafficMails } from "../reach/mails.mjs";
 import { hasMail, mailAddresses, reachCandidateEntities } from "../reach/service.mjs";
 import { listRuns } from "../gather/journal.mjs";
 import { GATHER_KINDS, readAgentRegistry } from "../gather/registry.mjs";
@@ -33,7 +33,7 @@ export function outreachMetrics(mails, { now = () => new Date() } = {}) {
   // outreach = vault'taki bir entity'yle eşleşen trafik; mailbox'taki alakasız
   // gönderimler (tedarikçi teklifi, test maili) KPI'lara sayılmaz
   const outgoing = mails.filter((mail) => mail.direction === "out" && mail.entity_id);
-  const inboundMatched = mails.filter((mail) => mail.direction === "in" && mail.entity_id);
+  const matched = reachStats(mails);
   const mailbox = {
     sent: mails.filter((mail) => mail.direction === "out").length,
     received: mails.filter((mail) => mail.direction === "in").length,
@@ -67,8 +67,8 @@ export function outreachMetrics(mails, { now = () => new Date() } = {}) {
     avgPerActiveDay: activeDates.size ? outgoing.length / activeDates.size : 0,
     daily: [...dailyByDate].map(([date, count]) => ({ date, count })),
     byStatus: {
-      sent: outgoing.length,
-      replied: inboundMatched.length,
+      sent: matched.sent,
+      replied: matched.replied,
     },
     mailbox,
   };

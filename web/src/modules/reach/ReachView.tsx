@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import type { EntityListItem, MailItem } from "@/core/types";
+import type { EntityListItem, MailItem, ReachStats } from "@/core/types";
 import { STATUS_COLORS, STATUS_LABELS, TYPE_LABELS } from "@/core/theme";
 import { trNormalize } from "@/core/normalize";
 
 interface Props {
   mails: MailItem[] | null; // null = endpoint not available yet
+  stats: ReachStats | null;
   entities: EntityListItem[];
   onOpenEntity: (id: string) => void;
 }
@@ -19,7 +20,7 @@ function hasMail(mail: string | null | undefined): boolean {
   return m !== "" && m !== "-" && m !== "yok";
 }
 
-export default function ReachView({ mails, entities, onOpenEntity }: Props) {
+export default function ReachView({ mails, stats, entities, onOpenEntity }: Props) {
   const [tab, setTab] = useState<Tab>("sent");
   const [q, setQ] = useState("");
   const [candSort, setCandSort] = useState<CandSort>("score");
@@ -29,22 +30,7 @@ export default function ReachView({ mails, entities, onOpenEntity }: Props) {
   const sent = useMemo(() => list.filter((m) => m.direction === "out"), [list]);
   const inbound = useMemo(() => list.filter((m) => m.direction === "in"), [list]);
 
-  // ---- KPIs (derived from the mail log) ----
-  const kpis = useMemo(() => {
-    const contacted = new Set(sent.map((m) => m.entity_id));
-    const replied = new Set(inbound.map((m) => m.entity_id));
-    const repliedContacted = [...replied].filter((id) => contacted.has(id));
-    const rate = contacted.size
-      ? Math.round((repliedContacted.length / contacted.size) * 100)
-      : 0;
-    const pending = contacted.size - repliedContacted.length;
-    return {
-      sent: sent.length,
-      replied: inbound.length,
-      rate,
-      pending: Math.max(0, pending),
-    };
-  }, [sent, inbound]);
+  const kpis = stats ?? { sent: 0, replied: 0, replyRate: 0, pendingFollowUp: 0 };
 
   // ---- candidates: has mail, never written, score >= threshold ----
   const candidates = useMemo(() => {
@@ -142,8 +128,12 @@ export default function ReachView({ mails, entities, onOpenEntity }: Props) {
       <div className="kpi-strip">
         <KPI label="Total sent" value={String(kpis.sent)} />
         <KPI label="Replied" value={String(kpis.replied)} tone="var(--ok)" />
-        <KPI label="Reply rate" value={`${kpis.rate}%`} />
-        <KPI label="Pending follow-up" value={String(kpis.pending)} tone="var(--warn)" />
+        <KPI label="Reply rate" value={`${kpis.replyRate}%`} />
+        <KPI
+          label="Pending follow-up"
+          value={String(kpis.pendingFollowUp)}
+          tone="var(--warn)"
+        />
       </div>
 
       <div className="reach-bar">

@@ -25,6 +25,7 @@ import type {
   GraphData,
   GraphNode,
   MailItem,
+  ReachStats,
   WorkspaceInfo,
 } from "@/core/types";
 import type { ThemeName } from "@/core/theme";
@@ -81,6 +82,7 @@ export default function App() {
   const [facets, setFacets] = useState<Facets>(() => deriveFacets([]));
   const [entityList, setEntityList] = useState<EntityListItem[]>([]);
   const [mails, setMails] = useState<MailItem[] | null>(null);
+  const [reachStats, setReachStats] = useState<ReachStats | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -255,6 +257,7 @@ export default function App() {
     setFull(EMPTY);
     setEntityList([]);
     setMails(null);
+    setReachStats(null);
     Promise.all([api.fullGraph(), api.entities({}), api.facets()])
       .then(([graph, list, serverFacets]) => {
         if (!alive) return;
@@ -298,13 +301,18 @@ export default function App() {
   useEffect(() => {
     if (!workspace) return;
     let alive = true;
-    api
-      .mails()
-      .then((items) => {
-        if (alive) setMails(items);
+    Promise.all([api.mails(), api.reachStats()])
+      .then(([items, stats]) => {
+        if (alive) {
+          setMails(items);
+          setReachStats(stats);
+        }
       })
       .catch(() => {
-        if (alive) setMails(null);
+        if (alive) {
+          setMails(null);
+          setReachStats(null);
+        }
       });
     return () => {
       alive = false;
@@ -693,6 +701,7 @@ export default function App() {
           {view === "reach" && (
             <ReachView
               mails={mails}
+              stats={reachStats}
               entities={entityList}
               onOpenEntity={openFull}
             />
