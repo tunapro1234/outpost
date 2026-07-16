@@ -111,6 +111,25 @@ atölyeleri göster" → FilterState).
 - **V3d — workspace çoğaltma**: compec workspace + `outpost-ws-compec` tmux hiyerarşisi + login
   bazlı copilot ayrımı (kullanıcı yönetimi büyürse basic-auth'tan oturuma geçiş burada düşünülür).
 
+## 6.5 Tuna ek direktifleri (2026-07-16, canlı steer)
+
+- **UI dili İNGİLİZCE** (tüm label/copy; veri değerleri Türkçe kalır, görüntü adları İngilizce:
+  aday=Lead, arastirildi=Researched, taslak=Draft, onay-bekliyor=Pending approval, gonderildi=Sent,
+  cevap=Replied, randevu=Meeting, red=Rejected, pas=Passed).
+- **Filtre UI sol panelde OLMAYACAK** (stili de beğenilmedi): header altı kompakt Linear-tarzı
+  chip/token şeridi + "+ Filter" popover + saved-view dropdown. Sol grafik panelinde sadece
+  fizik + lejant/istatistik.
+- **Kod modüllere bölünür** — arkadaşlar bölge sahipliğiyle çalışabilsin:
+  - `server/modules/{network,reach,gathering}/` (route+servis; `server/lib/` çekirdek: vault,
+    slug, git, config), `server/index.mjs` sadece bootstrap+mount.
+  - `web/src/core/` (api client, theme, router, layout: sidebar+copilot çekmecesi) +
+    `web/src/modules/{network,reach,gathering}/` (görünümler, bileşenler).
+  - `docs/CONTRIBUTING.md`: dev kurulumu, modül sahipliği, PR akışı (GitHub public repo:
+    tunapro1234/outpost; deploy bu sunucudan).
+- **Git remotes**: `origin` = gitea (iç), `github` = public. Her push iki remote'a.
+  `workspaces/` (veri) ve gerçek-veri screenshot'ları gitignore'da — kişisel veri public repoya
+  ASLA girmez.
+
 ## 7. Değişmezler (tekrar)
 İnsan onaysız mail yok · kendi relay'den probe yok · login'li scraping yok · /srv/probot salt-okur ·
 secrets repoya girmez · scrape düşük rate/polite.
