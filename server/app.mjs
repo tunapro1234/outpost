@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import { WorkspaceRegistry } from "./lib/config.mjs";
 import { apiError, serveWeb } from "./lib/http.mjs";
+import { copilotRoutes } from "./modules/copilot/routes.mjs";
+import { runClaude } from "./modules/copilot/runner.mjs";
 import { gatherRoutes } from "./modules/gather/routes.mjs";
 import { GatherRunner } from "./modules/gather/runner.mjs";
 import { GatherScheduler } from "./modules/gather/scheduler.mjs";
@@ -58,6 +60,7 @@ export async function createApp({
   watch = true,
   schedule = watch,
   gatherRunner = new GatherRunner(),
+  copilotRunner = runClaude,
   usersPath,
   htpasswdPath,
   logger = false,
@@ -75,6 +78,7 @@ export async function createApp({
   app.decorate("workspaceRegistry", registry);
   app.decorate("vaultIndex", registry.getDefault()?.index ?? null);
   app.decorate("gatherRunner", gatherRunner);
+  app.decorate("copilotRunner", copilotRunner);
   const gatherScheduler = new GatherScheduler(registry, gatherRunner, {
     onError: (error) => app.log.warn({ err: error }, "Gather scheduler error"),
   });
@@ -101,7 +105,13 @@ export async function createApp({
   app.get("/api/workspaces", async () => registry.list());
 
   await app.register(profileRoutes, { prefix: "/api", usersPath, htpasswdPath });
-  await mountApi(app, "/api/ws/:ws", scopedResolver(registry), { gatherRunner });
+  const resolveScopedWorkspace = scopedResolver(registry);
+  await mountApi(app, "/api/ws/:ws", resolveScopedWorkspace, { gatherRunner });
+  await app.register(copilotRoutes, {
+    prefix: "/api/ws/:ws",
+    resolveWorkspace: resolveScopedWorkspace,
+    runner: copilotRunner,
+  });
   await mountApi(app, "/api", defaultResolver(registry), {
     legacy: true,
     gatherRunner,

@@ -8,6 +8,7 @@ WorkingDirectory=/srv/outpost/outpost
 Environment=NODE_ENV=production
 Environment=OUTPOST_PORT=3002
 Environment=OUTPOST_WORKSPACES=/srv/outpost/workspaces
+Environment=OUTPOST_CLAUDE_BIN=/root/.local/bin/claude
 ExecStart=/usr/bin/node /srv/outpost/outpost/server/index.mjs
 Restart=always
 RestartSec=3
