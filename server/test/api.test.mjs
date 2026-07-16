@@ -64,6 +64,110 @@ test("entities, stats, detail ve health endpointleri sözleşme şeklini döndü
   assert.ok(stats.edgeCount > 0);
 });
 
+test("facets endpoint metadata sayaçlarını ve degree özetini indeksten üretir", async (t) => {
+  const app = await createApp({ vaultPath: EXAMPLE_VAULT, watch: false });
+  t.after(() => app.close());
+
+  const response = await app.inject({ url: "/api/facets" });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), {
+    subtypes: {
+      person: { kurucu: 1, mudur: 1, egitmen: 1 },
+      company: { atolye: 2, tedarikci: 1 },
+      institution: { vakif: 1, "bilim-merkezi": 1 },
+      school: { kolej: 1, lise: 1, universite: 1 },
+      channel: { fuar: 1, topluluk: 1 },
+    },
+    statuses: {
+      arastirildi: 2,
+      cevap: 2,
+      aday: 2,
+      gonderildi: 1,
+      "onay-bekliyor": 1,
+      pas: 1,
+      taslak: 1,
+      randevu: 1,
+    },
+    cities: { İstanbul: 4, Ankara: 3, İzmir: 4, Bursa: 1, Eskişehir: 1 },
+    mail_sources: { pattern: 1, yayimlanmis: 2, info: 3 },
+    degree: { max: 6, p99: 6 },
+  });
+});
+
+test("mails endpoint Mailler bölümünü parse eder ve null tarihler sonda kalır", async (t) => {
+  const vault = await temporaryDirectory();
+  t.after(() => fs.rm(vault, { recursive: true, force: true }));
+  await writeEntity(
+    vault,
+    "people",
+    "posta-kisisi",
+    `---
+type: person
+name: Posta Kişisi
+---
+## Mailler
+- 2026-07-14 → giden: Tanışma mesajı
+- 2026-07-16 <- gelen: Olumlu yanıt
+biçimsiz ama korunacak
+- 2026-07-15 -> giden: Takip mesajı
+
+## Notlar
+- 2026-12-31 → giden: Bu mail bölümünde değil
+`,
+  );
+  await writeEntity(
+    vault,
+    "companies",
+    "posta-sirketi",
+    `---
+type: company
+name: Posta Şirketi
+---
+## Mailler
+- 2026-12-30 → giden: Kişi olmadığı için görünmez
+`,
+  );
+  const app = await createApp({ vaultPath: vault, watch: false });
+  t.after(() => app.close());
+
+  const response = await app.inject({ url: "/api/mails" });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), [
+    {
+      person_id: "posta-kisisi",
+      person_name: "Posta Kişisi",
+      date: "2026-07-16",
+      direction: "in",
+      summary: "Olumlu yanıt",
+      raw: "- 2026-07-16 <- gelen: Olumlu yanıt",
+    },
+    {
+      person_id: "posta-kisisi",
+      person_name: "Posta Kişisi",
+      date: "2026-07-15",
+      direction: "out",
+      summary: "Takip mesajı",
+      raw: "- 2026-07-15 -> giden: Takip mesajı",
+    },
+    {
+      person_id: "posta-kisisi",
+      person_name: "Posta Kişisi",
+      date: "2026-07-14",
+      direction: "out",
+      summary: "Tanışma mesajı",
+      raw: "- 2026-07-14 → giden: Tanışma mesajı",
+    },
+    {
+      person_id: "posta-kisisi",
+      person_name: "Posta Kişisi",
+      date: null,
+      direction: "unknown",
+      summary: "biçimsiz ama korunacak",
+      raw: "biçimsiz ama korunacak",
+    },
+  ]);
+});
+
 test("PATCH partial merge bilinmeyen alanı, alan sırasını ve body'yi korur", async (t) => {
   const vault = await temporaryDirectory();
   t.after(() => fs.rm(vault, { recursive: true, force: true }));

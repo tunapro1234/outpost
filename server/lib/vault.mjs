@@ -45,6 +45,45 @@ function relationSections(body) {
   return { lines, sections };
 }
 
+export function extractMails(body) {
+  const lines = body.split(/\r?\n/);
+  const mails = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const heading = /^(#{2,6})\s+Mailler\s*$/iu.exec(lines[index].trim());
+    if (!heading) continue;
+
+    const level = heading[1].length;
+    let end = lines.length;
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      const nextHeading = /^(#{1,6})\s+/.exec(lines[cursor].trim());
+      if (nextHeading && nextHeading[1].length <= level) {
+        end = cursor;
+        break;
+      }
+    }
+
+    for (let cursor = index + 1; cursor < end; cursor += 1) {
+      const raw = lines[cursor];
+      if (!raw.trim()) continue;
+      const outgoing = /^-\s+(\d{4}-\d{2}-\d{2})\s+(?:→|->)\s+giden:\s*(.*)$/iu.exec(raw.trim());
+      const incoming = /^-\s+(\d{4}-\d{2}-\d{2})\s+(?:←|<-)\s+gelen:\s*(.*)$/iu.exec(raw.trim());
+      const parsed = outgoing ?? incoming;
+      mails.push(parsed
+        ? {
+            date: parsed[1],
+            direction: outgoing ? "out" : "in",
+            summary: parsed[2],
+            raw,
+          }
+        : { date: null, direction: "unknown", summary: raw.trim(), raw });
+    }
+    index = end - 1;
+  }
+
+  return mails;
+}
+
 export function extractLinks(body) {
   const relations = [];
   const mentions = [];
@@ -86,6 +125,7 @@ export function parseMarkdown(source, filePath = "") {
     body: parsed.content,
     filePath,
     links: extractLinks(parsed.content),
+    mails: extractMails(parsed.content),
   };
 }
 

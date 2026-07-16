@@ -32,6 +32,39 @@ function entityListItem(entity, index) {
   };
 }
 
+function increment(counter, value) {
+  if (typeof value !== "string" || !value.trim()) return;
+  counter[value] = (counter[value] ?? 0) + 1;
+}
+
+function facets(index) {
+  const subtypes = Object.fromEntries(
+    Object.keys(TYPE_DIRECTORIES).map((type) => [type, {}]),
+  );
+  const statuses = {};
+  const cities = {};
+  const mailSources = {};
+
+  for (const entity of index.entities.values()) {
+    increment(subtypes[entity.meta.type], entity.meta.subtype);
+    increment(statuses, entity.meta.status);
+    increment(cities, entity.meta.city);
+    increment(mailSources, entity.meta.mail_source);
+  }
+
+  const degrees = [...index.degrees.values()].sort((left, right) => left - right);
+  return {
+    subtypes,
+    statuses,
+    cities,
+    mail_sources: mailSources,
+    degree: {
+      max: degrees.at(-1) ?? 0,
+      p99: degrees.length ? degrees[Math.ceil(degrees.length * 0.99) - 1] : 0,
+    },
+  };
+}
+
 function contentType(filePath) {
   const types = {
     ".css": "text/css; charset=utf-8",
@@ -176,6 +209,29 @@ export async function createApp({
     const detail = index.entityDetail(request.params.id);
     if (!detail) return apiError(reply, 404, "Entity bulunamadı");
     return detail;
+  });
+
+  app.get("/api/facets", async () => facets(index));
+
+  app.get("/api/mails", async () => {
+    const mails = [];
+    for (const entity of index.entities.values()) {
+      if (entity.meta.type !== "person") continue;
+      for (const mail of entity.mails) {
+        mails.push({
+          person_id: entity.id,
+          person_name: entity.meta.name,
+          ...mail,
+        });
+      }
+    }
+    mails.sort((left, right) => {
+      if (left.date === null && right.date === null) return 0;
+      if (left.date === null) return 1;
+      if (right.date === null) return -1;
+      return right.date.localeCompare(left.date);
+    });
+    return mails;
   });
 
   app.patch("/api/entities/:id", async (request, reply) => {
