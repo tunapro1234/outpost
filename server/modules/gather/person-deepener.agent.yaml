@@ -1,0 +1,14 @@
+- id: person-deepener
+  name: Person Deepener
+  zone: gathering
+  model: gpt-5.6-luna
+  task: deepen-person
+  integration: web-search+browser
+  kind: enrich
+  target: person
+  params:
+    limit: 5
+    threshold: 10
+    budget: 20
+  schedule: manual
+  enabled: false

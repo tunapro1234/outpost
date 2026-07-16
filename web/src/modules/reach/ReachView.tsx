@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import type { EntityListItem, MailItem, ReachStats } from "@/core/types";
 import { STATUS_COLORS, STATUS_LABELS, TYPE_LABELS } from "@/core/theme";
 import { trNormalize } from "@/core/normalize";
+import DraftCard from "@/modules/mail/DraftCard";
+import { useMailDrafts } from "@/modules/mail/useMailDrafts";
 
 interface Props {
   mails: MailItem[] | null; // null = endpoint not available yet
@@ -10,7 +12,7 @@ interface Props {
   onOpenEntity: (id: string) => void;
 }
 
-type Tab = "sent" | "candidates" | "inbound";
+type Tab = "sent" | "drafts" | "candidates" | "inbound";
 type CandSort = "score" | "name";
 
 const CANDIDATE_SCORE_MIN = 15;
@@ -25,6 +27,8 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
   const [q, setQ] = useState("");
   const [candSort, setCandSort] = useState<CandSort>("score");
   const [candAsc, setCandAsc] = useState(false);
+  const [openDraftId, setOpenDraftId] = useState<string | null>(null);
+  const drafts = useMailDrafts();
 
   const list = mails ?? [];
   const sent = useMemo(() => list.filter((m) => m.direction === "out"), [list]);
@@ -75,6 +79,16 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
       ).includes(nq)
     );
   }, [inbound, q]);
+
+  const draftList = drafts.drafts;
+  const filteredDrafts = useMemo(() => {
+    const all = draftList ?? [];
+    const nq = trNormalize(q);
+    if (!nq) return all;
+    return all.filter((d) =>
+      trNormalize(`${d.person.name} ${d.company.name}`).includes(nq)
+    );
+  }, [draftList, q]);
 
   const KPI = ({ label, value, tone }: { label: string; value: string; tone?: string }) => (
     <div className="kpi">
@@ -143,6 +157,15 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
             {sent.length > 0 && <span className="tab-badge">{sent.length}</span>}
           </button>
           <button
+            className={tab === "drafts" ? "on" : ""}
+            onClick={() => setTab("drafts")}
+          >
+            Drafts
+            {draftList && draftList.length > 0 && (
+              <span className="tab-badge">{draftList.length}</span>
+            )}
+          </button>
+          <button
             className={tab === "candidates" ? "on" : ""}
             onClick={() => setTab("candidates")}
           >
@@ -162,20 +185,92 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
         <input
           className="np-input reach-search"
           placeholder={
-            tab === "candidates" ? "Search candidates…" : "Search mail…"
+            tab === "candidates"
+              ? "Search candidates…"
+              : tab === "drafts"
+                ? "Search drafts…"
+                : "Search mail…"
           }
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
 
-      {mails === null && tab !== "candidates" ? (
+      {mails === null && tab !== "candidates" && tab !== "drafts" ? (
         <div className="empty-state">
           <div className="es-title">Mail service coming online</div>
           <div className="es-sub">
             The workspace mail endpoint is not reachable yet.
           </div>
         </div>
+      ) : tab === "drafts" ? (
+        draftList === null ? (
+          <div className="empty-state">
+            <div className="es-title">Draft service coming online</div>
+            <div className="es-sub">
+              The draft approval endpoint is not reachable yet. Once the
+              mail-writer stages drafts they will queue up here for review.
+            </div>
+          </div>
+        ) : filteredDrafts.length === 0 ? (
+          <div className="empty-state">
+            <div className="es-title">No drafts awaiting approval</div>
+            <div className="es-sub">
+              Generated mail drafts appear here with their variants, score and
+              reasons — approve or reject each before anything is queued.
+            </div>
+          </div>
+        ) : (
+          <div className="md-rows">
+            {filteredDrafts.map((d) => {
+              const open = openDraftId === d.id;
+              const fu =
+                d.followup_stage === 1
+                  ? "Follow-up 1"
+                  : d.followup_stage === 2
+                    ? "Follow-up 2"
+                    : "New";
+              return (
+                <div
+                  key={d.id}
+                  className={`md-rowwrap ${open ? "open" : ""}`}
+                >
+                  <button
+                    className="md-row"
+                    onClick={() => setOpenDraftId(open ? null : d.id)}
+                  >
+                    <span className="md-row-caret">{open ? "▾" : "▸"}</span>
+                    <span className="md-row-person">{d.person.name}</span>
+                    <span className="md-row-company">{d.company.name}</span>
+                    <span className="md-row-variants">
+                      {d.variants.length} variant
+                      {d.variants.length === 1 ? "" : "s"}
+                    </span>
+                    <span className="md-row-status">{fu}</span>
+                    <span className="md-row-score">{Math.round(d.score)}</span>
+                  </button>
+                  {open && (
+                    <div className="md-rowbody">
+                      <DraftCard
+                        draft={d}
+                        busy={drafts.busyId === d.id}
+                        onApprove={async (id, payload) => {
+                          await drafts.approve(id, payload);
+                          setOpenDraftId(null);
+                        }}
+                        onReject={async (id, reason) => {
+                          await drafts.reject(id, reason);
+                          setOpenDraftId(null);
+                        }}
+                        onOpenEntity={onOpenEntity}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )
       ) : tab === "sent" ? (
         filteredSent.length === 0 ? (
           <div className="empty-state">

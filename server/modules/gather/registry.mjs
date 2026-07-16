@@ -3,7 +3,13 @@ import path from "node:path";
 import yaml from "js-yaml";
 
 const VALID_ZONES = new Set(["gathering", "network"]);
-const VALID_TASKS = new Set(["scrape-classify", "dedup-review", "link-discovery"]);
+const VALID_TASKS = new Set([
+  "scrape-classify",
+  "dedup-review",
+  "link-discovery",
+  "deepen-person",
+  "write-mail",
+]);
 export const GATHER_KINDS = ["discover-company", "discover-person", "enrich"];
 const VALID_KINDS = new Set(GATHER_KINDS);
 const VALID_PERSON_SOURCES = new Set(["company", "standalone"]);
@@ -47,6 +53,9 @@ function cleanAgent(raw, index, filePath) {
       fail(filePath, index, "source company veya standalone olmalı");
     }
   }
+  if (raw.target !== undefined && raw.target !== "person") {
+    fail(filePath, index, "target yalnızca person olabilir");
+  }
   if (
     raw.params !== undefined &&
     (!raw.params || typeof raw.params !== "object" || Array.isArray(raw.params))
@@ -71,6 +80,7 @@ function cleanAgent(raw, index, filePath) {
     task: raw.task,
     integration: raw.integration.trim(),
     kind,
+    ...(raw.target !== undefined ? { target: raw.target } : {}),
     ...(raw.source !== undefined ? { source: raw.source } : {}),
     params: { ...(raw.params ?? {}) },
     schedule: raw.schedule?.trim() || "manual",

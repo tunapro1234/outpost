@@ -157,6 +157,26 @@ export interface ReachStats {
   pendingFollowUp: number;
 }
 
+// ---- mail drafts awaiting approval (SPEC-MAILPIPE "Draft onay API kontratı")
+export interface MailDraftVariant {
+  subject: string;
+  body: string;
+  rationale: string;
+  tone: string;
+}
+
+export interface MailDraft {
+  id: string;
+  person: { id: string; name: string };
+  company: { id: string; name: string };
+  score: number;
+  reasons: string[];
+  variants: MailDraftVariant[];
+  created_at: string;
+  followup_stage: 0 | 1 | 2;
+  status: "pending";
+}
+
 // ---- overview metrics (server GET /api/ws/:ws/metrics) ------------------
 export interface MetricsDailyPoint {
   date: string; // YYYY-MM-DD

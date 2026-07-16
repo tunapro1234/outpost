@@ -11,6 +11,8 @@ import { gatherRoutes } from "./modules/gather/routes.mjs";
 import { GatherRunner } from "./modules/gather/runner.mjs";
 import { GatherScheduler } from "./modules/gather/scheduler.mjs";
 import { mailRoutes } from "./modules/mail/routes.mjs";
+import { mailerRoutes } from "./modules/mailer/routes.mjs";
+import { FollowUpScheduler } from "./modules/mailer/scheduler.mjs";
 import {
   DEFAULT_MAIL_DATA,
   DEFAULT_MAIL_INTERVAL_MS,
@@ -73,6 +75,9 @@ export async function createApp({
   mailDataPath = process.env.OUTPOST_MAIL_DATA ?? DEFAULT_MAIL_DATA,
   mailIntervalMs = DEFAULT_MAIL_INTERVAL_MS,
   mailScan,
+  followupSchedule = schedule,
+  followupIntervalMs,
+  followUpRun,
   gatherRunner = new GatherRunner(),
   copilotRunner = runClaude,
   metricsNow,
@@ -113,11 +118,22 @@ export async function createApp({
     ...(mailScan ? { scan: mailScan } : {}),
     onWarn: (error, context) => app.log.warn({ err: error }, context),
   });
+  const followUpScheduler = new FollowUpScheduler(registry, {
+    ...(followupIntervalMs ? { intervalMs: followupIntervalMs } : {}),
+    ...(followUpRun ? { run: followUpRun } : {}),
+    onError: (error, workspace) => app.log.warn(
+      { err: error, workspace: workspace?.id },
+      "Follow-up scheduler error",
+    ),
+  });
   app.decorate("mailIngestor", mailIngestor);
+  app.decorate("followUpScheduler", followUpScheduler);
   if (schedule) gatherScheduler.start();
+  if (followupSchedule) followUpScheduler.start();
   app.addHook("onClose", async () => {
     controls.close();
     gatherScheduler.stop();
+    await followUpScheduler.stop();
     await mailIngestor.stop();
     await registry.close();
   });
@@ -161,6 +177,10 @@ export async function createApp({
     prefix: "/api/ws/:ws",
     resolveWorkspace: resolveScopedWorkspace,
     ingestor: mailIngestor,
+  });
+  await app.register(mailerRoutes, {
+    prefix: "/api/ws/:ws",
+    resolveWorkspace: resolveScopedWorkspace,
   });
   await mountApi(app, "/api", defaultResolver(registry), {
     legacy: true,

@@ -8,6 +8,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRunRecord, writeRun } from "./journal.mjs";
 import { findAgent, readAgentRegistry } from "./registry.mjs";
 import { writeStageProposal } from "./stage.mjs";
+import { runPersonDeepener } from "./person-deepener.mjs";
+import { runMailWriterCycle } from "../mailer/writer.mjs";
 
 const MODULE_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const CLASSIFY_SCHEMA = path.join(MODULE_DIRECTORY, "classify-schema.json");
@@ -422,12 +424,16 @@ export class GatherRunner {
     writeStage = writeStageProposal,
     sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
     now = () => new Date(),
+    deepenPerson = runPersonDeepener,
+    writeMail = runMailWriterCycle,
   } = {}) {
     this.classify = classify;
     this.openBrowser = openBrowser;
     this.writeStage = writeStage;
     this.sleep = sleep;
     this.now = now;
+    this.deepenPerson = deepenPerson;
+    this.writeMail = writeMail;
     this.active = new Map();
     this.activities = new Map();
   }
@@ -487,6 +493,31 @@ export class GatherRunner {
   async execute(workspace, agent, run) {
     const log = [];
     try {
+      if (agent.task === "deepen-person") {
+        const results = await this.deepenPerson({
+          workspace,
+          agent,
+          openBrowser: this.openBrowser,
+          now: this.now,
+        });
+        run.items_in = results.length;
+        run.items_out = results.length;
+        run.staged = results.filter((item) => item.stage).length;
+        run.status = "ok";
+        log.push(...results.map((item) => `${item.person_id}: depth ${item.result.completed.length}, stage=${item.stage ?? "none"}`));
+        return run;
+      }
+      if (agent.task === "write-mail") {
+        const result = await this.writeMail({ workspace, agent, now: this.now });
+        run.items_in = result.selected;
+        run.items_out = result.drafted;
+        run.staged = result.drafted;
+        run.warnings.push(...result.warnings);
+        run.note = result.note ?? null;
+        run.status = "ok";
+        log.push(...result.drafts.map((item) => `${item.person_id}: ${item.id} stage'e yazıldı`));
+        return run;
+      }
       if (agent.task !== "scrape-classify") {
         run.note = STUB_NOTES[agent.task] ?? "not implemented";
         run.status = "ok";

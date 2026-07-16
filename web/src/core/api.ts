@@ -9,6 +9,7 @@ import type {
   GatherOverview,
   GraphData,
   GraphNode,
+  MailDraft,
   MailItem,
   ReachStats,
   Metrics,
@@ -241,6 +242,50 @@ export const api = {
     } catch {
       return null;
     }
+  },
+
+  // Mail drafts awaiting approval. Returns null on 404 (endpoint not deployed
+  // yet) vs [] (no drafts) so the approval surfaces can hide gracefully.
+  async maildrafts(): Promise<MailDraft[] | null> {
+    if (MOCK) return [];
+    try {
+      const res = await fetch(`${workspaceBase()}/maildrafts`);
+      if (!res.ok) return null;
+      const body = (await res.json()) as { drafts?: MailDraft[] } | MailDraft[];
+      return Array.isArray(body) ? body : body.drafts ?? [];
+    } catch {
+      return null;
+    }
+  },
+
+  // Approve a draft: chosen variant + optionally edited subject/body. Resolves
+  // on success; throws Error(message) on failure so the card can surface it.
+  async approveMailDraft(
+    id: string,
+    payload: { variant: number; subject?: string; body?: string }
+  ): Promise<{ ok: boolean }> {
+    return json<{ ok: boolean }>(
+      `${workspaceBase()}/maildrafts/${encodeURIComponent(id)}/approve`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  async rejectMailDraft(
+    id: string,
+    reason?: string
+  ): Promise<{ ok: boolean }> {
+    return json<{ ok: boolean }>(
+      `${workspaceBase()}/maildrafts/${encodeURIComponent(id)}/reject`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(reason ? { reason } : {}),
+      }
+    );
   },
 
   // Overview metrics. Returns null on 404 / error (endpoint may still be

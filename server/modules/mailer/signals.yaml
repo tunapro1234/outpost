@@ -1,0 +1,30 @@
+score_weights:
+  company_importance: 0.40
+  authority: 0.25
+  depth: 0.20
+  hook_bonus: 0.15
+
+authority_scores:
+  founder: 100
+  exec: 80
+  manager: 60
+  staff: 35
+  unknown: 15
+
+depth_scores:
+  scanned: 100
+  partial: 50
+  unscanned: 0
+
+signal_weights:
+  hook: 34
+  advantage_school: 1
+  common_connection: 34
+  cap: 100
+
+# Okul değeri hook bonusuna doğrudan eklenir; multiplier workspace'ten değiştirilebilir.
+advantage_schools:
+  Boğaziçi: 100
+  İTÜ: 60
+  ODTÜ: 60
+  GTÜ: 50

@@ -75,6 +75,7 @@ export async function listStage(workspace) {
   const proposals = [];
   for (const file of await markdownFiles(directory)) {
     const parsed = parseMarkdown(await fs.readFile(path.join(directory, file), "utf8"), file);
+    if (parsed.meta.kind === "mail-draft") continue;
     proposals.push({
       file,
       kind: stageKind(parsed.meta.kind),

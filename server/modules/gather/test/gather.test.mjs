@@ -17,6 +17,7 @@ import {
 } from "../runner.mjs";
 import { GatherScheduler, cronMatches } from "../scheduler.mjs";
 import { decideStage, listStage } from "../stage.mjs";
+import { expectedGain, runDeepeningPolicy } from "../person-deepener.mjs";
 
 async function fixtureWorkspace(t) {
   const root = await temporaryDirectory("outpost-gather-");
@@ -216,6 +217,8 @@ test("agent registry kind/source doğrular ve repo şablonlarını okur", async 
     "company-scout.agent.yaml",
     "people-finder.agent.yaml",
     "person-scout.agent.yaml",
+    "person-deepener.agent.yaml",
+    "mail-writer.agent.yaml",
   ];
   const templates = await Promise.all(templateNames.map((name) =>
     fs.readFile(new URL(`../${name}`, import.meta.url), "utf8")));
@@ -248,6 +251,8 @@ test("agent registry kind/source doğrular ve repo şablonlarını okur", async 
       enabled: false,
       schedule: "manual",
     },
+    { id: "person-deepener", kind: "enrich", enabled: false, schedule: "manual" },
+    { id: "mail-writer", kind: "enrich", enabled: false, schedule: "manual" },
   ]);
 
   await fs.writeFile(
@@ -262,6 +267,56 @@ test("agent registry kind/source doğrular ve repo şablonlarını okur", async 
     "utf8",
   );
   await assert.rejects(readAgentRegistry(workspace), /kind discover-company/);
+});
+
+test("person deepener okul→yetki→hook sırasını izler, avantajlı okul bütçesini ikiye katlar", async () => {
+  const person = { meta: { name: "Ada Aday" } };
+  const signals = { advantage_schools: { "Boğaziçi": 100, "İTÜ": 60 } };
+  const calls = [];
+  const fixture = {
+    school: { school: "Boğaziçi Üniversitesi", summary: "okul doğrulandı" },
+    authority: { authority: "exec", role: "Teknoloji Direktörü" },
+    hooks: { hooks: ["FRC mentoru"], sources: ["https://example.com/news"] },
+  };
+  const result = await runDeepeningPolicy({
+    person,
+    importance: 80,
+    signals,
+    budget: 20,
+    threshold: 10,
+    source: { search: async (step) => { calls.push(step); return fixture[step]; } },
+  });
+  assert.deepEqual(calls, ["school", "authority", "hooks"]);
+  assert.equal(result.budget, 40);
+  assert.equal(result.spent, 28);
+  assert.deepEqual(result.findings.hooks, ["FRC mentoru"]);
+  assert.equal(expectedGain(80, { school: null, authority: "unknown", hooks: [] }, 4), 76);
+
+  const ordinaryCalls = [];
+  const ordinary = await runDeepeningPolicy({
+    person,
+    importance: 80,
+    signals,
+    budget: 20,
+    threshold: 10,
+    source: { search: async (step) => {
+      ordinaryCalls.push(step);
+      return step === "school" ? { school: "Başka Üniversite" } : { authority: "manager" };
+    } },
+  });
+  assert.deepEqual(ordinaryCalls, ["school", "authority"]);
+  assert.equal(ordinary.trace.at(-1).reason, "budget");
+
+  const stopped = await runDeepeningPolicy({
+    person,
+    importance: 10,
+    signals,
+    budget: 20,
+    threshold: 10,
+    source: { search: async () => assert.fail("eşik altında kaynak çağrılmamalı") },
+  });
+  assert.equal(stopped.completed.length, 0);
+  assert.equal(stopped.trace[0].reason, "threshold");
 });
 
 test("run journal gerçek ISO zamanlı kaydı yazar, listeler ve id ile okur", async (t) => {

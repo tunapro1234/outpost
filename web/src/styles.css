@@ -4589,3 +4589,309 @@ table.grid td.num {
 .md > :first-child {
   margin-top: 0;
 }
+
+/* ==========================================================================
+   Mail drafts — approval surface (Overview section + Reach "Drafts" tab)
+   Shares the neutral-dark + white token set with Gather staging.
+   ========================================================================== */
+
+/* ---- Overview "Mails awaiting approval" section ---- */
+.md-section {
+  margin: 22px 0 26px;
+}
+.md-section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.md-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+.md-section-count {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  background: var(--surface-3);
+  color: var(--text-dim);
+  border-radius: 20px;
+  padding: 1px 8px;
+  min-width: 18px;
+  text-align: center;
+}
+.md-empty {
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+.md-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 14px;
+}
+
+/* ---- the approval card itself ---- */
+.md-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.md-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.md-who {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.md-person {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.md-at {
+  color: var(--text-faint);
+}
+.md-company {
+  font-size: 13px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+button.md-company {
+  padding: 0;
+}
+.md-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.md-fu {
+  font-size: 10.5px;
+  font-weight: 550;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--warn);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1px 7px;
+}
+.md-score {
+  font-size: 15px;
+  font-weight: 680;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+.md-reasons {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.md-reasons li {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+/* variant switcher row */
+.md-variant-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.md-variant-seg {
+  box-shadow: none;
+  flex-wrap: wrap;
+}
+.md-edit-toggle {
+  margin-left: auto;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 11px;
+  border-radius: 7px;
+  transition: border-color 0.14s, color 0.14s;
+}
+.md-edit-toggle:hover {
+  border-color: var(--text-faint);
+  color: var(--text);
+}
+
+/* variant content */
+.md-variant {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.md-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.md-field-k {
+  text-transform: uppercase;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+.md-subject {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.45;
+}
+.md-body {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.md-input {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: var(--font);
+  font-size: 12.5px;
+  line-height: 1.55;
+  resize: vertical;
+}
+.md-input:focus {
+  outline: none;
+  border-color: var(--text-faint);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+.md-subject-input {
+  font-weight: 600;
+}
+.md-body-input {
+  min-height: 150px;
+}
+.md-rationale {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-left: 2px solid var(--line);
+  padding-left: 10px;
+}
+.md-rationale-text {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-dim);
+  font-style: italic;
+}
+.md-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+.md-actions .btn {
+  flex: 1;
+}
+
+/* ---- Reach "Drafts" tab: compact rows that expand into the card ---- */
+.md-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.md-rowwrap {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+  transition: border-color 0.14s;
+}
+.md-rowwrap.open {
+  border-color: var(--text-faint);
+}
+.md-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  transition: background 0.14s;
+}
+.md-row:hover {
+  background: var(--surface-2);
+}
+.md-row-caret {
+  color: var(--text-faint);
+  font-size: 11px;
+  width: 10px;
+  flex-shrink: 0;
+}
+.md-row-person {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+}
+.md-row-company {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.md-row-variants {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.md-row-status {
+  font-size: 10.5px;
+  font-weight: 550;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1px 7px;
+  flex-shrink: 0;
+}
+.md-row-score {
+  font-size: 14px;
+  font-weight: 680;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  min-width: 22px;
+  text-align: right;
+}
+.md-rowbody {
+  border-top: 1px solid var(--line-soft);
+  padding: 14px;
+  background: var(--surface-2);
+}
+.md-rowbody .md-card {
+  border: none;
+  background: transparent;
+  padding: 0;
+}

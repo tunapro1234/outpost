@@ -1,0 +1,12 @@
+- id: mail-writer
+  name: Mail Writer
+  zone: gathering
+  model: gpt-5.6-luna
+  task: write-mail
+  integration: claude+codex
+  kind: enrich
+  target: person
+  params:
+    limit: 5
+  schedule: manual
+  enabled: false

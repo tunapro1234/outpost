@@ -4,6 +4,8 @@ import type { NavKey } from "@/layout/Sidebar";
 import type { ThemeName } from "@/core/theme";
 import { TYPE_LABELS, TYPE_ORDER, typeColors } from "@/core/theme";
 import { api } from "@/core/api";
+import DraftCard from "@/modules/mail/DraftCard";
+import { useMailDrafts } from "@/modules/mail/useMailDrafts";
 
 interface Props {
   theme: ThemeName;
@@ -61,6 +63,7 @@ export default function OverviewView({
   const TC = typeColors(theme);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(true);
+  const drafts = useMailDrafts();
 
   useEffect(() => {
     let alive = true;
@@ -156,6 +159,37 @@ export default function OverviewView({
     { k: "Staged", v: fmtNum(metrics.gather.staged), tone: "var(--ok)" },
   ];
 
+  // Mail approval queue. Hidden entirely while the endpoint is absent (null);
+  // a quiet one-line note when reachable but empty.
+  const draftList = drafts.drafts;
+  const draftsSection =
+    draftList === null ? null : (
+      <section className="md-section">
+        <div className="md-section-head">
+          <h3 className="md-section-title">Mails awaiting approval</h3>
+          {draftList.length > 0 && (
+            <span className="md-section-count">{draftList.length}</span>
+          )}
+        </div>
+        {draftList.length === 0 ? (
+          <div className="md-empty">No drafts awaiting approval.</div>
+        ) : (
+          <div className="md-grid">
+            {draftList.map((d) => (
+              <DraftCard
+                key={d.id}
+                draft={d}
+                busy={drafts.busyId === d.id}
+                onApprove={drafts.approve}
+                onReject={drafts.reject}
+                onOpenEntity={onOpenEntity}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+    );
+
   const daily30Total = daily.reduce((s, d) => s + d.count, 0);
   const rangeLabel =
     o.firstMailAt && o.lastMailAt
@@ -181,6 +215,8 @@ export default function OverviewView({
           </div>
         ))}
       </div>
+
+      {draftsSection}
 
       <div className="ov-grid">
         {/* daily mail bar chart */}

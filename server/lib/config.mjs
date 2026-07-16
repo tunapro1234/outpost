@@ -67,6 +67,7 @@ async function seedDemoWorkspace(root, exampleVaultPath) {
 function workspaceRecord(id, directory, config, vaultPath) {
   const mailLogPath = path.resolve(directory, "mails", "log.jsonl");
   const mailIngestedPath = path.resolve(directory, "mails", "ingested.jsonl");
+  const mailsOutboxPath = path.resolve(directory, "mails", "outbox.jsonl");
   return {
     id,
     name: typeof config.name === "string" && config.name.trim() ? config.name.trim() : id,
@@ -75,6 +76,7 @@ function workspaceRecord(id, directory, config, vaultPath) {
     vaultPath: path.resolve(vaultPath ?? path.join(directory, "vault")),
     mailLogPath,
     mailIngestedPath,
+    mailsOutboxPath,
     mailsPath: mailLogPath,
     index: null,
   };
