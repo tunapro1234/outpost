@@ -1,0 +1,9 @@
+node_modules/
+data/
+dist/
+out/
+.env
+.env.*
+*.log
+.npm-cache/
+.playwright-browsers/

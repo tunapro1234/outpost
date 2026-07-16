@@ -1,0 +1,33 @@
+{
+  "nodes": [
+    {"id": "robotika-atolyesi", "name": "Robotika Atölyesi", "type": "company", "subtype": "atolye", "status": "gonderildi", "score": 28.5, "degree": 4},
+    {"id": "deniz-yildizi-koleji", "name": "Deniz Yıldızı Koleji", "type": "school", "subtype": "kolej", "status": "aday", "score": 21.0, "degree": 2},
+    {"id": "sehir-bilim-merkezi", "name": "Şehir Bilim Merkezi", "type": "institution", "subtype": "bilim-merkezi", "status": "cevap", "score": 30.0, "degree": 3},
+    {"id": "mehmet-kaya", "name": "Mehmet Kaya", "type": "person", "subtype": "kurucu", "status": null, "score": null, "degree": 4},
+    {"id": "elif-demir", "name": "Elif Demir", "type": "person", "subtype": "egitmen", "status": null, "score": null, "degree": 3},
+    {"id": "bogazici-universitesi", "name": "Boğaziçi Üniversitesi", "type": "school", "subtype": "universite", "status": null, "score": null, "degree": 2},
+    {"id": "teknokent-vakfi", "name": "Teknokent Vakfı", "type": "institution", "subtype": "vakif", "status": "arastirildi", "score": 18.0, "degree": 2},
+    {"id": "maker-fest", "name": "Maker Fest", "type": "channel", "subtype": "fuar", "status": null, "score": null, "degree": 3},
+    {"id": "robot-yarismasi-ligi", "name": "Robot Yarışması Ligi", "type": "channel", "subtype": "yarisma", "status": null, "score": null, "degree": 2},
+    {"id": "parca-tedarik-as", "name": "Parça Tedarik AŞ", "type": "company", "subtype": "tedarikci", "status": "pas", "score": 9.0, "degree": 1},
+    {"id": "ayse-yilmaz", "name": "Ayşe Yılmaz", "type": "person", "subtype": "mudur", "status": null, "score": null, "degree": 2},
+    {"id": "kadikoy-maker-toplulugu", "name": "Kadıköy Maker Topluluğu", "type": "channel", "subtype": "topluluk", "status": null, "score": null, "degree": 2}
+  ],
+  "edges": [
+    {"source": "mehmet-kaya", "target": "robotika-atolyesi", "label": "kurucusu", "kind": "relation"},
+    {"source": "mehmet-kaya", "target": "bogazici-universitesi", "label": "mezunu (2015)", "kind": "relation"},
+    {"source": "mehmet-kaya", "target": "maker-fest", "label": "konuşmacı", "kind": "relation"},
+    {"source": "elif-demir", "target": "robotika-atolyesi", "label": "çalışıyor", "kind": "relation"},
+    {"source": "elif-demir", "target": "sehir-bilim-merkezi", "label": "eski çalışan", "kind": "relation"},
+    {"source": "elif-demir", "target": "mehmet-kaya", "label": "takipleşiyor", "kind": "relation"},
+    {"source": "ayse-yilmaz", "target": "deniz-yildizi-koleji", "label": "müdürü", "kind": "relation"},
+    {"source": "ayse-yilmaz", "target": "bogazici-universitesi", "label": "mezunu (2008)", "kind": "relation"},
+    {"source": "robotika-atolyesi", "target": "robot-yarismasi-ligi", "label": "takım çıkarıyor", "kind": "relation"},
+    {"source": "deniz-yildizi-koleji", "target": "robot-yarismasi-ligi", "label": "katılımcı", "kind": "relation"},
+    {"source": "sehir-bilim-merkezi", "target": "maker-fest", "label": "ev sahibi", "kind": "relation"},
+    {"source": "teknokent-vakfi", "target": "maker-fest", "label": "sponsor", "kind": "relation"},
+    {"source": "teknokent-vakfi", "target": "kadikoy-maker-toplulugu", "label": "destekçi", "kind": "relation"},
+    {"source": "robotika-atolyesi", "target": "parca-tedarik-as", "label": "müşterisi", "kind": "mention"},
+    {"source": "kadikoy-maker-toplulugu", "target": "sehir-bilim-merkezi", "label": null, "kind": "mention"}
+  ]
+}

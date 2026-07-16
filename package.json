@@ -1,0 +1,21 @@
+{
+  "name": "outpost",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Graf-merkezli outreach aracı: markdown vault + ilişki grafı + araştırma scraper'ı",
+  "type": "module",
+  "workspaces": [
+    "server",
+    "web",
+    "scraper"
+  ],
+  "scripts": {
+    "dev": "node server/index.mjs",
+    "build": "npm run build -w web",
+    "test": "npm test -w server",
+    "import": "node server/importer.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "robotika-atolyesi": {
+    "id": "robotika-atolyesi",
+    "meta": {
+      "type": "company", "name": "Robotika Atölyesi", "subtype": "atolye",
+      "status": "gonderildi", "score": 28.5, "city": "İstanbul", "district": "Kadıköy",
+      "mail": "info@robotika.example", "mail_source": "yayimlanmis", "phone": "0532 000 00 00",
+      "site": "robotika.example", "instagram": "@robotikaatolyesi",
+      "hook": "LEGO SPIKE kalktı, Arduino'ya geçiş arıyorlar",
+      "source_url": "https://robotika.example/hakkimizda", "found_date": "2026-07-01"
+    },
+    "body": "Kadıköy'de 2018'den beri çocuklara robotik eğitimi veren atölye. İki şubesi var, yaklaşık 120 öğrenci.\n\n## İlişkiler\n- [[Mehmet Kaya]] — kurucusu\n- [[Robot Yarışması Ligi]] — takım çıkarıyor\n\n## Outreach\n- 2026-07-10 mail gönderildi (kanca: SPIKE geçişi)\n",
+    "relations": [
+      {"id": "mehmet-kaya", "name": "Mehmet Kaya", "type": "person", "label": "kurucusu", "kind": "relation", "direction": "in"},
+      {"id": "elif-demir", "name": "Elif Demir", "type": "person", "label": "çalışıyor", "kind": "relation", "direction": "in"},
+      {"id": "robot-yarismasi-ligi", "name": "Robot Yarışması Ligi", "type": "channel", "label": "takım çıkarıyor", "kind": "relation", "direction": "out"},
+      {"id": "parca-tedarik-as", "name": "Parça Tedarik AŞ", "type": "company", "label": "müşterisi", "kind": "mention", "direction": "out"}
+    ],
+    "unresolved": []
+  },
+  "mehmet-kaya": {
+    "id": "mehmet-kaya",
+    "meta": {
+      "type": "person", "name": "Mehmet Kaya", "subtype": "kurucu", "role": "kurucu",
+      "closeness": 1, "mail": "mehmet@robotika.example", "mail_source": "pattern",
+      "linkedin": "linkedin.com/in/mehmetkaya", "instagram": "@mehmetkaya",
+      "alumni_school": "Boğaziçi Üniversitesi", "alumni_year": "2015", "alumni_dept": "Makine"
+    },
+    "body": "Robotika Atölyesi'nin kurucusu. Maker camiasında aktif, Maker Fest'te düzenli konuşmacı.\n\n## İlişkiler\n- [[Robotika Atölyesi]] — kurucusu\n- [[Boğaziçi Üniversitesi]] — mezunu (2015)\n- [[Maker Fest]] — konuşmacı\n\n## Mailler\n- 2026-07-10 → giden: SPIKE geçişi hakkında\n",
+    "relations": [
+      {"id": "robotika-atolyesi", "name": "Robotika Atölyesi", "type": "company", "label": "kurucusu", "kind": "relation", "direction": "out"},
+      {"id": "bogazici-universitesi", "name": "Boğaziçi Üniversitesi", "type": "school", "label": "mezunu (2015)", "kind": "relation", "direction": "out"},
+      {"id": "maker-fest", "name": "Maker Fest", "type": "channel", "label": "konuşmacı", "kind": "relation", "direction": "out"},
+      {"id": "elif-demir", "name": "Elif Demir", "type": "person", "label": "takipleşiyor", "kind": "relation", "direction": "in"}
+    ],
+    "unresolved": ["İTÜ Robot Kulübü"]
+  }
+}
