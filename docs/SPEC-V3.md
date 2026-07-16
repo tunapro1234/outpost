@@ -65,9 +65,21 @@ pipeline'ında işledi; Tuna isterse tam-opus'a çevrilir). Copilot = opus-4.8.
 
 ## 4. UI — yan panel navigasyon
 
-**Sol dar sidebar** (ikon+etiket): üstte **Gathering / Network / Reach**; altta ayarlar bölgesi:
-**Entegrasyonlar** (şimdilik yeter); en altta **workspace rozeti** (probot) — tık: workspace
-listesi (şimdilik tek + "yakında: compec").
+**Sol yan panel** (kalıcı dikey navigasyon; Tuna'nın kesin listesi, 2026-07-16 rev2 — alt alta,
+İngilizce, bu sıra):
+```
+Network
+Reach
+Gather
+─────────
+Integrations
+Profile
+Workspace
+```
+En altta aktif workspace rozeti (probot). Daraltılabilir (ikon-only), default açık.
+**Fizik ayarları sol panelde DEĞİL** — Obsidian graph ayarları gibi ağ görünümü içinde FLOATING,
+sürüklenebilir/katlanabilir pencere (charge, link distance, gravity, collision, velocity decay,
+Freeze/Reset; localStorage).
 
 - **Network** = v2'deki graf + liste; header ORTASINDA büyük, vurgulu `Ağ | Liste` segment
   kontrolü (Tuna: ikisi ayrı iş görür, ikisi de birinci sınıf). Liste güçlendirmesi: mail kolonları
