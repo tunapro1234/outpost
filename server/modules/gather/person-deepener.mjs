@@ -6,7 +6,7 @@ import { codexServiceTierArgs } from "../../lib/codex.mjs";
 import { serializeMarkdown } from "../../lib/vault.mjs";
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
 import { companyImportance, loadSignals, resolveCompany } from "../mailer/service.mjs";
-import { verifyMailbox } from "../mailer/mailprobe.mjs";
+import { verifyMailbox, discoverMailbox } from "../mailer/mailprobe.mjs";
 
 export const DEEPEN_STEPS = [
   { id: "school", cost: 4 },
@@ -125,9 +125,10 @@ export async function runDeepeningPolicy({
   threshold = 10,
   costs = {},
 }) {
-  const VERIFIED_MAIL = new Set(["yayimlanmis", "verified", "manual", "resmi"]);
+  const VERIFIED_MAIL = new Set(["yayimlanmis", "verified", "manual", "resmi", "probe"]);
   let findings = {
     __company: company,
+    __discover: discoverMailbox,
     school: person.meta.school ?? null,
     mail: VERIFIED_MAIL.has(String(person.meta.mail_source ?? "").toLowerCase())
       ? (person.meta.mail ?? null)
@@ -164,15 +165,29 @@ export async function runDeepeningPolicy({
       activeBudget = budget * 2;
     }
   }
-  // Yayımlanmış adres bulunamadıysa ad.soyad@domain pattern adayını doldur
-  // (doğrulanmamış; sistem bunu published saymaz).
+  // Yayımlanmış adres bulunamadıysa aday varyantları (ad.soyad@ / ad@ / soyad@)
+  // TEK SMTP oturumunda probe et: ayırt eden sunucuda gerçeği seç, catch-all/
+  // blocked'da tümünü "gönderilecek" olarak sakla (Tuna: tutan tutar).
   if (!hasText(findings.mail)) {
-    const guess = patternMail(person.meta.name, findings.__company);
-    if (guess) {
-      findings = { ...findings, mail: guess, mail_pattern: true };
+    const domain = companyDomain(findings.__company);
+    if (domain && findings.__probe !== false) {
+      try {
+        const disc = await findings.__discover(person.meta.name, domain);
+        if (disc.mail) {
+          findings = {
+            ...findings,
+            mail: disc.mail,
+            mail_probe: disc.probe_state,
+            mail_verified: Boolean(disc.verified),
+            mail_pattern: !disc.verified,
+            mail_candidates: disc.candidates ?? [],
+            mail_send_all: Boolean(disc.sendAll),
+          };
+        }
+      } catch { /* probe başarısızsa mailsiz kal */ }
     }
   }
-  const { __company, ...clean } = findings;
+  const { __company, __discover, __probe, ...clean } = findings;
   return { findings: clean, completed, trace, spent, budget: activeBudget };
 }
 
@@ -316,11 +331,18 @@ function proposedFields(person, result) {
     if (hasText(result.findings.mail_source_url)) {
       fields.mail_source_url = result.findings.mail_source_url.trim();
     }
+    // probe-doğrulanmış adres artık "verified" sayılır (pattern değil).
+    fields.mail_source = result.findings.mail_verified ? "probe"
+      : (result.findings.mail_pattern ? "pattern" : "yayimlanmis");
     if (hasText(result.findings.mail_probe)) {
       fields.mail_probe = result.findings.mail_probe;
       if (Number.isFinite(result.findings.mail_probe_code)) {
         fields.mail_probe_code = result.findings.mail_probe_code;
       }
+    }
+    if (Array.isArray(result.findings.mail_candidates) && result.findings.mail_candidates.length > 1) {
+      fields.mail_candidates = result.findings.mail_candidates;
+      fields.mail_send_all = Boolean(result.findings.mail_send_all);
     }
   }
   return fields;
@@ -372,9 +394,9 @@ export async function runPersonDeepener({
         threshold: Number.isFinite(agent.params.threshold) ? agent.params.threshold : 10,
         costs: agent.params.costs ?? {},
       });
-      // Bulunan/tahmin edilen adresi RCPT probe ile doğrula (Tuna 2026-07-17:
-      // gönderilebilir mailler genel olarak probe'lanır).
-      if (result.findings.mail && agent.params.probe !== false) {
+      // Yayımlanmış (web'den bulunan) adres henüz probe'lanmadıysa doğrula.
+      // discoverMailbox ile üretilenler zaten probe'lu (mail_probe set).
+      if (result.findings.mail && !result.findings.mail_probe && agent.params.probe !== false) {
         try {
           const probe = await verifyMailbox(result.findings.mail);
           result.findings.mail_probe = probe.probe_state;
