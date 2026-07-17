@@ -334,7 +334,7 @@ test("person deepener okul→yetki→hook sırasını izler, avantajlı okul bü
   const calls = [];
   const fixture = {
     school: { school: "Boğaziçi Üniversitesi", summary: "okul doğrulandı" },
-    mail: { mail: "kisi@example.com", mail_source_url: "https://example.com/iletisim" },
+    mail: {},  // mail bulunmaz: bilinmezlik yüksek kalsın ki hooks adımı da koşsun
     authority: { authority: "exec", role: "Teknoloji Direktörü" },
     hooks: { hooks: ["FRC mentoru"], sources: ["https://example.com/news"] },
   };
