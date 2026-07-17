@@ -1,9 +1,11 @@
 import { promises as fs } from "node:fs";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 
 export const USER_SKILL_NAME = /^[a-z0-9-]{1,40}\.md$/;
 export const MAX_USER_SKILL_BYTES = 64 * 1024;
 export const MAX_USER_SKILLS = 12;
+const writeLocks = new Map();
 
 function fail(statusCode, message) {
   const error = new Error(message);
@@ -20,6 +22,20 @@ function validateName(name) {
 
 function skillsDirectory(workspace, user) {
   return path.join(workspace.directory, "mails", "calibration", "skills", user);
+}
+
+async function withWriteLock(key, task) {
+  const previous = writeLocks.get(key) ?? Promise.resolve();
+  let release;
+  const current = new Promise((resolve) => { release = resolve; });
+  writeLocks.set(key, current);
+  await previous;
+  try {
+    return await task();
+  } finally {
+    release();
+    if (writeLocks.get(key) === current) writeLocks.delete(key);
+  }
 }
 
 async function skillNames(workspace, user, fileSystem) {
@@ -53,24 +69,29 @@ export async function writeUserSkill(workspace, user, name, content, {
   const size = Buffer.byteLength(content);
   if (size > MAX_USER_SKILL_BYTES) fail(413, "Skill en fazla 64KB olabilir");
   const directory = skillsDirectory(workspace, user);
-  const names = await skillNames(workspace, user, fileSystem);
-  if (!names.includes(safeName) && names.length >= MAX_USER_SKILLS) {
-    fail(409, "En fazla 12 kullanıcı skill'i yüklenebilir");
-  }
-  const temporary = path.join(directory, `.skill-${process.pid}-${Date.now()}.tmp`);
-  await fileSystem.mkdir(directory, { recursive: true, mode: 0o700 });
-  await fileSystem.chmod(directory, 0o700);
-  try {
-    await fileSystem.writeFile(temporary, content, {
-      encoding: "utf8", mode: 0o600, flag: "wx",
-    });
-    await fileSystem.rename(temporary, path.join(directory, safeName));
-  } finally {
-    await fileSystem.unlink(temporary).catch((error) => {
-      if (error.code !== "ENOENT") throw error;
-    });
-  }
-  return { name: safeName, size, content };
+  return withWriteLock(directory, async () => {
+    const names = await skillNames(workspace, user, fileSystem);
+    if (!names.includes(safeName) && names.length >= MAX_USER_SKILLS) {
+      fail(409, "En fazla 12 kullanıcı skill'i yüklenebilir");
+    }
+    const temporary = path.join(
+      directory,
+      `.skill-${process.pid}-${Date.now()}-${randomBytes(4).toString("hex")}.tmp`,
+    );
+    await fileSystem.mkdir(directory, { recursive: true, mode: 0o700 });
+    await fileSystem.chmod(directory, 0o700);
+    try {
+      await fileSystem.writeFile(temporary, content, {
+        encoding: "utf8", mode: 0o600, flag: "wx",
+      });
+      await fileSystem.rename(temporary, path.join(directory, safeName));
+    } finally {
+      await fileSystem.unlink(temporary).catch((error) => {
+        if (error.code !== "ENOENT") throw error;
+      });
+    }
+    return { name: safeName, size, content };
+  });
 }
 
 export async function deleteUserSkill(workspace, user, name, { fileSystem = fs } = {}) {

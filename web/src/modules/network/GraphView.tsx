@@ -80,7 +80,7 @@ export default function GraphView({
     [data]
   );
 
-  const { neighbors, minDeg, maxDeg } = useMemo(() => {
+  const { neighbors, minDeg, maxDeg, degreeById, compSizeById } = useMemo(() => {
     const nb = new Map<string, Set<string>>();
     for (const n of data.nodes) nb.set(n.id, new Set());
     for (const e of data.edges) {
@@ -91,12 +91,35 @@ export default function GraphView({
     }
     let mn = Infinity;
     let mx = 0;
+    const degs = new Map<string, number>();
     for (const n of data.nodes) {
       mn = Math.min(mn, n.degree);
       mx = Math.max(mx, n.degree);
+      degs.set(n.id, nb.get(n.id)?.size ?? 0);
     }
     if (!isFinite(mn)) mn = 0;
-    return { neighbors: nb, minDeg: mn, maxDeg: mx };
+    // bağlı bileşen boyutları: küçük bileşenler/yalnız düğümler daha güçlü
+    // yerçekimiyle merkeze toplanır (kenarlara savrulma patolojisi)
+    const comps = new Map<string, number>();
+    const seen = new Set<string>();
+    for (const n of data.nodes) {
+      if (seen.has(n.id)) continue;
+      const queue = [n.id];
+      seen.add(n.id);
+      const members: string[] = [];
+      while (queue.length) {
+        const c = queue.pop()!;
+        members.push(c);
+        for (const m of nb.get(c) ?? []) {
+          if (!seen.has(m)) {
+            seen.add(m);
+            queue.push(m);
+          }
+        }
+      }
+      for (const m of members) comps.set(m, members.length);
+    }
+    return { neighbors: nb, minDeg: mn, maxDeg: mx, degreeById: degs, compSizeById: comps };
   }, [data]);
 
   const focusId = hoverId ?? selectedId;
@@ -121,28 +144,52 @@ export default function GraphView({
   );
 
   // ---- physics application ----
+  // 2026-07-17 reformu (headless ölçümle seçildi, docs: bağlı çiftler 96px
+  // hedefe karşı medyan 322px açılıyordu):
+  //  - charge derece-ölçekli: hub'lar güçlü iter, yapraklar hafif (sabit -300
+  //    tüm grafı şişiriyordu)
+  //  - link.strength: d3 varsayılanı 1/minDegree hub kenarlarında çekimi yok
+  //    ediyordu → tabanlı sqrt ölçeği
+  //  - yaprak kenarları kısa, omurga kenarları uzun mesafe
+  //  - küçük bileşenler daha güçlü yerçekimiyle içeri alınır
   const applyForces = useCallback(() => {
     const fg = fgRef.current;
     if (!fg) return;
+    const chargeScale = physics.charge / 300; // slider semantiği korunur
     const charge = fg.d3Force("charge");
     if (charge) {
-      charge.strength(-physics.charge);
-      // full-range repulsion: capping distanceMax made far nodes ignore each
-      // other and collapsed the layout into ring/arc shells (Tuna repro)
+      charge.strength((n: GraphNode) => {
+        const d = degreeById.get(n.id) ?? 0;
+        return -chargeScale * (30 + 12 * Math.sqrt(d + 1));
+      });
       charge.distanceMax(Infinity);
     }
+    const linkDegree = (endpoint: unknown) =>
+      degreeById.get(typeof endpoint === "string" ? endpoint : (endpoint as GraphNode).id) ?? 0;
+    const linkMinDegree = (l: Link) =>
+      Math.max(1, Math.min(linkDegree(l.source), linkDegree(l.target)));
+    const distScale = physics.linkDistance / 96;
     const link = fg.d3Force("link");
-    if (link) link.distance(physics.linkDistance);
-    // gravity via x/y centering
+    if (link) {
+      link.distance((l: Link) => (linkMinDegree(l) <= 2 ? 60 : 120) * distScale);
+      // Obsidian "Link force" slider'ı: 0-1 çarpan; taban eğri hub kenarlarında
+      // çekimi öldüren d3 varsayılanının (1/minDeg) yerine sqrt ölçeği
+      link.strength((l: Link) =>
+        physics.linkForce * Math.max(0.35, 1 / Math.sqrt(linkMinDegree(l))));
+    }
+    const gravScale = physics.gravity / 0.05;
+    const gravity = (n: GraphNode) =>
+      ((compSizeById.get(n.id) ?? 1) < 20 ? 0.16 : 0.06) * gravScale;
     const fx = fg.d3Force("x");
     const fy = fg.d3Force("y");
-    if (fx) fx.strength(physics.gravity);
-    if (fy) fy.strength(physics.gravity);
+    if (fx) fx.strength(gravity);
+    if (fy) fy.strength(gravity);
     const collide = fg.d3Force("collide");
     if (collide) {
-      collide.radius((n: GraphNode) => radiusFor(n) * physics.collide + 1);
+      collide.radius((n: GraphNode) => radiusFor(n) * 1.3 * physics.collide + 2);
+      collide.iterations(2);
     }
-  }, [physics, radiusFor]);
+  }, [physics, radiusFor, degreeById, compSizeById]);
 
   // register x/y + collide forces once graph exists
   const registerForces = useCallback(async () => {
@@ -251,8 +298,8 @@ export default function GraphView({
   const cooldownTicks = physics.frozen
     ? 0
     : data.nodes.length > 900
-    ? 320
-    : 220;
+    ? 420 // alphaDecay 0.0228 → ~300 tick'te alphaMin; payla birlikte
+    : 260;
 
   const dimAlpha = theme === "light" ? 0.12 : 0.14;
   const inkFocus = theme === "light" ? "#111114" : "#f0f0f2";
@@ -286,7 +333,7 @@ export default function GraphView({
           }
         }}
         d3VelocityDecay={physics.velocityDecay}
-        d3AlphaDecay={0.035}
+        d3AlphaDecay={0.0228}
         nodeRelSize={5}
         onEngineStop={() => {
           if (settledOnce.current) return;

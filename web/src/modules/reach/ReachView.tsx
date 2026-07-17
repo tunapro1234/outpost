@@ -3,10 +3,11 @@ import type { EntityListItem, MailItem, ReachStats } from "@/core/types";
 import { STATUS_COLORS, STATUS_LABELS, TYPE_LABELS } from "@/core/theme";
 import { trNormalize } from "@/core/normalize";
 import { relativeTime } from "@/core/format";
+import { IconAssistant } from "@/core/icons";
 import DraftCard from "@/modules/mail/DraftCard";
 import { useMailDrafts } from "@/modules/mail/useMailDrafts";
 import ExclusionsPanel from "./ExclusionsPanel";
-import MailCalibration from "./MailCalibration";
+import CalibrationStudio from "./CalibrationStudio";
 import { useExclusions } from "./useExclusions";
 
 interface Props {
@@ -14,24 +15,14 @@ interface Props {
   stats: ReachStats | null;
   entities: EntityListItem[];
   onOpenEntity: (id: string) => void;
+  // Calibration lives at /mail/calibration as a detached full-page sub-view.
+  showCalibration: boolean;
+  onOpenCalibration: () => void;
+  onCloseCalibration: () => void;
 }
 
-type Tab =
-  | "drafts"
-  | "calibration"
-  | "sent"
-  | "inbound"
-  | "candidates"
-  | "exclusions";
+type Tab = "drafts" | "sent" | "inbound" | "candidates" | "exclusions";
 type CandSort = "score" | "name";
-
-// Deep-link support: the Agents page "Open chat" on the mail writer lands here
-// via /reach#calibration, so honour the hash as the initial tab.
-function initialTab(): Tab {
-  if (typeof window !== "undefined" && window.location.hash === "#calibration")
-    return "calibration";
-  return "drafts";
-}
 
 const CANDIDATE_SCORE_MIN = 15;
 
@@ -57,8 +48,16 @@ function DraftMeta({
   );
 }
 
-export default function ReachView({ mails, stats, entities, onOpenEntity }: Props) {
-  const [tab, setTab] = useState<Tab>(initialTab);
+export default function ReachView({
+  mails,
+  stats,
+  entities,
+  onOpenEntity,
+  showCalibration,
+  onOpenCalibration,
+  onCloseCalibration,
+}: Props) {
+  const [tab, setTab] = useState<Tab>("drafts");
   const [q, setQ] = useState("");
   const [candSort, setCandSort] = useState<CandSort>("score");
   const [candAsc, setCandAsc] = useState(false);
@@ -126,16 +125,11 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
     );
   }, [draftList, q]);
 
-  // Compact single-line KPI: a light summary strip, not a heavy card grid —
-  // the eye should land on the Drafts queue below, not up here.
-  const Stat = ({ label, value, tone }: { label: string; value: string; tone?: string }) => (
-    <span className="reach-stat">
-      <span className="reach-stat-v" style={tone ? { color: tone } : undefined}>
-        {value}
-      </span>
-      <span className="reach-stat-k">{label}</span>
-    </span>
-  );
+  // One faint line of KPIs, sitting to the right of the tabs — calm context,
+  // never its own bar. e.g. "4 sent · 1 replied · 0 follow-ups".
+  const kpiLine = `${kpis.sent} sent · ${kpis.replied} replied · ${kpis.pendingFollowUp} follow-up${
+    kpis.pendingFollowUp === 1 ? "" : "s"
+  }`;
 
   const MailTable = ({ rows }: { rows: MailItem[] }) => (
     <table className="grid mails-grid">
@@ -174,88 +168,80 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
     </table>
   );
 
+  if (showCalibration) {
+    return (
+      <div className="view-pad mail">
+        <CalibrationStudio
+          entities={entities}
+          onBack={onCloseCalibration}
+          onCalibrationChanged={drafts.reload}
+        />
+      </div>
+    );
+  }
+
+  const TABS: { k: Tab; label: string; count: number | null }[] = [
+    { k: "drafts", label: "Drafts", count: draftList?.length || null },
+    { k: "sent", label: "Sent", count: sent.length || null },
+    { k: "inbound", label: "Inbound", count: inbound.length || null },
+    { k: "candidates", label: "Candidates", count: candidates.length || null },
+    {
+      k: "exclusions",
+      label: "Exclusions",
+      count: exclusions.items?.length || null,
+    },
+  ];
+
   return (
-    <div className="view-pad reach">
-      {/* Compact KPI line */}
-      <div className="reach-kpis">
-        <Stat label="sent" value={String(kpis.sent)} />
-        <Stat label="replied" value={String(kpis.replied)} tone="var(--ok)" />
-        <Stat label="reply rate" value={`${kpis.replyRate}%`} />
-        <Stat
-          label="pending follow-up"
-          value={String(kpis.pendingFollowUp)}
-          tone="var(--warn)"
+    <div className="view-pad mail">
+      {/* Calm header: pill tabs left, faint KPI line beside them, a detached
+          Calibration button pinned to the far right. */}
+      <div className="mail-head">
+        <div className="tabs mail-tabs">
+          {TABS.map((t) => (
+            <button
+              key={t.k}
+              className={tab === t.k ? "on" : ""}
+              onClick={() => setTab(t.k)}
+            >
+              {t.label}
+              {t.count != null && <span className="mail-badge">{t.count}</span>}
+            </button>
+          ))}
+        </div>
+
+        <span className="mail-kpiline">{kpiLine}</span>
+
+        <button
+          className="mail-cal-btn"
+          onClick={onOpenCalibration}
+          title="Open the calibration studio"
+        >
+          <IconAssistant size={15} />
+          Calibration
+        </button>
+      </div>
+
+      {/* Search belongs to list tabs only — a small right-aligned input under
+          the tab row, never a competing bar. */}
+      <div className="mail-subbar">
+        <input
+          className="np-input mail-search"
+          placeholder={
+            tab === "candidates"
+              ? "Search candidates…"
+              : tab === "drafts"
+                ? "Search drafts…"
+                : tab === "exclusions"
+                  ? "Search excluded…"
+                  : "Search mail…"
+          }
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
         />
       </div>
 
-      <div className="reach-bar">
-        <div className="tabs">
-          <button
-            className={tab === "drafts" ? "on" : ""}
-            onClick={() => setTab("drafts")}
-          >
-            Drafts
-            {draftList && draftList.length > 0 && (
-              <span className="tab-badge">{draftList.length}</span>
-            )}
-          </button>
-          <button
-            className={tab === "calibration" ? "on" : ""}
-            onClick={() => setTab("calibration")}
-          >
-            Calibration
-          </button>
-          <button className={tab === "sent" ? "on" : ""} onClick={() => setTab("sent")}>
-            Sent
-            {sent.length > 0 && <span className="tab-badge">{sent.length}</span>}
-          </button>
-          <button
-            className={tab === "inbound" ? "on" : ""}
-            onClick={() => setTab("inbound")}
-          >
-            Inbound
-            {inbound.length > 0 && <span className="tab-badge">{inbound.length}</span>}
-          </button>
-          <button
-            className={tab === "candidates" ? "on" : ""}
-            onClick={() => setTab("candidates")}
-          >
-            Candidates
-            {candidates.length > 0 && (
-              <span className="tab-badge">{candidates.length}</span>
-            )}
-          </button>
-          <button
-            className={tab === "exclusions" ? "on" : ""}
-            onClick={() => setTab("exclusions")}
-          >
-            Exclusions
-            {exclusions.items && exclusions.items.length > 0 && (
-              <span className="tab-badge">{exclusions.items.length}</span>
-            )}
-          </button>
-        </div>
-        {tab !== "calibration" && (
-          <input
-            className="np-input reach-search"
-            placeholder={
-              tab === "candidates"
-                ? "Search candidates…"
-                : tab === "drafts"
-                  ? "Search drafts…"
-                  : tab === "exclusions"
-                    ? "Search excluded…"
-                    : "Search mail…"
-            }
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-        )}
-      </div>
-
-      {tab === "calibration" ? (
-        <MailCalibration onCalibrationChanged={drafts.reload} />
-      ) : tab === "exclusions" ? (
+      {tab === "exclusions" ? (
         <ExclusionsPanel
           state={exclusions}
           q={q}

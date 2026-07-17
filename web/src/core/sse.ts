@@ -1,0 +1,76 @@
+// Minimal SSE-over-POST reader shared by the streaming surfaces that don't go
+// through the chat engine — notably the Calibration studio's draft stream
+// (POST /calibration/draft). Same frame format as core/chat.ts: newline-
+// delimited `data: {json}` lines carrying { delta } / { error } / { done }.
+import { workspaceBase } from "./api";
+
+export interface SSEHandlers {
+  onDelta: (text: string) => void;
+  onError: (message: string) => void;
+  onDone: () => void;
+}
+
+// POSTs `body` to a workspace-relative path and streams the reply. Resolves
+// when the stream ends. Aborting via the signal rejects with an AbortError,
+// which the caller treats as a user-initiated stop (not an error).
+export async function streamSSE(
+  path: string,
+  body: unknown,
+  signal: AbortSignal,
+  handlers: SSEHandlers
+): Promise<void> {
+  const res = await fetch(`${workspaceBase()}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!res.ok || !res.body) {
+    let msg = `Generation is unavailable (HTTP ${res.status}).`;
+    if (res.status === 404) msg = "This endpoint is not available yet.";
+    if (res.status === 409)
+      msg = "The selected model can't do this — switch models to continue.";
+    try {
+      const b = await res.json();
+      if (b?.error) msg = b.error;
+    } catch {
+      /* ignore non-JSON bodies */
+    }
+    handlers.onError(msg);
+    handlers.onDone();
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const flushLine = (raw: string) => {
+    const line = raw.trim();
+    if (!line.startsWith("data:")) return;
+    const payload = line.slice(5).trim();
+    if (!payload) return;
+    let obj: { delta?: string; error?: string; done?: boolean };
+    try {
+      obj = JSON.parse(payload);
+    } catch {
+      return; // skip malformed/partial frames
+    }
+    if (obj.delta) handlers.onDelta(obj.delta);
+    else if (obj.error) handlers.onError(obj.error);
+  };
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf("\n")) >= 0) {
+      flushLine(buffer.slice(0, idx));
+      buffer = buffer.slice(idx + 1);
+    }
+  }
+  if (buffer) flushLine(buffer);
+  handlers.onDone();
+}

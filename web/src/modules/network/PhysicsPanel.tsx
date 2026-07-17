@@ -119,8 +119,18 @@ export default function PhysicsPanel({ physics, setPhysics, onClose }: Props) {
       </div>
       {!collapsed && (
         <div className="phys-float-body">
+          {/* Obsidian Forces paritesi: Center / Repel / Link force / Link distance */}
           <Row
-            label="Repulsion"
+            label="Center force"
+            min={0}
+            max={0.3}
+            step={0.01}
+            value={physics.gravity}
+            onChange={(v) => setPhys({ gravity: v })}
+            fmt={(v) => v.toFixed(2)}
+          />
+          <Row
+            label="Repel force"
             min={40}
             max={500}
             step={10}
@@ -128,21 +138,21 @@ export default function PhysicsPanel({ physics, setPhysics, onClose }: Props) {
             onChange={(v) => setPhys({ charge: v })}
           />
           <Row
+            label="Link force"
+            min={0}
+            max={1}
+            step={0.05}
+            value={physics.linkForce}
+            onChange={(v) => setPhys({ linkForce: v })}
+            fmt={(v) => v.toFixed(2)}
+          />
+          <Row
             label="Link distance"
             min={20}
-            max={220}
+            max={250}
             step={5}
             value={physics.linkDistance}
             onChange={(v) => setPhys({ linkDistance: v })}
-          />
-          <Row
-            label="Gravity"
-            min={0}
-            max={0.3}
-            step={0.01}
-            value={physics.gravity}
-            onChange={(v) => setPhys({ gravity: v })}
-            fmt={(v) => v.toFixed(2)}
           />
           <Row
             label="Collision"

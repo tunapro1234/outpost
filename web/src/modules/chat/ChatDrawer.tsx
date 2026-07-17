@@ -76,6 +76,22 @@ export default function ChatDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // While the history panel is open, Esc closes just the panel (not the whole
+  // drawer). Capture-phase + stopImmediatePropagation so the app-level Esc
+  // handler that closes the drawer never fires first.
+  useEffect(() => {
+    if (!chat.historyOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        chat.setHistoryOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [chat.historyOpen, chat.setHistoryOpen]);
+
   // ---- width resize (left edge handle) ----
   const startResize = useCallback(
     (e: React.MouseEvent) => {
@@ -146,6 +162,7 @@ export default function ChatDrawer({
           activeId={chat.activeId}
           onOpen={chat.openThread}
           onDelete={chat.deleteThread}
+          onClose={() => chat.setHistoryOpen(false)}
         />
       )}
 
@@ -186,16 +203,30 @@ export function ChatHistory({
   activeId,
   onOpen,
   onDelete,
+  onClose,
 }: {
   history: { id: string; title: string; updatedAt: number }[];
   activeId: string;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
+  // When provided, the panel shows an explicit close affordance so it never
+  // reads as an inescapable takeover.
+  onClose?: () => void;
 }) {
   return (
     <div className="cp-history">
       <div className="cp-history-head">
         <span className="cp-history-label">Chat history</span>
+        {onClose && (
+          <button
+            className="cp-history-close"
+            onClick={onClose}
+            title="Close history (Esc)"
+            aria-label="Close chat history"
+          >
+            <IconClose size={14} />
+          </button>
+        )}
       </div>
       <div className="cp-history-list">
         {history.length === 0 ? (

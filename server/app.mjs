@@ -102,6 +102,10 @@ export async function createApp({
   mailAgentBriefTemplatePath,
   mailAgentSpawnWaitMs,
   mailAgentBridgeOptions,
+  mailAgentBridge,
+  mailAgentCodex,
+  mailAgentCompileContext,
+  mailAgentContextAgent,
   metricsNow,
   usersPath,
   htpasswdPath,
@@ -112,7 +116,22 @@ export async function createApp({
 } = {}) {
   const app = Fastify({ logger });
   const gatherRunner = suppliedGatherRunner ?? new GatherRunner({
-    writerOptions: { usersPath, defaultUser },
+    writerOptions: {
+      usersPath,
+      defaultUser,
+      generationOptions: {
+        runLuna: mailAgentCodex,
+        mailBridge: mailAgentBridge,
+        mailAgentOptions: {
+          exec: mailAgentExec,
+          fileSystem: mailAgentFileSystem,
+          sleep: mailAgentSleep,
+          claudeBin: mailAgentClaudeBin,
+          spawnWaitMs: mailAgentSpawnWaitMs,
+          ...mailAgentBridgeOptions,
+        },
+      },
+    },
     logger: app.log,
   });
   const registry = vaultPath
@@ -238,6 +257,10 @@ export async function createApp({
     briefTemplatePath: mailAgentBriefTemplatePath,
     spawnWaitMs: mailAgentSpawnWaitMs,
     bridgeOptions: mailAgentBridgeOptions,
+    bridge: mailAgentBridge,
+    runCodex: mailAgentCodex,
+    compileContext: mailAgentCompileContext,
+    contextAgent: mailAgentContextAgent,
   });
   await app.register(mailerRoutes, {
     prefix: "/api/ws/:ws",

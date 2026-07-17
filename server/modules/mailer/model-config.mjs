@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 
 export const DEFAULT_MAIL_AGENT_MODEL = "claude-opus-4-8";
@@ -40,7 +41,10 @@ export async function writeMailAgentConfig(workspace, user, model, {
   const value = validateModel(model);
   const filePath = configPath(workspace, user);
   const directory = path.dirname(filePath);
-  const temporary = path.join(directory, `.config-${process.pid}-${Date.now()}.tmp`);
+  const temporary = path.join(
+    directory,
+    `.config-${process.pid}-${Date.now()}-${randomBytes(4).toString("hex")}.tmp`,
+  );
   await fileSystem.mkdir(directory, { recursive: true, mode: 0o700 });
   await fileSystem.chmod(directory, 0o700);
   try {

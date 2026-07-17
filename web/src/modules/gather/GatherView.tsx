@@ -31,7 +31,7 @@ const PERSONAL_META: Record<
   },
   mail: {
     label: "Mail writer",
-    desc: "Writes your outreach in your voice. Calibrate its style in Reach.",
+    desc: "Writes your outreach in your voice. Calibrate its style in Mail.",
     cta: "Open chat",
   },
 };

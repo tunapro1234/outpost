@@ -379,7 +379,7 @@ export default function OverviewView({
       <div className="ov-card-head">
         <div className="ov-card-title">Recent activity</div>
         {mails && mails.length > 0 && (
-          <button className="ov-card-link" onClick={() => onNavigate("reach")}>
+          <button className="ov-card-link" onClick={() => onNavigate("mail")}>
             View all
           </button>
         )}

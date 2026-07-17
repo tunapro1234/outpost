@@ -197,6 +197,33 @@ export interface Calibration {
   calibrated_at: string | null;
 }
 
+// ---- mail agent model config (SPEC-MAILCAL §11) -------------------------
+// GET/PUT /api/ws/:ws/mailagent/config. gpt-5.6-sol has no persistent chat —
+// generation only (a chat POST returns 409 while it is selected).
+export type MailAgentModel =
+  | "claude-opus-4-8"
+  | "claude-sonnet-5"
+  | "gpt-5.6-sol";
+
+export interface MailAgentConfig {
+  model: MailAgentModel;
+}
+
+// ---- user mail skills (SPEC-MAILCAL §10) --------------------------------
+// GET (list+content) / PUT / DELETE /api/ws/:ws/calibration/skills[/:name].
+// name is a "<slug>.md" file ([a-z0-9-]+\.md), content max 64KB.
+export interface CalibrationSkill {
+  name: string;
+  content: string;
+}
+
+// ---- calibration studio feedback (SPEC-MAILCAL §9) ----------------------
+export interface CalibrationFeedback {
+  rating: number; // 1..5
+  liked: string;
+  disliked: string;
+}
+
 // ---- workspace user stats (SPEC-MAILCAL §3, GET /users/stats) -----------
 export interface UserTokenStats {
   in: number;

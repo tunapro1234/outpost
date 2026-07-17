@@ -725,18 +725,21 @@ export default function App() {
               assistantReplyKey={assistantReplyKey}
             />
           )}
-          {view === "reach" && (
+          {view === "mail" && (
             <ReachView
               mails={mails}
               stats={reachStats}
               entities={entityList}
               onOpenEntity={openFull}
+              showCalibration={route.name === "view" && route.sub === "calibration"}
+              onOpenCalibration={() => navigate(MAIL_CALIBRATION_PATH)}
+              onCloseCalibration={() => navigate(viewPath("mail"))}
             />
           )}
           {view === "agents" && (
             <GatherView
               onOpenAssistant={openAssistant}
-              onOpenMailCalibration={() => navigate("/reach#calibration")}
+              onOpenMailCalibration={() => navigate(MAIL_CALIBRATION_PATH)}
             />
           )}
           {view === "workspace" && (

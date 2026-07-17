@@ -15,6 +15,8 @@ import { mailQueue, resolveCompany } from "./service.mjs";
 import { mailerUsers, writerUser } from "./auth.mjs";
 import { isDraftStale, readCalibration, readCalibrationSource } from "./calibration.mjs";
 import { createMailAgentBridge, ensureMailAgentBrief, mailAgentSession } from "./mail-agent.mjs";
+import { DEFAULT_MAIL_AGENT_MODEL, readMailAgentConfig } from "./model-config.mjs";
+import { readUserSkillsPrompt } from "./user-skills.mjs";
 import { appendUsage, claudeStreamResult, codexTokenUsage, estimatedUsage } from "./usage.mjs";
 
 const MODULE_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
@@ -90,6 +92,17 @@ function jsonObject(output) {
   }
 }
 
+export function parseCalibrationDraft(output) {
+  const value = jsonObject(output);
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+    !["subject", "body", "rationale"].every((key) =>
+      typeof value[key] === "string" && value[key].trim())) {
+    throw new Error("Taslak subject/body/rationale alanlarını içermeli");
+  }
+  return Object.fromEntries(["subject", "body", "rationale"]
+    .map((key) => [key, value[key].trim()]));
+}
+
 export function parseVariants(output) {
   const value = jsonObject(output);
   if (!Array.isArray(value?.variants) || value.variants.length !== 3) {
@@ -118,20 +131,22 @@ export async function codexText(prompt, {
   agent,
   user,
   kind = "context",
+  recordUsage = true,
+  includeUsage = false,
 } = {}) {
   const result = await runCommandDetailed(bin, [
     "exec", "-m", model, ...codexServiceTierArgs(agent),
     "-c", 'model_reasoning_effort="medium"',
     "--sandbox", "read-only", "--ephemeral", "--skip-git-repo-check", "-",
   ], prompt, { cwd: workspace?.directory ?? process.cwd() });
-  if (workspace && user) {
-    const usage = codexTokenUsage(result.stderr);
+  const usage = codexTokenUsage(result.stderr);
+  if (recordUsage && workspace && user) {
     await appendUsage(workspace, {
       user, agent: "codex", kind, chars: prompt.length + result.stdout.length,
       ...(usage ?? estimatedUsage(prompt.length, result.stdout.length)),
     }).catch(() => {});
   }
-  return result.stdout;
+  return includeUsage ? { text: result.stdout, usage } : result.stdout;
 }
 
 export async function compileMailContext({ person, company, queueItem, agent, workspace, user }, {
@@ -152,8 +167,37 @@ export async function compileMailContext({ person, company, queueItem, agent, wo
   })).trim();
 }
 
-function variantsPrompt(context, skills, extra = "") {
-  return `Üç outreach mail varyantı üret. Yalnız JSON döndür: {"variants":[{"subject":"...","body":"...","rationale":"...","tone":"..."},{...},{...}]}.\nHer varyant AYRIŞIK bir açı ve hook kullanmalı; aynı açının sözcük değişimi kabul edilmez. Rationale kullanılan hook'u ve ton seçimini açıkça söylesin. Gerçek dışı iddia üretme. Gönderim yapma.\n${extra}\n\nMAIL KURALLARI:\n${skills}\n\nBAĞLAM PAKETİ:\n${context}`;
+function mailKnowledgePrompt(skills, userSkills, calibration) {
+  return `MAIL KURALLARI (KANONİK SKILL'LER):
+${skills}
+
+KULLANICI SKILL'LERİ KANONİK SKILL'LERLE ÇELİŞİRSE KULLANICI SKILL'LERİ KAZANIR.
+
+KULLANICI SKILL'LERİ:
+${userSkills || "Kullanıcı skill'i yüklenmedi."}
+
+KULLANICI KALİBRASYONU / VOICE (tüm skill'lerin üstündedir):
+${calibration || "Kalibrasyon henüz yapılmadı."}`;
+}
+
+function variantsPrompt(context, skills, userSkills, calibration, extra = "") {
+  return `Üç outreach mail varyantı üret. Yalnız JSON döndür: {"variants":[{"subject":"...","body":"...","rationale":"...","tone":"..."},{...},{...}]}.
+Her varyant AYRIŞIK bir açı ve hook kullanmalı; aynı açının sözcük değişimi kabul edilmez. Rationale kullanılan hook'u ve ton seçimini açıkça söylesin. Gerçek dışı iddia üretme. Gönderim yapma.
+${extra}
+
+${mailKnowledgePrompt(skills, userSkills, calibration)}
+
+BAĞLAM PAKETİ:
+${context}`;
+}
+
+export function calibrationDraftPrompt(context, skills, userSkills, calibration) {
+  return `Bu hedef kişi için TEK bir gerçek outreach mail taslağı üret. Yalnız JSON döndür: {"subject":"...","body":"...","rationale":"..."}. Rationale kullanılan gerçek hook'u ve ton seçimini kısa açıklasın. Olgu uydurma, gönderim yapma.
+
+${mailKnowledgePrompt(skills, userSkills, calibration)}
+
+BAĞLAM PAKETİ:
+${context}`;
 }
 
 export function rejectedNotesPrompt(notes) {
@@ -161,9 +205,13 @@ export function rejectedNotesPrompt(notes) {
   return `ÖNCEKİ RED NOTLARI (bunları düzelt):\n${notes.map((note) => `- ${note}`).join("\n")}`;
 }
 
-async function claudeOutput(prompt, { workspace, bin = process.env.OUTPOST_CLAUDE_BIN ?? "claude" } = {}) {
+async function claudeOutput(prompt, {
+  workspace,
+  model = DEFAULT_MAIL_AGENT_MODEL,
+  bin = process.env.OUTPOST_CLAUDE_BIN ?? "claude",
+} = {}) {
   const output = await runCommand(bin, [
-    "--model", "claude-opus-4-8",
+    "--model", model,
     "--safe-mode", "--disable-slash-commands", "--disallowedTools", "*",
     "--no-session-persistence", "-p", "--output-format", "stream-json", "--verbose",
   ], prompt, { cwd: workspace.directory });
@@ -200,16 +248,49 @@ export async function generateMailVariants(context, {
 } = {}) {
   const skills = await readMailSkills(skillNames, { skillsPath });
   const calibration = author ? await readCalibrationSource(workspace, author) : "";
-  const prompt = variantsPrompt(context, skills, extraPrompt).replace(
-    "\n\nBAĞLAM PAKETİ:",
-    `\n\nKULLANICI KALİBRASYONU (mail kurallarının üstündedir):\n${calibration || "Kalibrasyon henüz yapılmadı."}\n\nBAĞLAM PAKETİ:`,
-  );
+  const userSkills = author ? await readUserSkillsPrompt(workspace, author) : "";
+  const prompt = variantsPrompt(context, skills, userSkills, calibration, extraPrompt);
+  const configuredModel = author
+    ? (await readMailAgentConfig(workspace, author)).model
+    : DEFAULT_MAIL_AGENT_MODEL;
+  if (author && configuredModel === "gpt-5.6-sol") {
+    let lastError;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const generated = generatedResult(await runLuna(
+          attempt === 0 ? prompt : `${prompt}\n\nÖnceki çıktı parse edilemedi. Açıklama/fence olmadan geçerli JSON üret.`,
+          {
+            model: configuredModel,
+            workspace,
+            agent,
+            user: author,
+            kind: usageKind,
+            recordUsage: false,
+            includeUsage: true,
+          },
+        ));
+        const variants = parseVariants(generated.text);
+        await appendUsage(workspace, {
+          user: author,
+          agent: "codex",
+          kind: usageKind,
+          chars: prompt.length + generated.text.length,
+          ...(generated.usage ?? estimatedUsage(prompt.length, generated.text.length)),
+        }).catch((error) => logger?.warn?.({ err: error }, "Codex usage yazılamadı"));
+        return variants;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw new Error(`Mail varyantları üretilemedi: ${lastError.message}`, { cause: lastError });
+  }
   if (author) {
     try {
       await ensureMailAgentBrief(workspace, author, mailAgentOptions);
       const session = mailAgentSession(workspace, authorName, author);
       const bridge = mailBridge ?? createMailAgentBridge({
-        user: author, session, logger, ...mailAgentOptions,
+        ...mailAgentOptions,
+        user: author, session, model: configuredModel, logger,
       });
       const output = await collectBridge(await bridge(prompt, { workspace, user: author }));
       const variants = parseVariants(output);
@@ -230,7 +311,7 @@ export async function generateMailVariants(context, {
     try {
       const generated = generatedResult(await runClaude(
         attempt === 0 ? prompt : `${prompt}\n\nÖnceki çıktı parse edilemedi. Açıklama/fence olmadan geçerli JSON üret.`,
-        { workspace },
+        { workspace, model: configuredModel },
       ));
       const variants = parseVariants(generated.text);
       if (author) {
@@ -245,17 +326,7 @@ export async function generateMailVariants(context, {
       lastError = error;
     }
   }
-  try {
-    return parseVariants(await runLuna(`${prompt}\n\nClaude kullanılamadı; aynı JSON'u sen üret.`, {
-      model: agent.model,
-      workspace,
-      agent,
-      user: author,
-      kind: usageKind,
-    }));
-  } catch (error) {
-    throw new Error(`Mail varyantları üretilemedi: ${error.message}`, { cause: lastError });
-  }
+  throw new Error(`Mail varyantları üretilemedi: ${lastError.message}`, { cause: lastError });
 }
 
 export async function selectWriterCandidates(workspace, { limit = 5, now = new Date() } = {}) {
@@ -304,6 +375,7 @@ export async function runMailWriterCycle({
   usersPath = process.env.OUTPOST_USERS,
   defaultUser = process.env.OUTPOST_DEFAULT_USER ?? "tuna",
   logger = console,
+  generationOptions = {},
 }) {
   const ownerProfile = await writerUser({ usersPath, defaultUser });
   if (!ownerProfile) throw new Error("Mail writer için owner kullanıcı bulunamadı");
@@ -364,6 +436,7 @@ export async function runMailWriterCycle({
       });
       const notes = await badContentNotes(workspace, person.id);
       const variants = await generateVariants(context, {
+        ...generationOptions,
         workspace,
         agent,
         extraPrompt: rejectedNotesPrompt(notes),

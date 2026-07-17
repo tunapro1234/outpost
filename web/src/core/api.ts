@@ -2,6 +2,9 @@ import type {
   Agent,
   AgentRun,
   Calibration,
+  CalibrationSkill,
+  MailAgentConfig,
+  MailAgentModel,
   Entity,
   EntityListItem,
   EntityMeta,
@@ -368,6 +371,84 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ content }),
     });
+  },
+
+  // ---- mail agent model config (SPEC-MAILCAL §11) ------------------------
+  // Returns null on 404 / error so the studio falls back to the default model.
+  async mailAgentConfig(): Promise<MailAgentConfig | null> {
+    if (MOCK) return { model: "claude-opus-4-8" };
+    try {
+      const res = await fetch(`${workspaceBase()}/mailagent/config`);
+      if (!res.ok) return null;
+      return (await res.json()) as MailAgentConfig;
+    } catch {
+      return null;
+    }
+  },
+
+  // Persist the selected model. Switching a Claude model respawns the tmux
+  // mail agent; gpt-5.6-sol switches to per-run codex exec (no chat).
+  async saveMailAgentConfig(model: MailAgentModel): Promise<MailAgentConfig> {
+    return json<MailAgentConfig>(`${workspaceBase()}/mailagent/config`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model }),
+    });
+  },
+
+  // ---- user mail skills (SPEC-MAILCAL §10) -------------------------------
+  // Uploaded md files that feed the writer/calibration prompt. Returns null on
+  // 404 / error so the Skills panel hides gracefully.
+  async calibrationSkills(): Promise<CalibrationSkill[] | null> {
+    if (MOCK) return [];
+    try {
+      const res = await fetch(`${workspaceBase()}/calibration/skills`);
+      if (!res.ok) return null;
+      const body = (await res.json()) as
+        | { skills?: CalibrationSkill[] }
+        | CalibrationSkill[];
+      return Array.isArray(body) ? body : body.skills ?? [];
+    } catch {
+      return null;
+    }
+  },
+
+  // Create/overwrite a skill file. name must match [a-z0-9-]+\.md, ≤64KB.
+  // Throws Error(message) on failure so the panel can surface it.
+  async saveCalibrationSkill(
+    name: string,
+    content: string
+  ): Promise<CalibrationSkill> {
+    return json<CalibrationSkill>(
+      `${workspaceBase()}/calibration/skills/${encodeURIComponent(name)}`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content }),
+      }
+    );
+  },
+
+  async deleteCalibrationSkill(name: string): Promise<{ ok: boolean }> {
+    const res = await fetch(
+      `${workspaceBase()}/calibration/skills/${encodeURIComponent(name)}`,
+      { method: "DELETE" }
+    );
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try {
+        const b = await res.json();
+        if (b?.error) msg = b.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    try {
+      return (await res.json()) as { ok: boolean };
+    } catch {
+      return { ok: true };
+    }
   },
 
   // ---- workspace user stats (SPEC-MAILCAL §3) ----------------------------
