@@ -72,6 +72,8 @@ function mergeFindings(current, result = {}) {
   return {
     ...current,
     ...(hasText(result.school) ? { school: result.school.trim() } : {}),
+    ...(hasText(result.mail) ? { mail: result.mail.trim() } : {}),
+    ...(hasText(result.mail_source_url) ? { mail_source_url: result.mail_source_url.trim() } : {}),
     ...(hasText(result.authority) ? { authority: result.authority.trim() } : {}),
     ...(hasText(result.role) ? { role: result.role.trim() } : {}),
     hooks: [...new Set([...hooks(current.hooks), ...hooks(result.hooks)])],
