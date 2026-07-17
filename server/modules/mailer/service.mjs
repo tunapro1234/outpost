@@ -373,7 +373,7 @@ function baseItem(person, scored) {
   };
 }
 
-const VERIFIED_MAIL_SOURCES = new Set(["yayimlanmis", "verified", "manual", "resmi"]);
+const VERIFIED_MAIL_SOURCES = new Set(["yayimlanmis", "verified", "manual", "resmi", "probe"]);
 
 function mailVerified(meta) {
   return hasMailValue(meta) &&

@@ -137,3 +137,56 @@ export async function verifyMailbox(email, opts = {}) {
   else state = "blocked"; // 4xx greylist/temp
   return { email, probe_state: state, code: target.code, mx: mxHost, at: new Date().toISOString() };
 }
+
+// ad@ / ad.soyad@ / soyad@ adaylarını üret (Türkçe-doğru). asciiName mailprobe
+// dışında; burada kendi sadeleştiricimizi kullanıyoruz.
+const _TR = { "ç": "c", "ğ": "g", "ı": "i", "İ": "i", "i̇": "i", "ö": "o", "ş": "s", "ü": "u" };
+function ascii(v) {
+  return String(v ?? "").toLocaleLowerCase("tr-TR")
+    .replace(/[çğıİi̇öşü]/g, (c) => _TR[c] ?? c)
+    .normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/[^a-z]/g, "");
+}
+export function mailLocalCandidates(personName) {
+  const parts = String(personName ?? "").trim().split(/\s+/).map(ascii).filter(Boolean);
+  if (parts.length < 2) return parts.length ? [parts[0]] : [];
+  const first = parts[0], last = parts.at(-1);
+  return [...new Set([`${first}.${last}`, first, last, `${first}${last}`])]
+    .filter((lp) => /^[a-z]+(\.[a-z]+)?$/.test(lp));
+}
+
+// Adayları TEK oturumda probe et: ayırt eden sunucuda gerçeği seç, catch-all/
+// blocked'da tümünü "gönderilecek" olarak döndür.
+export async function discoverMailbox(personName, domain, {
+  from = DEFAULT_FROM, helo = DEFAULT_HELO, timeoutMs = 12_000,
+} = {}) {
+  const locals = mailLocalCandidates(personName);
+  if (!domain || !locals.length) return { probe_state: "no_domain", candidates: [] };
+  let mx;
+  try {
+    mx = (await resolveMx(domain)).sort((a, b) => a.priority - b.priority);
+  } catch { return { probe_state: "no_mx", candidates: [] }; }
+  if (!mx.length) return { probe_state: "no_mx", candidates: [] };
+  const mxHost = mx[0].exchange;
+  const rnd = `nope-${randomBytes(6).toString("hex")}`;
+  const { results, error } = await probeSession(
+    mxHost, domain, [rnd, ...locals], { from, helo, timeoutMs },
+  );
+  const all = locals.map((lp) => `${lp}@${domain}`);
+  if (error && !Object.keys(results).length) {
+    return { probe_state: "blocked", mx: mxHost, candidates: all, sendAll: true };
+  }
+  if (results[rnd]?.accepted) {
+    // catch-all: ayırt edemez → hepsine gönder (Tuna: tutan tutar)
+    return { probe_state: "catch_all", mx: mxHost, mail: all[0], candidates: all, sendAll: true };
+  }
+  const passing = locals.filter((lp) => results[lp]?.accepted).map((lp) => `${lp}@${domain}`);
+  if (passing.length) {
+    return { probe_state: "passed", verified: true, mx: mxHost, mail: passing[0], candidates: passing };
+  }
+  const allAnswered = locals.every((lp) => Number.isFinite(results[lp]?.code));
+  // ayırt eden sunucu, hiçbiri geçmedi → standart kutu yok; yine de gönderilebilir aday tut
+  return {
+    probe_state: allAnswered ? "not_found" : "blocked",
+    mx: mxHost, mail: all[0], candidates: all, sendAll: !allAnswered,
+  };
+}
