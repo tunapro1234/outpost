@@ -165,15 +165,11 @@ export async function generateMailVariants(context, {
   }
 }
 
-function calendarDay(value) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
-}
-
-export function nightlyDraftCount({ drafts, outbox, now = new Date() }) {
-  const day = calendarDay(now);
-  return drafts.filter((item) => !calendarDay(item.created_at) || calendarDay(item.created_at) === day).length +
-    outbox.filter((item) => !calendarDay(item.created_at ?? item.approved_at) || calendarDay(item.created_at ?? item.approved_at) === day).length;
+// Tavan takvim gününe göre DEĞİL, insan onayı bekleyen toplam işe göre:
+// bekleyen taslak + gönderilmemiş outbox. (Takvim-günü versiyonu gece yarısı
+// sayacı sıfırlayıp tavanı deldiriyordu — 2026-07-17 00:15 vakası.)
+export function nightlyDraftCount({ drafts, outbox }) {
+  return drafts.length + outbox.filter((item) => item.sent !== true).length;
 }
 
 export async function selectWriterCandidates(workspace, { limit = 5, now = new Date() } = {}) {
