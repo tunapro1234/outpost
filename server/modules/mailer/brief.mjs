@@ -145,6 +145,7 @@ export function buildPersonBrief(person, index, signals) {
       name: meta.name ?? person.id,
       role: meta.role ?? null,
       mail: cleanedMail,
+      mail_probe: meta.mail_probe ?? "not_used",
       mail_state: meta.mail_state ?? "none",
       scan_state: meta.scan_state ?? "unscanned",
       scan_depth: Number.isFinite(meta.scan_depth) ? meta.scan_depth : null,
@@ -184,7 +185,12 @@ export function briefContextText(brief) {
   const mailNote = person.mail
     ? `${person.mail}${brief.known.find((item) => item.label === "Email")?.confidence === "unverified" ? " (tahmin)" : ""}`
     : "yok";
-  lines.push(`E-posta: ${mailNote}`);
+  const probeLabel = {
+    passed: "doğrulandı (RCPT probe kabul)", not_found: "DOĞRULANMADI (kutu yok)",
+    catch_all: "doğrulanamaz (catch-all sunucu)", blocked: "probe engellendi (tekrar denenecek)",
+    no_mx: "MX yok", not_used: "henüz probe edilmedi", invalid: "geçersiz",
+  }[person.mail_probe] ?? person.mail_probe;
+  lines.push(`E-posta: ${mailNote} — probe: ${probeLabel}`);
   lines.push(`Tarama: ${person.scan_state}${person.scan_depth != null ? `, derinlik ${person.scan_depth}` : ""}`);
   if (brief.evidence?.length) {
     lines.push(`Kurum kanıtları (yarışma/takım/program — YAYIMLANMIŞ, tebrik+değer köprüsü için kullan):\n${brief.evidence

@@ -206,6 +206,7 @@ test("GET mailqueue skor bileşenlerini açıklar, uygunluğu süzer ve awaiting
     ],
     mail_state: "none",
     scan_state: "scanned",
+    mail_probe: "not_used",
   });
   assert.equal(result.queue[1].mail_state, "closed");
   assert.match(result.queue[2].reasons[0], /score değeri kullanıldı/);
