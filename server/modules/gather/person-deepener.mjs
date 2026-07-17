@@ -212,6 +212,22 @@ export function createPersonSources({ agent, person, company, webSearch = codexP
       if (step !== "school" && company?.meta?.site && openBrowser) {
         browser ??= await openBrowser();
         siteText = (await browser.browse(company.meta.site)).text;
+        // Yayımlanmış adresler çoğu kez ana sayfada değil iletişim/künye
+        // sayfasındadır (destek@ vakası): mail adımında yaygın yolları da dene.
+        if (step === "mail") {
+          const base = company.meta.site.replace(/\/+$/, "");
+          for (const pathName of ["iletisim", "contact", "hakkimizda", "kunye", "about"]) {
+            try {
+              const page = await browser.browse(`${base}/${pathName}`);
+              if (page?.text?.trim()) {
+                siteText += `\n\n--- /${pathName} sayfası ---\n${page.text}`;
+              }
+            } catch {
+              // sayfa yoksa geç
+            }
+            if (siteText.length > 30_000) break;
+          }
+        }
       }
       return webSearch({ agent, person, company, step, findings, siteText });
     },
