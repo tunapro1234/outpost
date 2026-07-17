@@ -15,11 +15,13 @@ interface SpeedStep {
 
 const STEPS: SpeedStep[] = [
   { label: "Paused", enabled: false, schedule: null, limit: 0, runsPerHour: 0 },
+  { label: "Every 12 h", enabled: true, schedule: "15 3,15 * * *", limit: 5, runsPerHour: 1 / 12 },
+  { label: "Every 6 h", enabled: true, schedule: "15 */6 * * *", limit: 5, runsPerHour: 1 / 6 },
+  { label: "Every 3 h", enabled: true, schedule: "15 */3 * * *", limit: 5, runsPerHour: 1 / 3 },
   { label: "Hourly", enabled: true, schedule: "15 * * * *", limit: 5, runsPerHour: 1 },
   { label: "Every 30 min", enabled: true, schedule: "5,35 * * * *", limit: 5, runsPerHour: 2 },
   { label: "Every 15 min", enabled: true, schedule: "*/15 * * * *", limit: 5, runsPerHour: 4 },
-  { label: "Every 10 min", enabled: true, schedule: "*/10 * * * *", limit: 8, runsPerHour: 6 },
-  { label: "Every 5 min", enabled: true, schedule: "*/5 * * * *", limit: 10, runsPerHour: 12 },
+  { label: "Unlimited", enabled: true, schedule: "*/5 * * * *", limit: 10, runsPerHour: 12 },
 ];
 
 const NOUN: Record<GatherKind, string> = {
@@ -40,13 +42,27 @@ function cronPeriodMinutes(schedule: string): number | null {
     const n = Number(minute.slice(2));
     return Number.isFinite(n) && n > 0 ? n : null;
   }
+  const hourPeriod = (h: string): number | null => {
+    if (h === "*") return 1;
+    if (h.startsWith("*/")) {
+      const n = Number(h.slice(2));
+      return Number.isFinite(n) && n > 0 ? n : null;
+    }
+    if (h.includes(",")) {
+      const count = h.split(",").filter(Boolean).length;
+      return count > 0 ? Math.round(24 / count) : null;
+    }
+    if (/^\d+$/.test(h)) return 24; // tek sabit saat → günlük
+    return null;
+  };
   if (minute.includes(",")) {
     const count = minute.split(",").filter(Boolean).length;
     return hour === "*" && count > 0 ? Math.round(60 / count) : null;
   }
   if (/^\d+$/.test(minute)) {
-    // single fixed minute — hourly if the hour is wild, else daily-ish (treat as hourly)
-    return 60;
+    // fixed minute: period comes from the hour field (hourly / every N hours / daily)
+    const hp = hourPeriod(hour);
+    return hp == null ? null : hp * 60;
   }
   return null;
 }
@@ -187,7 +203,9 @@ export default function AgentSpeed({
             ? "speed control coming online"
             : step === 0
               ? "No scheduled runs — use Run now"
-              : `≈ ${throughput} ${noun}/hour`}
+              : throughput < 1
+                ? `≈ ${Math.round(throughput * 24)} ${noun}/day`
+                : `≈ ${Math.round(throughput)} ${noun}/hour`}
         </span>
       </div>
     </div>
