@@ -1,4 +1,5 @@
 import { mailQueue } from "./service.mjs";
+import { readMailSettings, writeMailSettings } from "./settings.mjs";
 import {
   approveMailDraft,
   listExclusions,
@@ -24,6 +25,14 @@ export async function mailerRoutes(app, {
   }
 
   app.get("/mailqueue", async (request) => mailQueue(resolveWorkspace(request)));
+  app.get("/mail-settings", async (request) => {
+    authenticatedMailerUser(request, defaultUser);
+    return readMailSettings(resolveWorkspace(request));
+  });
+  app.put("/mail-settings", async (request) => {
+    await ownerUser(request, "mail ayarları yalnız owner");
+    return writeMailSettings(resolveWorkspace(request), request.body ?? {});
+  });
   app.get("/maildrafts", async (request) => listMailDrafts(resolveWorkspace(request)));
   app.post("/maildrafts/:id/approve", async (request) => {
     await ownerUser(request);

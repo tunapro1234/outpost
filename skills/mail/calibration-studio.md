@@ -84,3 +84,25 @@ Uygun değilse sorun değil.
 Tuna
 probotstudio.com · 0538 040 81 48
 ```
+
+## Yönlendirme kalıbı ne zaman (kritik ayrım)
+- Hedef kişi DOĞRULANMIŞ karar verici ise (founder/exec, kenar kanıtlı) hook olmasa bile
+  YÖNLENDİRME İSTEME. Karar vericiye "beni X ile tanıştırır mısınız" yazmak fırsatı ona geri
+  fırlatmaktır. Doğrudan kalıba geç: kısa değer cümlesi + dinleme/özet CTA'sı.
+- Yönlendirme kalıbı YALNIZ şu durumlar içindir: genel kurumsal adres (info@), rolü belirsiz
+  ya da düşük yetkili kişi.
+
+## KOŞULLU TAHMİN TAM YASAĞI + KANIT-ÖNCE YAZIM (Tuna, 2026-07-17 akşam — EN KRİTİK KURAL)
+- Alıcıya kendi işini yapıp yapmadığını SORMAK her biçimde YASAK: "...yürütüyorsanız",
+  "...varsa", "...yapıyorsanız merak ediyorum" dahil. Bu, araştırmadığımızın itirafıdır.
+- BAĞLAM PAKETİNDEKİ "Kurum kanıtları" bölümü doluysa yazım KANIT-ÖNCE kurulur:
+  1) Kanıtı gördüğünü söyle ve gerekiyorsa TEBRİK ET (somut: takım adı/program).
+     Ör: "Okulunuzun FTC 24140 takımıyla yarıştığını gördüm, tebrikler."
+  2) Değer köprüsü kur: Probot'un o kanıtla kesişimi.
+     Ör: "Biz de Türkiye'deki yarışmalar için parça ve kit üretiyoruz."
+  3) Alıcının kazanacağı şeyi netleştir + mütevazı CTA.
+     Ör: "Robotik eğitim ve parça deneyiminizden faydalanmak isteriz, size daha uygun
+     sistemler üretebilmek için 15 dakika sizi dinleyebilir miyim?"
+- Kurum kanıtı VE kişisel hook YOKSA: o kişiye soru-tahmin maili YAZMA. Kısa, iddiasız genel
+  tanıtım + düşük sürtünmeli özet teklifi kur ya da taslak üretmeyi reddet ("kanıt yok,
+  araştırma gerekli" notu düş).

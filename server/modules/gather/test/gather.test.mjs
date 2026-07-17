@@ -334,6 +334,7 @@ test("person deepener okul→yetki→hook sırasını izler, avantajlı okul bü
   const calls = [];
   const fixture = {
     school: { school: "Boğaziçi Üniversitesi", summary: "okul doğrulandı" },
+    mail: { mail: "kisi@example.com", mail_source_url: "https://example.com/iletisim" },
     authority: { authority: "exec", role: "Teknoloji Direktörü" },
     hooks: { hooks: ["FRC mentoru"], sources: ["https://example.com/news"] },
   };
@@ -345,11 +346,11 @@ test("person deepener okul→yetki→hook sırasını izler, avantajlı okul bü
     threshold: 10,
     source: { search: async (step) => { calls.push(step); return fixture[step]; } },
   });
-  assert.deepEqual(calls, ["school", "authority", "hooks"]);
+  assert.deepEqual(calls, ["school", "mail", "authority", "hooks"]);
   assert.equal(result.budget, 40);
-  assert.equal(result.spent, 28);
+  assert.equal(result.spent, 34); // school 4 + mail 6 + authority 8 + hooks 16
   assert.deepEqual(result.findings.hooks, ["FRC mentoru"]);
-  assert.equal(expectedGain(80, { school: null, authority: "unknown", hooks: [] }, 4), 76);
+  assert.equal(expectedGain(80, { school: null, mail: null, authority: "unknown", hooks: [] }, 4), 76);
 
   const ordinaryCalls = [];
   const ordinary = await runDeepeningPolicy({
@@ -360,10 +361,12 @@ test("person deepener okul→yetki→hook sırasını izler, avantajlı okul bü
     threshold: 10,
     source: { search: async (step) => {
       ordinaryCalls.push(step);
-      return step === "school" ? { school: "Başka Üniversite" } : { authority: "manager" };
+      if (step === "school") return { school: "Başka Üniversite" };
+      if (step === "mail") return {};
+      return { authority: "manager" };
     } },
   });
-  assert.deepEqual(ordinaryCalls, ["school", "authority"]);
+  assert.deepEqual(ordinaryCalls, ["school", "mail", "authority"]);
   assert.equal(ordinary.trace.at(-1).reason, "budget");
 
   const stopped = await runDeepeningPolicy({

@@ -68,6 +68,30 @@ function scanConfidence(meta) {
   return meta?.scan_state === "scanned" ? "scan" : "unverified";
 }
 
+
+// Kurumun graf kanıtları: takım/program/kanal bağları (FTC/FRC kayıtları vb.).
+// Bunlar YAYIMLANMIŞ kayıtlardan gelen doğrulanmış kancalardır: yazar "tebrik +
+// değer köprüsü" için kullanır, alıcıya işini yapıp yapmadığını SORMAZ.
+function employerEvidence(company, index, limit = 4) {
+  if (!company) return [];
+  const evidence = [];
+  for (const edge of index.edges) {
+    const otherId = edge.source === company.id
+      ? edge.target
+      : edge.target === company.id ? edge.source : null;
+    if (!otherId) continue;
+    const other = index.entities.get(otherId);
+    if (!other || other.meta.type !== "channel") continue;
+    evidence.push({
+      name: other.meta.name,
+      label: cleanLabel(edge.label) ?? null,
+      program: other.meta.program ?? null,
+    });
+    if (evidence.length >= limit) break;
+  }
+  return evidence;
+}
+
 export function buildPersonBrief(person, index, signals) {
   const meta = person?.meta ?? {};
   const { company, edge, meaning } = resolveEmployer(person, index);
@@ -114,6 +138,7 @@ export function buildPersonBrief(person, index, signals) {
           relation: employerRelation, meaning }
       : null,
     hooks,
+    evidence: employerEvidence(company, index),
     score: { value: scored.score, reasons: scored.reasons },
     known,
     findings,
@@ -139,9 +164,16 @@ export function briefContextText(brief) {
     : "yok";
   lines.push(`E-posta: ${mailNote}`);
   lines.push(`Tarama: ${person.scan_state}${person.scan_depth != null ? `, derinlik ${person.scan_depth}` : ""}`);
+  if (brief.evidence?.length) {
+    lines.push(`Kurum kanıtları (yarışma/takım/program — YAYIMLANMIŞ, tebrik+değer köprüsü için kullan):\n${brief.evidence
+      .map((item) => `- ${item.name}${item.program ? ` [${item.program}]` : ""}${item.label ? ` (${item.label})` : ""}`)
+      .join("\n")}`);
+  }
   lines.push(brief.hooks.length
     ? `Hooks: ${brief.hooks.join("; ")}`
-    : "Hooks: doğrulanmış hook yok (hook uydurma; genel yönlendirme kalıbına geç)");
+    : (brief.evidence?.length
+      ? "Hooks: kişiye özel hook yok, KURUM KANITLARINI kullan (yukarıda)"
+      : "Hooks: doğrulanmış hook yok (hook uydurma; alıcıya kendi işini sorma)"));
   lines.push(`Skor: ${brief.score.value}`);
   if (brief.score.reasons?.length) {
     lines.push(`Skor nedenleri:\n${brief.score.reasons.map((reason) => `- ${reason}`).join("\n")}`);

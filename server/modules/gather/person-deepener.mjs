@@ -9,6 +9,7 @@ import { companyImportance, loadSignals, resolveCompany } from "../mailer/servic
 
 export const DEEPEN_STEPS = [
   { id: "school", cost: 4 },
+  { id: "mail", cost: 6 },
   { id: "authority", cost: 8 },
   { id: "hooks", cost: 16 },
 ];
@@ -26,9 +27,10 @@ function hooks(value) {
 export function remainingUnknown(findings = {}) {
   let unknown = 0;
   if (!hasText(findings.school)) unknown += 1;
+  if (!hasText(findings.mail)) unknown += 1;
   if (!hasText(findings.authority) || findings.authority === "unknown") unknown += 1;
   if (!hooks(findings.hooks).length) unknown += 1;
-  return unknown / 3;
+  return unknown / 4;
 }
 
 export function expectedGain(companyImportanceValue, findings, stepCost) {
@@ -87,8 +89,13 @@ export async function runDeepeningPolicy({
   threshold = 10,
   costs = {},
 }) {
+  const VERIFIED_MAIL = new Set(["yayimlanmis", "verified", "manual", "resmi"]);
   let findings = {
     school: person.meta.school ?? null,
+    mail: VERIFIED_MAIL.has(String(person.meta.mail_source ?? "").toLowerCase())
+      ? (person.meta.mail ?? null)
+      : null,
+    mail_source_url: null,
     authority: person.meta.authority ?? "unknown",
     role: person.meta.role ?? person.meta.rol ?? null,
     hooks: hooks(person.meta.hooks),
@@ -177,6 +184,7 @@ export async function codexPersonSearch({
     child.stdin.on("error", () => {});
     const stepInstructions = {
       school: "Önce yalnız okul/eğitim geçmişini doğrula; ucuz ve doğrudan web aramaları kullan.",
+      mail: "Kişinin YAYIMLANMIŞ e-posta adresini ara: kurum sitesinin iletişim/kadro/künye sayfaları, resmi PDF ve duyurular. YALNIZ yayımlanmış kanıt kabul edilir, KALIP TAHMİNİ ÜRETME (ad.soyad@ tahmini yasak). Bulursan kaynak URL'yi mail_source_url alanına yaz; bulamazsan mail=null bırak.",
       authority: "Güncel rolü ve karar yetkisini şirket/takım sayfası dahil birincil kaynaklarla doğrula.",
       hooks: "Yazılabilir hook ara: güncel haber, konuşma, proje, robotik/FRC geçmişi veya doğrulanabilir ortak bağlantı.",
     };
@@ -189,7 +197,7 @@ Mevcut bulgular: ${JSON.stringify(findings)}
 Kişi notu: ${person.body?.slice(0, 6000) ?? ""}
 Şirket notu: ${company?.body?.slice(0, 6000) ?? ""}
 Merkezi browser ile alınmış şirket sayfası metni: ${siteText.slice(0, 12000)}
-Yalnız JSON döndür: {"school":string|null,"authority":"founder|exec|manager|staff|unknown"|null,"role":string|null,"hooks":string[],"sources":string[],"summary":string}. Bu adım dışındaki alanları null/boş bırak.`);
+Yalnız JSON döndür: {"school":string|null,"mail":string|null,"mail_source_url":string|null,"authority":"founder|exec|manager|staff|unknown"|null,"role":string|null,"hooks":string[],"sources":string[],"summary":string}. Bu adım dışındaki alanları null/boş bırak.`);
     return parseJson(await collectChild(child, timeoutMs));
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
@@ -239,6 +247,13 @@ function proposedFields(person, result) {
   const currentHooks = hooks(person.meta.hooks);
   const nextHooks = hooks(result.findings.hooks);
   if (nextHooks.some((hook) => !currentHooks.includes(hook))) fields.hooks = nextHooks;
+  if (hasText(result.findings.mail) && result.findings.mail !== person.meta.mail) {
+    fields.mail = result.findings.mail.trim();
+    fields.mail_source = "yayimlanmis";
+    if (hasText(result.findings.mail_source_url)) {
+      fields.mail_source_url = result.findings.mail_source_url.trim();
+    }
+  }
   return fields;
 }
 
