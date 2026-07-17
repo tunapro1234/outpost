@@ -6991,3 +6991,17 @@ textarea.np-input {
   line-height: 1.5;
   padding: 12px 2px;
 }
+
+/* Mail RCPT probe durum rozeti */
+.brief-probe {
+  font-size: 12px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  background: var(--surface-2);
+}
+.brief-probe.passed { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); color: var(--ok); }
+.brief-probe.not_found { border-color: color-mix(in srgb, var(--warn) 60%, var(--line)); color: var(--warn); }
+.brief-probe.catch_all, .brief-probe.blocked, .brief-probe.no_mx { color: var(--text-faint); }
