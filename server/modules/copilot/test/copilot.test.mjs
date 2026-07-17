@@ -343,6 +343,8 @@ test("tmux köprüsü promptu yazar, literal komut ve Enter yollar, dosya ekleri
       `[copilot ${id}] Soru: copilot/inbox/${id}.md oku; cevabı copilot/outbox/${id}.md dosyasına markdown olarak yaz; bitince copilot/outbox/${id}.done oluştur.`,
     ]],
     ["tmux", ["send-keys", "-t", "fake-copilot", "Enter"]],
+    // vim-mode Enter-tekrar korumasının submit kontrolü (pane'de id yok → tek bakışta biter)
+    ["tmux", ["capture-pane", "-p", "-t", "fake-copilot"]],
   ]);
 });
 

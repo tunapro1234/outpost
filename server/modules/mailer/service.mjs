@@ -247,6 +247,9 @@ export async function mailQueue(workspace) {
     const { scanState, mailState } = candidateState(person);
     if (!QUEUE_MAIL_STATES.has(mailState)) continue;
     const scored = scorePerson(person, workspace.index, signals);
+    // Kurum outreach kapsam dışıysa (Tuna reject kararı) o kurumdan KİMSE
+    // kuyruğa/tarama listesine giremez.
+    if (scored.company?.meta?.outreach === "excluded") continue;
     if (scanState === "scanned") {
       queue.push({
         ...baseItem(person, scored),

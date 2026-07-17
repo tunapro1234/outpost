@@ -224,7 +224,7 @@ export function createTmuxFileBridge({
       for (let attempt = 0; attempt < 3; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 700));
         try {
-          const { stdout } = await exec("tmux", ["capture-pane", "-t", session, "-p"]);
+          const { stdout } = await exec("tmux", ["capture-pane", "-p", "-t", session]);
           const pane = typeof stdout === "string" ? stdout : "";
           if (pane.includes("esc to interrupt")) break; // submit oldu, agent çalışıyor
           if (!pane.includes(id)) break;

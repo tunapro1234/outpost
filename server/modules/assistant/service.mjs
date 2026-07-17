@@ -56,7 +56,7 @@ export async function spawnAssistantSession({
   session = `outpost-user-${user}`,
   exec = execFileAsync,
   sleep = defaultSleep,
-  spawnWaitMs = 1_000,
+  spawnWaitMs = 30_000,
   claudeBin = process.env.OUTPOST_CLAUDE_BIN ?? "claude",
 }) {
   // IS_SANDBOX=1: claude, root altında --dangerously-skip-permissions'ı ancak
@@ -73,11 +73,12 @@ export async function spawnAssistantSession({
       command,
     ]);
     // TUI hazır olmadan gönderilen tuşlar yutuluyor: prompt (❯) görünene
-    // kadar bekle (en çok ~30 sn), sonra brief'i gönder.
-    const deadline = Date.now() + Math.max(spawnWaitMs, 30_000);
+    // kadar bekle (toplam süre spawnWaitMs), sonra brief'i gönder.
+    const deadline = Date.now() + spawnWaitMs;
+    const pollMs = Math.min(1_000, Math.max(1, Math.floor(spawnWaitMs / 5)));
     let ready = false;
-    while (Date.now() < deadline) {
-      await sleep(1_000);
+    do {
+      await sleep(pollMs);
       try {
         const { stdout } = await exec("tmux", ["capture-pane", "-t", session, "-p"]);
         if (typeof stdout === "string" && stdout.includes("❯")) {
@@ -87,7 +88,7 @@ export async function spawnAssistantSession({
       } catch {
         // pane henüz yoksa beklemeye devam
       }
-    }
+    } while (Date.now() < deadline);
     if (!ready) throw new Error("claude TUI zamanında hazır olmadı");
     await exec("tmux", [
       "send-keys",

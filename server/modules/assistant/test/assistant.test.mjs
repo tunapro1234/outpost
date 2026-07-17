@@ -65,7 +65,7 @@ test("assistant oturumu spawn eder, brief üretir ve dosya protokolünü SSE ola
       throw new Error("can't find session");
     }
     if (args[0] === "new-session") sessionExists = true;
-    if (args[0] === "capture-pane") return { stdout: "hazır\n>\n" };
+    if (args[0] === "capture-pane") return { stdout: "hazır\n❯\nesc to interrupt\n" };
     return { stdout: "" };
   };
   const sleep = async (milliseconds) => {
