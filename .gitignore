@@ -17,3 +17,4 @@ web/mock/v2-*.png
 scraper/node_modules/
 scraper/out/
 web/mock/*.png
+web/*.tmp.mjs

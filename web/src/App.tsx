@@ -24,7 +24,6 @@ import OverviewView from "@/modules/overview/OverviewView";
 import AssistantDrawer from "@/modules/assistant/AssistantDrawer";
 import ControlToast from "@/components/ControlToast";
 import { connectControl, type ControlCommand } from "@/core/control";
-import { IconAssistant } from "@/core/icons";
 import { api, setWorkspace as configureWorkspace } from "@/core/api";
 import type {
   EntityListItem,
