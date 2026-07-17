@@ -232,6 +232,7 @@ export interface PersonBrief {
     name: string;
     role: string | null;
     mail: string | null;
+    mail_probe: string;
     mail_state: string;
     scan_state: string;
     scan_depth: number | null;

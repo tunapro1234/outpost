@@ -411,6 +411,17 @@ function BriefCard({ person }: { person: QueuePerson | null }) {
         </span>
       </div>
 
+      {brief.person.mail && (
+        <div className={`brief-probe ${brief.person.mail_probe}`} title="RCPT-TO email verification">
+          {"mail: "}{brief.person.mail}{" · "}
+          {{
+            passed: "✓ verified", not_found: "✗ mailbox not found",
+            catch_all: "~ catch-all (can't verify)", blocked: "probe blocked, retrying",
+            no_mx: "no mail server", not_used: "not probed yet", invalid: "invalid",
+          }[brief.person.mail_probe] ?? brief.person.mail_probe}
+        </div>
+      )}
+
       <div className="brief-facts">
         {brief.known.map((k, i) => (
           <div className="brief-fact" key={i}>
