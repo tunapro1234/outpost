@@ -6,6 +6,7 @@ import { codexServiceTierArgs } from "../../lib/codex.mjs";
 import { serializeMarkdown } from "../../lib/vault.mjs";
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
 import { companyImportance, loadSignals, resolveCompany } from "../mailer/service.mjs";
+import { verifyMailbox } from "../mailer/mailprobe.mjs";
 
 export const DEEPEN_STEPS = [
   { id: "school", cost: 4 },
@@ -315,6 +316,12 @@ function proposedFields(person, result) {
     if (hasText(result.findings.mail_source_url)) {
       fields.mail_source_url = result.findings.mail_source_url.trim();
     }
+    if (hasText(result.findings.mail_probe)) {
+      fields.mail_probe = result.findings.mail_probe;
+      if (Number.isFinite(result.findings.mail_probe_code)) {
+        fields.mail_probe_code = result.findings.mail_probe_code;
+      }
+    }
   }
   return fields;
 }
@@ -365,6 +372,17 @@ export async function runPersonDeepener({
         threshold: Number.isFinite(agent.params.threshold) ? agent.params.threshold : 10,
         costs: agent.params.costs ?? {},
       });
+      // Bulunan/tahmin edilen adresi RCPT probe ile doğrula (Tuna 2026-07-17:
+      // gönderilebilir mailler genel olarak probe'lanır).
+      if (result.findings.mail && agent.params.probe !== false) {
+        try {
+          const probe = await verifyMailbox(result.findings.mail);
+          result.findings.mail_probe = probe.probe_state;
+          result.findings.mail_probe_code = probe.code ?? null;
+        } catch (error) {
+          result.findings.mail_probe = "blocked";
+        }
+      }
       const stage = await writePersonEnrichmentStage(workspace, { person, agent, result, now });
       await updateEntityMeta(workspace, person, {
         scan_state: "scanned",

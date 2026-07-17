@@ -433,6 +433,7 @@ export async function mailQueue(workspace) {
         score: scored.score,
         mail: hasMailValue(person.meta) ? (person.meta.mail ?? person.meta.mails?.[0]) : null,
         mail_source: person.meta.mail_source ?? null,
+        mail_probe: person.meta.mail_probe ?? "not_used",
       });
       if (!hasMail(person)) continue;
       // Kalıp-tahmini maili olanlar araştırma beklerken kuyruğa da girer
@@ -445,6 +446,7 @@ export async function mailQueue(workspace) {
       reasons: scored.reasons,
       mail_state: mailState,
       scan_state: scanState,
+      mail_probe: person.meta.mail_probe ?? "not_used",
     });
   }
 
