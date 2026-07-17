@@ -77,6 +77,27 @@ test("boş workspace kökü example-vault kopyasından demo workspace tohumlar",
   t.after(() => reopened.close());
   assert.equal(seeded.length, 1);
   assert.equal(reopened.getDefault().id, "demo");
+  assert.equal(reopened.getDefault().code, "demo");
+});
+
+test("workspace config code alanını workspace nesnesine taşır", async (t) => {
+  const root = await temporaryDirectory("outpost-workspace-code-");
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const { directory } = await writeWorkspace(root, "probot", "Probot", "hedef");
+  await fs.writeFile(
+    path.join(directory, "config.yaml"),
+    "name: Probot\ncode: prb\n",
+    "utf8",
+  );
+
+  const registry = await WorkspaceRegistry.load({
+    workspacesPath: root,
+    outpostVault: null,
+    watch: false,
+  });
+  t.after(() => registry.close());
+
+  assert.equal(registry.get("probot").code, "prb");
 });
 
 test("scoped entities listesi frontmatter liste alanlarını ve null varsayılanlarını döndürür", async (t) => {

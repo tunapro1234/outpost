@@ -12,7 +12,11 @@ export async function updateEntityMeta(workspace, entityOrId, patch) {
   }
   await assertSafeVaultPath(workspace.vaultPath, entity.filePath);
   const current = parseMarkdown(await fs.readFile(entity.filePath, "utf8"), entity.filePath);
-  const nextMeta = { ...current.meta, ...patch };
+  const nextMeta = { ...current.meta };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) delete nextMeta[key];
+    else nextMeta[key] = value;
+  }
   await fs.writeFile(entity.filePath, serializeMarkdown(current.body, nextMeta), "utf8");
   await workspace.index.loadFile(entity.filePath);
   return workspace.index.entities.get(entity.id);

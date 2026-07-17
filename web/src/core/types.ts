@@ -209,6 +209,17 @@ export interface MailRejectResult {
   person_closed?: { id: string; name: string };
 }
 
+// ---- outreach exclusions (server GET /api/ws/:ws/exclusions) ------------
+// A company removed from outreach via an `exclude-company` feedback. The owner
+// can override (re-include) it via DELETE /exclusions/:companyId.
+export interface Exclusion {
+  company_id: string;
+  name: string;
+  by: string; // who excluded it
+  at: string; // ISO timestamp
+  reason: string;
+}
+
 // ---- overview metrics (server GET /api/ws/:ws/metrics) ------------------
 export interface MetricsDailyPoint {
   date: string; // YYYY-MM-DD

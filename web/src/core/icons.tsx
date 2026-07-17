@@ -60,13 +60,6 @@ export const IconLink = ({ size = 16 }: IProps) => (
     <path d="M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1" />
   </svg>
 );
-// Copilot mark — a four-point spark with a small companion star.
-export const IconCopilot = ({ size = 16 }: IProps) => (
-  <svg {...base(size)}>
-    <path d="M12 3.5c.6 3.2 1.8 4.4 5 5-3.2.6-4.4 1.8-5 5-.6-3.2-1.8-4.4-5-5 3.2-.6 4.4-1.8 5-5Z" />
-    <path d="M18.5 14.5c.28 1.3.72 1.74 2 2-1.28.26-1.72.7-2 2-.28-1.3-.72-1.74-2-2 1.28-.26 1.72-.7 2-2Z" />
-  </svg>
-);
 // Assistant mark — a single four-point spark inside a soft chat outline.
 export const IconAssistant = ({ size = 16 }: IProps) => (
   <svg {...base(size)}>

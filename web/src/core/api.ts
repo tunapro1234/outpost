@@ -5,6 +5,7 @@ import type {
   EntityListItem,
   EntityMeta,
   EntityType,
+  Exclusion,
   Facets,
   GatherOverview,
   GraphData,
@@ -443,6 +444,58 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
+  },
+
+  // ---- outreach exclusions ----------------------------------------------
+  // Companies removed from outreach. Returns null on 404 / error so the UI can
+  // hide the section entirely while the endpoint is still shipping.
+  async exclusions(): Promise<Exclusion[] | null> {
+    if (MOCK) return null;
+    try {
+      const res = await fetch(`${workspaceBase()}/exclusions`);
+      if (!res.ok) return null;
+      return (await res.json()) as Exclusion[];
+    } catch {
+      return null;
+    }
+  },
+
+  // Override an exclusion (re-include the company in outreach). Owner-only on
+  // the server: a 403 rejects with FORBIDDEN so the caller can disable the
+  // control. Resolves on success; throws Error(message) otherwise.
+  async removeExclusion(
+    companyId: string,
+    reason?: string
+  ): Promise<{ ok: boolean }> {
+    const trimmed = reason?.trim();
+    const res = await fetch(
+      `${workspaceBase()}/exclusions/${encodeURIComponent(companyId)}`,
+      {
+        method: "DELETE",
+        ...(trimmed
+          ? {
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ reason: trimmed }),
+            }
+          : {}),
+      }
+    );
+    if (res.status === 403) throw new Error("FORBIDDEN");
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try {
+        const b = await res.json();
+        if (b?.error) msg = b.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    try {
+      return (await res.json()) as { ok: boolean };
+    } catch {
+      return { ok: true };
+    }
   },
 
   // ---- gather: agents / runs / stage ------------------------------------

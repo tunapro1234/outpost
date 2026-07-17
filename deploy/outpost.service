@@ -9,6 +9,7 @@ Environment=NODE_ENV=production
 Environment=OUTPOST_PORT=3002
 Environment=OUTPOST_WORKSPACES=/srv/outpost/workspaces
 Environment=OUTPOST_CLAUDE_BIN=/root/.local/bin/claude
+Environment=OUTPOST_COPILOT_TMUX=op-ws-prb
 Environment=OUTPOST_USERS=/srv/outpost/users.yaml
 Environment=OUTPOST_HTPASSWD=/etc/nginx/.htpasswd-outpost
 Environment=OUTPOST_MAIL_DATA=/srv/mailserver/data/probotstudio.com

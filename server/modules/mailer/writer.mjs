@@ -4,7 +4,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { codexServiceTierArgs } from "../../lib/codex.mjs";
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
-import { createMailDraftStage, listMailDraftRecords, readOutbox } from "./drafts.mjs";
+import {
+  badContentNotes,
+  createMailDraftStage,
+  listMailDraftRecords,
+  readOutbox,
+} from "./drafts.mjs";
 import { mailQueue, resolveCompany } from "./service.mjs";
 
 const MODULE_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
@@ -127,6 +132,11 @@ function variantsPrompt(context, skills, extra = "") {
   return `Üç outreach mail varyantı üret. Yalnız JSON döndür: {"variants":[{"subject":"...","body":"...","rationale":"...","tone":"..."},{...},{...}]}.\nHer varyant AYRIŞIK bir açı ve hook kullanmalı; aynı açının sözcük değişimi kabul edilmez. Rationale kullanılan hook'u ve ton seçimini açıkça söylesin. Gerçek dışı iddia üretme. Gönderim yapma.\n${extra}\n\nMAIL KURALLARI:\n${skills}\n\nBAĞLAM PAKETİ:\n${context}`;
 }
 
+export function rejectedNotesPrompt(notes) {
+  if (!notes.length) return "";
+  return `ÖNCEKİ RED NOTLARI (bunları düzelt):\n${notes.map((note) => `- ${note}`).join("\n")}`;
+}
+
 async function claudeOutput(prompt, { workspace, bin = process.env.OUTPOST_CLAUDE_BIN ?? "claude" } = {}) {
   return runCommand(bin, [
     "--model", "claude-opus-4-8",
@@ -223,7 +233,12 @@ export async function runMailWriterCycle({
     const company = item.company_id ? workspace.index.entities.get(item.company_id) : null;
     try {
       const context = await compileContext({ person, company, queueItem: item, agent, workspace });
-      const variants = await generateVariants(context, { workspace, agent });
+      const notes = await badContentNotes(workspace, person.id);
+      const variants = await generateVariants(context, {
+        workspace,
+        agent,
+        extraPrompt: rejectedNotesPrompt(notes),
+      });
       const draft = await createMailDraftStage(workspace, {
         person, company, variants, score: item.score, reasons: item.reasons,
         sourceAgent: agent.id, now,

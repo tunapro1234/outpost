@@ -19,9 +19,9 @@ için mevcut Copilot aynen kalır; asistan HERKES için (owner dahil — owner i
   (gizlenemez tek bölüm).
 
 ## Asistan tmux agent (kullanıcı başına)
-- Oturum adı: `outpost-user-<user>` (rush uyumlu outpost-main-<user> DEĞİL — kısa tutuyoruz;
+- Oturum adı: `op-ws-<kod>-usr-<ad-soyad>` (rush uyumlu outpost-main-<user> DEĞİL — kısa tutuyoruz;
   bp'ye kayıt gerekmez, kalıcı-önemsiz agent).
-- Yoksa server spawn eder: `tmux new-session -d -s outpost-user-<user> -c <workspace-dizini>
+- Yoksa server spawn eder: `tmux new-session -d -s op-ws-<kod>-usr-<ad-soyad> -c <workspace-dizini>
   '<OUTPOST_CLAUDE_BIN> --dangerously-skip-permissions --model claude-sonnet-5'` + açılışta
   brief gönderir (aşağıdaki talimat dosyası).
 - Talimat: `<workspace>/assistant/CLAUDE-ASSIST.md` (server ilk kullanımda şablondan yazar,

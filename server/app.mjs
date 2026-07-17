@@ -207,6 +207,7 @@ export async function createApp({
     briefTemplatePath: assistantBriefTemplatePath,
     spawnWaitMs: assistantSpawnWaitMs,
     bridgeOptions: assistantBridgeOptions,
+    usersPath,
   });
   await app.register(mailRoutes, {
     prefix: "/api/ws/:ws",
@@ -217,6 +218,7 @@ export async function createApp({
     prefix: "/api/ws/:ws",
     resolveWorkspace: resolveScopedWorkspace,
     defaultUser,
+    usersPath,
   });
   await mountApi(app, "/api", defaultResolver(registry), {
     legacy: true,

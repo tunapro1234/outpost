@@ -4,6 +4,8 @@ import { STATUS_COLORS, STATUS_LABELS, TYPE_LABELS } from "@/core/theme";
 import { trNormalize } from "@/core/normalize";
 import DraftCard from "@/modules/mail/DraftCard";
 import { useMailDrafts } from "@/modules/mail/useMailDrafts";
+import ExclusionsPanel from "./ExclusionsPanel";
+import { useExclusions } from "./useExclusions";
 
 interface Props {
   mails: MailItem[] | null; // null = endpoint not available yet
@@ -12,7 +14,7 @@ interface Props {
   onOpenEntity: (id: string) => void;
 }
 
-type Tab = "sent" | "drafts" | "candidates" | "inbound";
+type Tab = "sent" | "drafts" | "candidates" | "inbound" | "exclusions";
 type CandSort = "score" | "name";
 
 const CANDIDATE_SCORE_MIN = 15;
@@ -29,6 +31,7 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
   const [candAsc, setCandAsc] = useState(false);
   const [openDraftId, setOpenDraftId] = useState<string | null>(null);
   const drafts = useMailDrafts();
+  const exclusions = useExclusions();
 
   const list = mails ?? [];
   const sent = useMemo(() => list.filter((m) => m.direction === "out"), [list]);
@@ -181,6 +184,15 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
             Inbound
             {inbound.length > 0 && <span className="tab-badge">{inbound.length}</span>}
           </button>
+          <button
+            className={tab === "exclusions" ? "on" : ""}
+            onClick={() => setTab("exclusions")}
+          >
+            Exclusions
+            {exclusions.items && exclusions.items.length > 0 && (
+              <span className="tab-badge">{exclusions.items.length}</span>
+            )}
+          </button>
         </div>
         <input
           className="np-input reach-search"
@@ -189,14 +201,22 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
               ? "Search candidates…"
               : tab === "drafts"
                 ? "Search drafts…"
-                : "Search mail…"
+                : tab === "exclusions"
+                  ? "Search excluded…"
+                  : "Search mail…"
           }
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
 
-      {mails === null && tab !== "candidates" && tab !== "drafts" ? (
+      {tab === "exclusions" ? (
+        <ExclusionsPanel
+          state={exclusions}
+          q={q}
+          onOpenEntity={onOpenEntity}
+        />
+      ) : mails === null && tab !== "candidates" && tab !== "drafts" ? (
         <div className="empty-state">
           <div className="es-title">Mail service coming online</div>
           <div className="es-sub">
@@ -380,14 +400,14 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
         </div>
       )}
 
-      {drafts.notice && (
+      {(drafts.notice || exclusions.notice) && (
         <div
           className="control-toast md-notice"
           role="status"
           aria-live="polite"
-          onClick={drafts.dismissNotice}
+          onClick={drafts.notice ? drafts.dismissNotice : exclusions.dismissNotice}
         >
-          {drafts.notice}
+          {drafts.notice || exclusions.notice}
         </div>
       )}
     </div>

@@ -1,6 +1,8 @@
 import { redactSecrets } from "../copilot/context.mjs";
 import { resolveThreadId } from "../copilot/threads.mjs";
+import { UserStore } from "../profile/service.mjs";
 import { createAssistantTmuxBridge, prepareAssistant } from "./tmux-bridge.mjs";
+import { personalAgentSession } from "./service.mjs";
 
 const SAFE_USERNAME = /^[a-z0-9-]{1,24}$/;
 
@@ -56,14 +58,30 @@ export async function assistantRoutes(app, {
   briefTemplatePath,
   spawnWaitMs,
   bridgeOptions,
+  usersPath = process.env.OUTPOST_USERS,
 }) {
   const bridges = new Map();
+  const users = usersPath ? new UserStore(usersPath) : null;
 
-  function bridgeFor(user) {
-    let bridge = bridges.get(user);
+  async function sessionFor(workspace, user) {
+    let displayName = user;
+    if (users) {
+      try {
+        displayName = (await users.get(user)).name || user;
+      } catch (error) {
+        if (error?.statusCode !== 404) throw error;
+      }
+    }
+    return personalAgentSession(workspace, displayName, user);
+  }
+
+  function bridgeFor(workspace, user, session) {
+    const key = `${workspace.id}\0${user}\0${session}`;
+    let bridge = bridges.get(key);
     if (!bridge) {
       bridge = createAssistantTmuxBridge({
         user,
+        session,
         exec,
         fileSystem,
         sleep,
@@ -73,7 +91,7 @@ export async function assistantRoutes(app, {
         logger: app.log,
         ...bridgeOptions,
       });
-      bridges.set(user, bridge);
+      bridges.set(key, bridge);
     }
     return bridge;
   }
@@ -99,7 +117,8 @@ export async function assistantRoutes(app, {
 
     try {
       await prepareAssistant(workspace, user, { fileSystem, briefTemplatePath });
-      const stream = await bridgeFor(user)(message, {
+      const session = await sessionFor(workspace, user);
+      const stream = await bridgeFor(workspace, user, session)(message, {
         signal: abortController.signal,
         workspace,
         user,

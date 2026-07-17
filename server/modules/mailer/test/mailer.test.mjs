@@ -13,7 +13,7 @@ import {
   readOutbox,
 } from "../drafts.mjs";
 import { followUpDecision, runFollowUpEngine } from "../followup.mjs";
-import { selectWriterCandidates } from "../writer.mjs";
+import { runMailWriterCycle, selectWriterCandidates } from "../writer.mjs";
 
 const TEST_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_WORKSPACES = path.join(TEST_DIRECTORY, "fixtures/workspaces");
@@ -27,7 +27,7 @@ function variants(prefix = "İlk") {
   }));
 }
 
-async function copiedApp(t) {
+async function copiedApp(t, options = {}) {
   const root = await temporaryDirectory("outpost-mailpipe-");
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await fs.cp(path.join(FIXTURE_WORKSPACES, "fixture"), path.join(root, "fixture"), {
@@ -39,6 +39,8 @@ async function copiedApp(t) {
     watch: false,
     mailSchedule: false,
     followupSchedule: false,
+    defaultUser: "tuna",
+    ...options,
   });
   t.after(() => app.close());
   return { app, workspace: app.workspaceRegistry.get("fixture"), root };
@@ -292,6 +294,79 @@ test("maildraft API approve outbox-ready kaydı yazar; reject taslağı kapatıp
   assert.match(feedback.ts, /^\d{4}-\d{2}-\d{2}T/);
 });
 
+test("approve users.yaml owner rolünü zorlar; staff reddedilir ve eksik dosyada default user owner olur", async (t) => {
+  const root = await temporaryDirectory("outpost-mailer-roles-");
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.cp(path.join(FIXTURE_WORKSPACES, "fixture"), path.join(root, "fixture"), {
+    recursive: true,
+  });
+  const usersPath = path.join(root, "users.yaml");
+  await fs.writeFile(usersPath, [
+    "users:",
+    "  - username: tuna",
+    "    role: owner",
+    "  - username: ada",
+    "    role: staff",
+    "",
+  ].join("\n"), "utf8");
+  const app = await createApp({
+    workspacesPath: root,
+    outpostVault: null,
+    watch: false,
+    mailSchedule: false,
+    followupSchedule: false,
+    defaultUser: "tuna",
+    usersPath,
+  });
+  t.after(() => app.close());
+  const workspace = app.workspaceRegistry.get("fixture");
+  const company = workspace.index.entities.get("oncelikli");
+  const staffDraft = await createMailDraftStage(workspace, {
+    person: workspace.index.entities.get("kurucu"), company,
+    variants: variants(), score: 80, reasons: [],
+  });
+  const staff = await app.inject({
+    method: "POST",
+    url: `/api/ws/fixture/maildrafts/${staffDraft.id}/approve`,
+    headers: { "x-remote-user": "ada" },
+    payload: { variant: 0 },
+  });
+  assert.equal(staff.statusCode, 403);
+  assert.deepEqual(staff.json(), { error: "approve yetkisi yalnız owner" });
+
+  const owner = await app.inject({
+    method: "POST",
+    url: `/api/ws/fixture/maildrafts/${staffDraft.id}/approve`,
+    headers: { "x-remote-user": "tuna" },
+    payload: { variant: 0 },
+  });
+  assert.equal(owner.statusCode, 200);
+
+  const missingUsers = path.join(root, "missing-users.yaml");
+  const fallbackApp = await createApp({
+    workspacesPath: root,
+    outpostVault: null,
+    watch: false,
+    mailSchedule: false,
+    followupSchedule: false,
+    defaultUser: "tuna",
+    usersPath: missingUsers,
+  });
+  t.after(() => fallbackApp.close());
+  const fallbackWorkspace = fallbackApp.workspaceRegistry.get("fixture");
+  const fallbackDraft = await createMailDraftStage(fallbackWorkspace, {
+    person: fallbackWorkspace.index.entities.get("direktor"),
+    company: fallbackWorkspace.index.entities.get("skorlu"),
+    variants: variants("Fallback"), score: 70, reasons: [],
+  });
+  const fallback = await fallbackApp.inject({
+    method: "POST",
+    url: `/api/ws/fixture/maildrafts/${fallbackDraft.id}/approve`,
+    payload: { variant: 1 },
+  });
+  assert.equal(fallback.statusCode, 200);
+});
+
 test("exclude-company kurumu vault'ta dışlar, aynı kurum taslaklarını cascade reddeder ve loglar", async (t) => {
   const { app, workspace } = await copiedApp(t);
   const company = workspace.index.entities.get("oncelikli");
@@ -329,8 +404,10 @@ test("exclude-company kurumu vault'ta dışlar, aynı kurum taslaklarını casca
   });
   const excluded = workspace.index.entities.get("oncelikli");
   assert.equal(excluded.meta.outreach, "excluded");
-  assert.match(excluded.meta.outreach_note,
-    /^tuna \d{4}-\d{2}-\d{2}: tanıdık; bu kuruma yazılmayacak$/);
+  assert.equal(excluded.meta.outreach_by, "tuna");
+  assert.match(excluded.meta.outreach_at, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(excluded.meta.outreach_reason, "tanıdık; bu kuruma yazılmayacak");
+  assert.equal(excluded.meta.outreach_note, undefined);
   assert.equal(workspace.index.entities.get("kurucu").meta.mail_state, "none");
   assert.equal(workspace.index.entities.get("taranmamis").meta.mail_state, "none");
   assert.deepEqual((await listMailDraftRecords(workspace)).map(({ id }) => id), [untouched.id]);
@@ -361,6 +438,65 @@ test("exclude-company kurumu vault'ta dışlar, aynı kurum taslaklarını casca
   const queue = (await app.inject({ url: "/api/ws/fixture/mailqueue" })).json();
   assert.ok(![...queue.queue, ...queue.awaitingScan]
     .some(({ company_id }) => company_id === "oncelikli"));
+
+  const exclusions = await app.inject({ url: "/api/ws/fixture/exclusions" });
+  assert.equal(exclusions.statusCode, 200);
+  assert.deepEqual(exclusions.json(), [{
+    company_id: "oncelikli",
+    name: "Öncelikli Şirket",
+    by: "tuna",
+    at: excluded.meta.outreach_at,
+    reason: "tanıdık; bu kuruma yazılmayacak",
+  }]);
+
+  const denied = await app.inject({
+    method: "DELETE",
+    url: "/api/ws/fixture/exclusions/oncelikli",
+    headers: { "x-remote-user": "ada" },
+    payload: { text: "yanlış dışlama" },
+  });
+  assert.equal(denied.statusCode, 403);
+  assert.deepEqual(denied.json(), { error: "exclusion override yetkisi yalnız owner" });
+
+  const overridden = await app.inject({
+    method: "DELETE",
+    url: "/api/ws/fixture/exclusions/oncelikli",
+    headers: { "x-remote-user": "tuna" },
+    payload: { text: "owner yeniden açtı" },
+  });
+  assert.equal(overridden.statusCode, 200);
+  assert.deepEqual(overridden.json(), {
+    ok: true, company_id: "oncelikli", status: "overridden",
+  });
+  assert.deepEqual((await app.inject({ url: "/api/ws/fixture/exclusions" })).json(), []);
+  const cleared = workspace.index.entities.get("oncelikli").meta;
+  for (const field of ["outreach", "outreach_by", "outreach_at", "outreach_reason", "outreach_note"]) {
+    assert.equal(cleared[field], undefined);
+  }
+  const overrideLog = (await readFeedback(workspace)).at(-1);
+  assert.deepEqual(overrideLog, {
+    kind: "override-exclusion",
+    user: "tuna",
+    ts: overrideLog.ts,
+    company_id: "oncelikli",
+    text: "owner yeniden açtı",
+  });
+  assert.match(overrideLog.ts, /^\d{4}-\d{2}-\d{2}T/);
+
+  const legacy = workspace.index.entities.get("skorlu");
+  await fs.writeFile(legacy.filePath, serializeMarkdown(legacy.body, {
+    ...legacy.meta,
+    outreach: "excluded",
+    outreach_note: "ada 2026-07-01: eski biçim nedeni",
+  }), "utf8");
+  await workspace.index.loadFile(legacy.filePath);
+  assert.deepEqual((await app.inject({ url: "/api/ws/fixture/exclusions" })).json(), [{
+    company_id: "skorlu",
+    name: "Skorlu Şirket",
+    by: "ada",
+    at: "2026-07-01",
+    reason: "eski biçim nedeni",
+  }]);
 });
 
 test("know-person kişiyi mail_note ile kapatır ve etki özetini döndürür", async (t) => {
@@ -439,6 +575,56 @@ test("bad-content yalnız taslağı reddeder ve kişiyi yeniden yazılabilir dur
   const [feedback] = await readFeedback(workspace);
   assert.equal(feedback.kind, "bad-content");
   assert.equal(feedback.text, "hook zayıf");
+});
+
+test("writer kişinin son üç bad-content notunu variants promptuna ekler", async (t) => {
+  const { workspace } = await copiedApp(t);
+  await fs.mkdir(path.join(workspace.directory, "mails"), { recursive: true });
+  const records = [
+    "ilk eski not",
+    "ikinci not",
+    "üçüncü not",
+    "en yeni not",
+  ].map((text, index) => ({
+    ts: `2026-07-1${index}T10:00:00.000Z`,
+    user: "ada",
+    draft_id: `eski-${index}`,
+    person_id: "direktor",
+    company_id: "skorlu",
+    kind: "bad-content",
+    text,
+  }));
+  records.splice(2, 0, {
+    ts: "2026-07-12T09:00:00.000Z",
+    user: "ada",
+    person_id: "direktor",
+    kind: "other",
+    text: "prompta girmemeli",
+  });
+  await fs.writeFile(
+    path.join(workspace.directory, "mails/feedback.jsonl"),
+    `${records.map((record) => JSON.stringify(record)).join("\n")}\n`,
+    "utf8",
+  );
+  const prompts = new Map();
+  const result = await runMailWriterCycle({
+    workspace,
+    agent: { id: "writer-test", model: "test", params: { limit: 5 } },
+    now: () => new Date("2026-07-17T12:00:00.000Z"),
+    compileContext: async ({ person }) => person.id,
+    generateVariants: async (context, options) => {
+      prompts.set(context, options.extraPrompt);
+      return variants(context);
+    },
+  });
+  assert.ok(result.drafted > 0);
+  assert.equal(prompts.get("direktor"), [
+    "ÖNCEKİ RED NOTLARI (bunları düzelt):",
+    "- ikinci not",
+    "- üçüncü not",
+    "- en yeni not",
+  ].join("\n"));
+  assert.doesNotMatch(prompts.get("direktor"), /ilk eski not|prompta girmemeli/);
 });
 
 test("follow-up motoru 4/5 günlük eşikleri uygular, iki takipten sonra kapatır ve boş trafikte no-op olur", async (t) => {

@@ -13,12 +13,10 @@ import GatherView from "@/modules/gather/GatherView";
 import IntegrationsView from "@/modules/integrations/IntegrationsView";
 import ProfileView from "@/modules/profile/ProfileView";
 import OverviewView from "@/modules/overview/OverviewView";
-import CopilotDrawer from "@/modules/copilot/CopilotDrawer";
 import AssistantDrawer from "@/modules/assistant/AssistantDrawer";
 import ControlToast from "@/components/ControlToast";
-import { copilotEnabled } from "@/core/copilot";
 import { connectControl, type ControlCommand } from "@/core/control";
-import { IconCopilot } from "@/core/icons";
+import { IconAssistant } from "@/core/icons";
 import { api, setWorkspace as configureWorkspace } from "@/core/api";
 import type {
   EntityListItem,
@@ -134,27 +132,21 @@ export default function App() {
     };
   }, []);
 
-  // ---- copilot (right drawer, gated per viewer) ----
-  const [copilotAllowed, setCopilotAllowed] = useState(false);
-  const [copilotOpen, setCopilotOpen] = useState(false);
-
   // ---- assistant (right drawer, every viewer) ----
-  // Opened from the Overview prompt bar. Mutually exclusive with the copilot
-  // drawer — opening one closes the other. `assistantSeed` carries a pending
-  // prompt-bar message the drawer auto-sends on open; `assistantReplyKey` bumps
-  // when a reply finishes so Overview can refetch its (possibly rearranged)
-  // dashboard layout.
+  // The single workspace assistant surface — everyone (owner included) talks to
+  // their personal agent here. Opened from the right-edge FAB, the Overview
+  // prompt bar, or ⌘/Ctrl+J. `assistantSeed` carries a pending prompt-bar
+  // message the drawer auto-sends on open; `assistantReplyKey` bumps when a
+  // reply finishes so Overview can refetch its (possibly rearranged) dashboard.
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantSeed, setAssistantSeed] = useState<string | null>(null);
   const [assistantReplyKey, setAssistantReplyKey] = useState(0);
 
-  const openCopilot = useCallback(() => {
-    setAssistantOpen(false);
-    setCopilotOpen(true);
+  const openAssistant = useCallback(() => {
+    setAssistantOpen(true);
   }, []);
 
   const submitAssistant = useCallback((text: string) => {
-    setCopilotOpen(false);
     setAssistantSeed(text);
     setAssistantOpen(true);
   }, []);
@@ -166,7 +158,6 @@ export default function App() {
       if (!next) return false;
       configureWorkspace(next.id);
       localStorage.setItem(WORKSPACE_STORAGE_KEY, next.id);
-      setCopilotOpen(false);
       setAssistantOpen(false);
       setSelectedId(null);
       setFocusNodeId(null);
@@ -228,18 +219,6 @@ export default function App() {
     if (!controlReady) return;
     return connectControl((command) => controlHandler.current(command));
   }, [controlReady]);
-
-  useEffect(() => {
-    if (!workspace) return;
-    let alive = true;
-    setCopilotAllowed(false);
-    copilotEnabled().then((ok) => {
-      if (alive) setCopilotAllowed(ok);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [workspace]);
 
   // ---- persistence side-effects ----
   useEffect(() => {
@@ -370,16 +349,13 @@ export default function App() {
       const tagName = (e.target as HTMLElement)?.tagName;
       const typing = tagName === "INPUT" || tagName === "TEXTAREA";
       if ((e.metaKey || e.ctrlKey) && (e.key === "j" || e.key === "J")) {
-        if (!copilotAllowed) return;
         e.preventDefault();
-        if (copilotOpen) setCopilotOpen(false);
-        else openCopilot();
+        setAssistantOpen((o) => !o);
       } else if (e.key === "/" && !typing) {
         e.preventDefault();
         searchRef.current?.focus();
       } else if (e.key === "Escape") {
         if (assistantOpen) setAssistantOpen(false);
-        else if (copilotOpen) setCopilotOpen(false);
         else if (!typing) {
           if (filters.egoId) setFilters({ ...filters, egoId: null });
           else if (selectedId) setSelectedId(null);
@@ -388,15 +364,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [
-    selectedId,
-    filters,
-    setFilters,
-    copilotAllowed,
-    copilotOpen,
-    assistantOpen,
-    openCopilot,
-  ]);
+  }, [selectedId, filters, setFilters, assistantOpen]);
 
   const gotoNode = useCallback((id: string) => {
     if (window.location.pathname !== viewPath("network")) navigate(viewPath("network"));
@@ -501,44 +469,33 @@ export default function App() {
     navigate(viewPath(k));
   }, []);
 
-  // Copilot lives at layout level so it is reachable from every view. The edge
-  // tab is suppressed while another right rail (entity panel) owns that edge —
-  // the drawer stays reachable via ⌘J and the tab returns on Esc/close.
-  const renderCopilot = (showFab: boolean) =>
-    copilotAllowed && (
-      <>
-        {showFab && !copilotOpen && !assistantOpen && (
-          <button
-            className="copilot-fab"
-            onClick={openCopilot}
-            title="Copilot — ⌘J"
-            aria-label="Open copilot"
-          >
-            <IconCopilot size={18} />
-            <span className="copilot-fab-label">Copilot</span>
-          </button>
-        )}
-        {copilotOpen && (
-          <CopilotDrawer
-            key={workspace ?? undefined}
-            onClose={() => setCopilotOpen(false)}
-          />
-        )}
-      </>
-    );
-
-  // Assistant drawer — available to every viewer, opened from the Overview
-  // prompt bar. Lives at layout level so it stays reachable across views.
-  const renderAssistant = () =>
-    assistantOpen && (
-      <AssistantDrawer
-        key={workspace ?? undefined}
-        seed={assistantSeed}
-        onSeedConsumed={() => setAssistantSeed(null)}
-        onReplyComplete={() => setAssistantReplyKey((k) => k + 1)}
-        onClose={() => setAssistantOpen(false)}
-      />
-    );
+  // Assistant lives at layout level so it is reachable from every view. The
+  // edge FAB is suppressed while another right rail (entity panel) owns that
+  // edge — the drawer stays reachable via ⌘J and the FAB returns on Esc/close.
+  const renderAssistant = (showFab: boolean) => (
+    <>
+      {showFab && !assistantOpen && (
+        <button
+          className="copilot-fab"
+          onClick={openAssistant}
+          title="Assistant — ⌘J"
+          aria-label="Open assistant"
+        >
+          <IconAssistant size={18} />
+          <span className="copilot-fab-label">Assistant</span>
+        </button>
+      )}
+      {assistantOpen && (
+        <AssistantDrawer
+          key={workspace ?? undefined}
+          seed={assistantSeed}
+          onSeedConsumed={() => setAssistantSeed(null)}
+          onReplyComplete={() => setAssistantReplyKey((k) => k + 1)}
+          onClose={() => setAssistantOpen(false)}
+        />
+      )}
+    </>
+  );
 
   if (!workspace) {
     return (
@@ -582,8 +539,7 @@ export default function App() {
             {api.mock ? "" : " — is the server on 127.0.0.1:3002 running?"}
           </div>
         )}
-        {renderCopilot(true)}
-        {renderAssistant()}
+        {renderAssistant(true)}
         <ControlToast message={controlToast} />
       </div>
     );
@@ -780,8 +736,7 @@ export default function App() {
           {api.mock ? "" : " — is the server on 127.0.0.1:3002 running?"}
         </div>
       )}
-      {renderCopilot(!(selectedId && isNetwork))}
-      {renderAssistant()}
+      {renderAssistant(!(selectedId && isNetwork))}
       <ControlToast message={controlToast} />
     </div>
   );

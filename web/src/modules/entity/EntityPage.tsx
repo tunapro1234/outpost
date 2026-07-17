@@ -21,6 +21,7 @@ import {
   IconWhatsapp,
 } from "@/core/icons";
 import EntityMiniGraph from "./EntityMiniGraph";
+import ExclusionBanner from "./ExclusionBanner";
 
 type Tab = "overview" | "mails" | "activity" | "note";
 
@@ -220,6 +221,14 @@ export default function EntityPage({
           <div className="ep-loading">Loading…</div>
         ) : (
           <>
+            <ExclusionBanner
+              id={entity.id}
+              name={meta.name ?? entity.id}
+              type={type}
+              meta={meta}
+              onRemoved={onChanged}
+            />
+
             {/* identity strip */}
             <header className="ep-identity">
               <div className="ep-id-main">

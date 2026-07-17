@@ -1,20 +1,46 @@
 import { mailQueue } from "./service.mjs";
-import { approveMailDraft, listMailDrafts, rejectMailDraft } from "./drafts.mjs";
+import {
+  approveMailDraft,
+  listExclusions,
+  listMailDrafts,
+  overrideExclusion,
+  rejectMailDraft,
+} from "./drafts.mjs";
+import {
+  authenticatedMailerUser,
+  isMailerOwner,
+  requireMailerOwner,
+} from "./auth.mjs";
 
-function decisionUser(request, defaultUser) {
-  const header = request.headers["x-remote-user"];
-  if (typeof header === "string" && header.trim()) return header.trim();
-  if (typeof defaultUser === "string" && defaultUser.trim()) return defaultUser.trim();
-  return "unknown";
-}
+export async function mailerRoutes(app, {
+  resolveWorkspace,
+  defaultUser,
+  usersPath = process.env.OUTPOST_USERS,
+}) {
+  async function ownerUser(request, message) {
+    const user = authenticatedMailerUser(request, defaultUser);
+    requireMailerOwner(await isMailerOwner(user, { usersPath, defaultUser }), message);
+    return user;
+  }
 
-export async function mailerRoutes(app, { resolveWorkspace, defaultUser }) {
   app.get("/mailqueue", async (request) => mailQueue(resolveWorkspace(request)));
   app.get("/maildrafts", async (request) => listMailDrafts(resolveWorkspace(request)));
-  app.post("/maildrafts/:id/approve", async (request) =>
-    approveMailDraft(resolveWorkspace(request), request.params.id, request.body));
-  app.post("/maildrafts/:id/reject", async (request) =>
-    rejectMailDraft(resolveWorkspace(request), request.params.id, request.body ?? {}, {
-      user: decisionUser(request, defaultUser),
-    }));
+  app.post("/maildrafts/:id/approve", async (request) => {
+    await ownerUser(request);
+    return approveMailDraft(resolveWorkspace(request), request.params.id, request.body);
+  });
+  app.post("/maildrafts/:id/reject", async (request) => {
+    const user = authenticatedMailerUser(request, defaultUser);
+    return rejectMailDraft(resolveWorkspace(request), request.params.id, request.body ?? {}, { user });
+  });
+  app.get("/exclusions", async (request) => listExclusions(resolveWorkspace(request)));
+  app.delete("/exclusions/:companyId", async (request) => {
+    const user = await ownerUser(request, "exclusion override yetkisi yalnız owner");
+    return overrideExclusion(
+      resolveWorkspace(request),
+      request.params.companyId,
+      request.body ?? {},
+      { user },
+    );
+  });
 }

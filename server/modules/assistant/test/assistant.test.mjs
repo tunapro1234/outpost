@@ -4,14 +4,18 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createApp } from "../../../app.mjs";
 import { temporaryDirectory } from "../../../test-support/helpers.mjs";
-import { ensureAssistantBrief } from "../service.mjs";
+import { agentSlug, ensureAssistantBrief, personalAgentSession } from "../service.mjs";
 
 async function fixture(t) {
   const root = await temporaryDirectory("outpost-assistant-");
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "fixture");
   await fs.mkdir(path.join(directory, "vault"), { recursive: true });
-  await fs.writeFile(path.join(directory, "config.yaml"), "name: Fixture\n", "utf8");
+  await fs.writeFile(
+    path.join(directory, "config.yaml"),
+    "name: Fixture\ncode: prb\n",
+    "utf8",
+  );
   return { root, directory };
 }
 
@@ -21,6 +25,18 @@ function sseEvents(response) {
     .filter((line) => line.startsWith("data: "))
     .map((line) => JSON.parse(line.slice(6)));
 }
+
+test("personal agent slug'ı Türkçe karakterleri ASCII'ye çevirir", () => {
+  assert.equal(agentSlug("İÜĞŞÇÖ ıüç!? Ada"), "iugsco-iuc-ada");
+  assert.equal(
+    personalAgentSession({ id: "probot", code: "prb" }, "Tuna Gül", "tuna"),
+    "op-ws-prb-usr-tuna-gul",
+  );
+  assert.equal(
+    personalAgentSession({ id: "fixture" }, "", "ada"),
+    "op-ws-fixture-usr-ada",
+  );
+});
 
 test("assistant kimliksiz isteği reddeder ve shell-güvensiz kullanıcıyla tmux çağırmaz", async (t) => {
   const { root, directory } = await fixture(t);
@@ -56,7 +72,15 @@ test("assistant oturumu spawn eder, brief üretir ve dosya protokolünü SSE ola
   const { root, directory } = await fixture(t);
   const calls = [];
   const id = "assist-fixed";
-  const outbox = path.join(directory, "assistant", "ada", "outbox");
+  const user = "tuna";
+  const session = "op-ws-prb-usr-tuna-gul";
+  const outbox = path.join(directory, "assistant", user, "outbox");
+  const usersPath = path.join(root, "users.yaml");
+  await fs.writeFile(
+    usersPath,
+    "users:\n  - username: tuna\n    name: Tuna Gül\n",
+    "utf8",
+  );
   let sessionExists = false;
 
   const exec = async (command, args) => {
@@ -84,13 +108,14 @@ test("assistant oturumu spawn eder, brief üretir ve dosya protokolünü SSE ola
     assistantClaudeBin: "/opt/claude bin/claude",
     assistantSpawnWaitMs: 10, // pollMs=2 olsun ki bridge'in sleep(1) tetiğiyle çakışmasın
     assistantBridgeOptions: { idFactory: () => id, outboxPollMs: 1 },
+    usersPath,
   });
   t.after(() => app.close());
 
   const response = await app.inject({
     method: "POST",
     url: "/api/ws/fixture/assistant",
-    headers: { "x-remote-user": "ada" },
+    headers: { "x-remote-user": user },
     payload: { message: " Bugün neye bakayım? ", thread_id: "gunluk-1" },
   });
   assert.equal(response.statusCode, 200);
@@ -104,39 +129,44 @@ test("assistant oturumu spawn eder, brief üretir ve dosya protokolünü SSE ola
     path.join(directory, "assistant", "CLAUDE-ASSIST.md"),
     "utf8",
   );
-  assert.match(brief, /Sen \*\*ada\*\* kullanıcısının \*\*fixture\*\*/);
+  assert.match(brief, /Sen \*\*tuna\*\* kullanıcısının \*\*fixture\*\*/);
   assert.match(brief, /SALT-OKUR/);
   assert.match(brief, /notes\.last_context/);
-  assert.match(brief, /X-Remote-User: ada/);
-  assert.doesNotMatch(brief, /\{\{user\}\}|\{\{ws\}\}/);
+  assert.match(brief, /X-Remote-User: tuna/);
+  assert.match(brief, /bad-content/);
+  assert.match(brief, /exclude-company/);
+  assert.match(brief, /approve yetkin yoktur/);
+  assert.match(brief, /\[ask tuna <id>\]/);
+  assert.match(brief, /tmux send-keys -t op-ws-prb/);
+  assert.doesNotMatch(brief, /\{\{user\}\}|\{\{ws\}\}|\{\{code\}\}/);
 
   assert.deepEqual(calls, [
-    ["tmux", ["has-session", "-t", "outpost-user-ada"]],
+    ["tmux", ["has-session", "-t", session]],
     ["tmux", [
-      "new-session", "-d", "-s", "outpost-user-ada", "-c", directory,
+      "new-session", "-d", "-s", session, "-c", directory,
       "IS_SANDBOX=1 /opt/claude bin/claude --dangerously-skip-permissions --model claude-sonnet-5",
     ]],
     // TUI hazır-bekleme kontrolü
-    ["tmux", ["capture-pane", "-t", "outpost-user-ada", "-p"]],
+    ["tmux", ["capture-pane", "-t", session, "-p"]],
     ["tmux", [
-      "send-keys", "-t", "outpost-user-ada", "-l",
+      "send-keys", "-t", session, "-l",
       "talimat dosyanı oku; protokol: [assist <id>] mesajları",
     ]],
-    ["tmux", ["send-keys", "-t", "outpost-user-ada", "Enter"]],
+    ["tmux", ["send-keys", "-t", session, "Enter"]],
     // brief Enter-tekrar kontrolü (pane temiz → tek bakış)
-    ["tmux", ["capture-pane", "-t", "outpost-user-ada", "-p"]],
+    ["tmux", ["capture-pane", "-t", session, "-p"]],
     // köprünün meşguliyet kontrolü
-    ["tmux", ["capture-pane", "-p", "-t", "outpost-user-ada"]],
+    ["tmux", ["capture-pane", "-p", "-t", session]],
     ["tmux", [
-      "send-keys", "-t", "outpost-user-ada", "-l",
-      `[assist ${id}] Soru: assistant/ada/inbox/${id}.md oku; cevabı assistant/ada/outbox/${id}.md dosyasına markdown olarak yaz; bitince assistant/ada/outbox/${id}.done oluştur.`,
+      "send-keys", "-t", session, "-l",
+      `[assist ${id}] Soru: assistant/tuna/inbox/${id}.md oku; cevabı assistant/tuna/outbox/${id}.md dosyasına markdown olarak yaz; bitince assistant/tuna/outbox/${id}.done oluştur.`,
     ]],
-    ["tmux", ["send-keys", "-t", "outpost-user-ada", "Enter"]],
+    ["tmux", ["send-keys", "-t", session, "Enter"]],
     // köprü Enter-tekrar kontrolü
-    ["tmux", ["capture-pane", "-p", "-t", "outpost-user-ada"]],
+    ["tmux", ["capture-pane", "-p", "-t", session]],
   ]);
   await assert.rejects(
-    fs.access(path.join(directory, "assistant", "ada", "inbox", `${id}.md`)),
+    fs.access(path.join(directory, "assistant", user, "inbox", `${id}.md`)),
     { code: "ENOENT" },
   );
 });

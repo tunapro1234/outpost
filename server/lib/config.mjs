@@ -70,6 +70,7 @@ function workspaceRecord(id, directory, config, vaultPath) {
   const mailsOutboxPath = path.resolve(directory, "mails", "outbox.jsonl");
   return {
     id,
+    code: typeof config.code === "string" && config.code.trim() ? config.code.trim() : id,
     name: typeof config.name === "string" && config.name.trim() ? config.name.trim() : id,
     directory,
     config,

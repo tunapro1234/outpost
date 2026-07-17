@@ -15,9 +15,16 @@ function feedbackPath(workspace) {
   return path.join(workspace.directory, "mails", "feedback.jsonl");
 }
 
-function safeId(id) {
+function legacyExclusion(note) {
+  if (typeof note !== "string" || !note.trim()) return {};
+  const match = /^(\S+)\s+(\d{4}-\d{2}-\d{2}(?:T\S+)?)\s*:\s*(.*)$/u.exec(note.trim());
+  if (!match) return { reason: note.trim() };
+  return { by: match[1], at: match[2], reason: match[3] };
+}
+
+function safeId(id, message = "Geçersiz mail draft id") {
   if (typeof id !== "string" || !/^[a-z0-9][a-z0-9_.-]*$/i.test(id)) {
-    const error = new Error("Geçersiz mail draft id");
+    const error = new Error(message);
     error.statusCode = 400;
     throw error;
   }
@@ -161,6 +168,87 @@ async function appendJsonLines(filePath, records) {
   }
   const lines = records.map((record) => JSON.stringify(record)).join("\n");
   await fs.appendFile(filePath, `${prefix}${lines}\n`, "utf8");
+}
+
+export async function readFeedback(workspace) {
+  const filePath = feedbackPath(workspace);
+  let source;
+  try {
+    source = await fs.readFile(filePath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+  return source.split(/\r?\n/).filter(Boolean).map((line, index) => {
+    try {
+      return JSON.parse(line);
+    } catch (error) {
+      throw new Error(`${filePath}:${index + 1}: geçersiz JSON: ${error.message}`);
+    }
+  });
+}
+
+export async function badContentNotes(workspace, personId, { limit = 3 } = {}) {
+  return (await readFeedback(workspace))
+    .filter((entry) => entry?.kind === "bad-content" && entry.person_id === personId &&
+      typeof entry.text === "string" && entry.text.trim())
+    .slice(-limit)
+    .map((entry) => entry.text.trim());
+}
+
+export async function listExclusions(workspace) {
+  return [...workspace.index.entities.values()]
+    .filter((entity) => entity.meta.type === "company" && entity.meta.outreach === "excluded")
+    .map((entity) => {
+      const legacy = legacyExclusion(entity.meta.outreach_note);
+      return {
+        company_id: entity.id,
+        name: entity.meta.name,
+        by: entity.meta.outreach_by ?? legacy.by ?? null,
+        at: entity.meta.outreach_at ?? legacy.at ?? null,
+        reason: entity.meta.outreach_reason ?? legacy.reason ?? null,
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name, "tr"));
+}
+
+export async function overrideExclusion(workspace, companyId, payload = {}, {
+  now = () => new Date(),
+  user = "unknown",
+} = {}) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    const error = new Error("JSON gövdesi nesne olmalı");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (payload.text !== undefined && typeof payload.text !== "string") {
+    const error = new Error("text metin olmalı");
+    error.statusCode = 400;
+    throw error;
+  }
+  const company = workspace.index.entities.get(safeId(companyId, "Geçersiz company id"));
+  if (!company || company.meta.type !== "company") {
+    const error = new Error("Şirket entity bulunamadı");
+    error.statusCode = 404;
+    throw error;
+  }
+  const ts = now().toISOString();
+  const text = payload.text?.trim() ?? "";
+  await updateEntityMeta(workspace, company, {
+    outreach: undefined,
+    outreach_by: undefined,
+    outreach_at: undefined,
+    outreach_reason: undefined,
+    outreach_note: undefined,
+  });
+  await appendJsonLines(feedbackPath(workspace), [{
+    kind: "override-exclusion",
+    user,
+    ts,
+    company_id: company.id,
+    ...(text ? { text } : {}),
+  }]);
+  return { ok: true, company_id: company.id, status: "overridden" };
 }
 
 async function appendOutbox(workspace, record) {
@@ -315,7 +403,10 @@ export async function rejectMailDraft(workspace, id, payload = {}, {
     ];
     await updateEntityMeta(workspace, company, {
       outreach: "excluded",
-      outreach_note: note,
+      outreach_by: user,
+      outreach_at: rejectedAt,
+      outreach_reason: decision.text,
+      outreach_note: undefined,
     });
   }
 

@@ -15,6 +15,7 @@ function commandFor(user) {
 
 export function createAssistantTmuxBridge({
   user,
+  session,
   exec = assistantExec,
   fileSystem,
   sleep = assistantSleep,
@@ -26,7 +27,6 @@ export function createAssistantTmuxBridge({
   logger,
   ...options
 }) {
-  const session = `outpost-user-${user}`;
   return createTmuxFileBridge({
     ...options,
     exec,

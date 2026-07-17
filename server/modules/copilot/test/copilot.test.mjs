@@ -348,6 +348,35 @@ test("tmux köprüsü promptu yazar, literal komut ve Enter yollar, dosya ekleri
   ]);
 });
 
+test("tmux köprüsü env yoksa workspace code oturumunu, code yoksa id fallback'ini kullanır", async (t) => {
+  const { directory } = await fixture(t);
+  const previous = process.env.OUTPOST_COPILOT_TMUX;
+  delete process.env.OUTPOST_COPILOT_TMUX;
+  const calls = [];
+  try {
+    const bridge = createTmuxBridge({
+      exec: async (_command, args) => {
+        calls.push(args);
+        throw new Error("session yok");
+      },
+    });
+    assert.equal(await bridge("prompt", {
+      workspace: { id: "fixture", code: "fxt", directory },
+    }), null);
+
+    assert.equal(await bridge("prompt", {
+      workspace: { id: "fallback", directory },
+    }), null);
+  } finally {
+    if (previous === undefined) delete process.env.OUTPOST_COPILOT_TMUX;
+    else process.env.OUTPOST_COPILOT_TMUX = previous;
+  }
+  assert.deepEqual(calls, [
+    ["has-session", "-t", "op-ws-fxt"],
+    ["has-session", "-t", "op-ws-fallback"],
+  ]);
+});
+
 test("tmux köprüsü meşgul oturumu 2 saniyede bir bekler ve 20 saniye sonunda fallback döndürür", async (t) => {
   const { directory } = await fixture(t);
   const calls = [];
