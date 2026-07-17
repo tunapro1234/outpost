@@ -96,15 +96,16 @@ export default function WorkspaceView({ workspace, workspaces }: Props) {
         <div className="empty-state">
           <div className="es-title">Workspace stats coming online</div>
           <div className="es-sub">
-            The per-user stats endpoint is not reachable yet. Once activity is
-            tracked, each member's drafts, approvals and token spend appear here.
+            We can't reach the stats service just yet. Once activity starts
+            flowing, you'll see each member's drafts, approvals and token spend
+            right here.
           </div>
         </div>
       ) : stats.length === 0 ? (
         <div className="empty-state">
-          <div className="es-title">No members yet</div>
+          <div className="es-title">No activity to show yet</div>
           <div className="es-sub">
-            User activity will be summarised here as people start drafting mail.
+            As your team starts drafting mail, everyone's activity rolls up here.
           </div>
         </div>
       ) : (

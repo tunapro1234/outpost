@@ -26,7 +26,7 @@ const PERSONAL_META: Record<
 > = {
   assistant: {
     label: "Assistant",
-    desc: "Your personal assistant — answers from the vault and arranges your dashboard.",
+    desc: "Your personal assistant. It answers from the vault and arranges your dashboard.",
     cta: "Open chat",
   },
   mail: {
@@ -305,7 +305,7 @@ export default function GatherView({
       setStage(s);
       setError(null);
     } catch (e) {
-      setError((e as Error)?.message ?? "Failed to load gather data");
+      setError((e as Error)?.message ?? "We couldn't load your gather data");
       setAgents([]);
       setStage([]);
     }
@@ -395,7 +395,7 @@ export default function GatherView({
       const { runId } = await api.runAgent(id);
       setRunning({ agentId: id, runId });
     } catch (e) {
-      setError((e as Error)?.message ?? "Failed to start run");
+      setError((e as Error)?.message ?? "We couldn't start that run");
     }
   }, []);
 
@@ -483,8 +483,8 @@ export default function GatherView({
         <div>
           <h2>Agents</h2>
           <span className="int-sub">
-            Mission control for the agent fleet — discovery, enrichment and
-            outreach, every step human-approved.
+            Mission control for your agent fleet: discovery, enrichment and
+            outreach, with every step approved by you.
           </span>
         </div>
         <button className="btn" onClick={load}>
@@ -580,7 +580,7 @@ export default function GatherView({
         ) : tabStage.length === 0 ? (
           <div className="g-stage-empty">
             <div className="g-check">✓</div>
-            <div>Queue clear — nothing waiting for review in this stage.</div>
+            <div>All clear. Nothing is waiting for review in this stage.</div>
           </div>
         ) : (
           <div className="g-stage-grid">
@@ -711,7 +711,7 @@ export default function GatherView({
             </button>
             {running?.agentId === selected.id && (
               <div className="g-run-note">
-                Live scrape in progress — journal updates when it finishes.
+                Live scrape in progress. The journal updates when it finishes.
               </div>
             )}
           </div>
@@ -720,7 +720,7 @@ export default function GatherView({
             <div className="g-block-label">Run history</div>
             <RunTimeline runs={runs} />
             {runs.length === 0 ? (
-              <div className="muted g-runs-empty">No runs yet.</div>
+              <div className="muted g-runs-empty">No runs yet</div>
             ) : (
               <div className="g-runs">
                 {runs.map((r) => (

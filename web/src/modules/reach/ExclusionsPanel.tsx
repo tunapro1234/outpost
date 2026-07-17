@@ -34,8 +34,8 @@ export default function ExclusionsPanel({ state, q, onOpenEntity }: Props) {
       <div className="empty-state">
         <div className="es-title">Exclusions coming online</div>
         <div className="es-sub">
-          The exclusions endpoint is not reachable yet. Companies removed from
-          outreach will be listed here for review and override.
+          We can't reach the exclusions service just yet. Once it's live, every
+          company you remove from outreach shows up here to review or bring back.
         </div>
       </div>
     );
@@ -56,7 +56,7 @@ export default function ExclusionsPanel({ state, q, onOpenEntity }: Props) {
         </div>
         <div className="es-sub">
           {items.length === 0
-            ? "Companies you exclude from outreach (via a draft rejection) appear here — you can override to bring them back."
+            ? "Reject a draft to exclude its company from outreach, and it lands here. You can always bring one back."
             : "No excluded company matches your search."}
         </div>
       </div>
@@ -103,7 +103,7 @@ export default function ExclusionsPanel({ state, q, onOpenEntity }: Props) {
                 title={
                   owner
                     ? "Re-include in outreach"
-                    : "Owner only — ask the workspace owner to override"
+                    : "Only the workspace owner can bring this company back"
                 }
                 onClick={() => (confirming ? closeConfirm() : openConfirm(e.company_id))}
               >
@@ -114,7 +114,7 @@ export default function ExclusionsPanel({ state, q, onOpenEntity }: Props) {
             {confirming && (
               <div className="excl-confirm" role="group" aria-label="Confirm override">
                 <div className="excl-confirm-msg">
-                  <b>{e.name}</b> will re-enter outreach — are you sure?
+                  <b>{e.name}</b> will re-enter outreach. Are you sure?
                 </div>
                 <input
                   className="np-input"

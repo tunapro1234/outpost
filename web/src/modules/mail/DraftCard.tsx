@@ -144,9 +144,9 @@ export default function DraftCard({
           {draft.stale && (
             <span
               className="md-stale"
-              title="This draft predates your latest calibration — it will be re-written automatically."
+              title="This draft is from before your latest calibration, so it will be rewritten automatically."
             >
-              outdated — queued for rewrite
+              outdated, queued for rewrite
             </span>
           )}
         </div>
@@ -229,7 +229,7 @@ export default function DraftCard({
           className="btn primary"
           disabled={busy}
           onClick={approve}
-          title="Approve selected variant (marks outbox-ready — not sent)"
+          title="Approve the selected variant. This marks it outbox-ready, it won't send yet."
         >
           {busy ? "Working…" : "Approve"}
         </button>
@@ -276,7 +276,7 @@ export default function DraftCard({
             className="md-input md-reject-note"
             rows={2}
             value={rejText}
-            placeholder="Optional note — the system learns from this"
+            placeholder="Add a note if you like. It helps us learn what you want."
             onChange={(e) => setRejText(e.target.value)}
           />
 

@@ -212,9 +212,9 @@ export default function EntityPage({
       <div className="ep-scroll">
         {notFound ? (
           <div className="empty-state" style={{ marginTop: "16vh" }}>
-            <div className="es-title">Entity not found</div>
+            <div className="es-title">We couldn't find that entity</div>
             <div className="es-sub">
-              No entity with id <code>{id}</code> in this workspace.
+              Nothing with id <code>{id}</code> lives in this workspace.
             </div>
           </div>
         ) : loading || !entity || !meta ? (
@@ -413,7 +413,7 @@ export default function EntityPage({
                       {definition ? (
                         <p className="ep-def">{definition}</p>
                       ) : (
-                        <p className="ep-muted">No description yet.</p>
+                        <p className="ep-muted">No description yet</p>
                       )}
                     </section>
 
@@ -461,8 +461,8 @@ export default function EntityPage({
                     <div className="empty-state">
                       <div className="es-title">No mail activity yet</div>
                       <div className="es-sub">
-                        Outbound and inbound mail with {meta.name} will appear
-                        here once there is traffic.
+                        As soon as you trade mail with {meta.name}, every
+                        message shows up right here.
                       </div>
                     </div>
                   ) : (
@@ -496,7 +496,7 @@ export default function EntityPage({
 
               {tab === "activity" && (
                 <div className="empty-state">
-                  <div className="es-title">Activity — coming soon</div>
+                  <div className="es-title">Activity, coming soon</div>
                   <div className="es-sub">
                     Agent runs and git change history for this entity will land
                     here in V3b.

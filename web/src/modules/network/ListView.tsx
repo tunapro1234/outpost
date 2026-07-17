@@ -467,7 +467,7 @@ export default function ListView({
             {it.mail ? (
               <span className="mail-yes">✓ has mail</span>
             ) : (
-              <span className="mail-no">— none</span>
+              <span className="mail-no">none</span>
             )}
           </td>
         );

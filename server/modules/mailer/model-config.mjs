@@ -2,9 +2,10 @@ import { promises as fs } from "node:fs";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 
-export const DEFAULT_MAIL_AGENT_MODEL = "claude-opus-4-8";
+// Tuna 2026-07-17: şimdilik default Sonnet 5 (hız/kota; Opus seçilebilir kalır)
+export const DEFAULT_MAIL_AGENT_MODEL = "claude-sonnet-5";
 export const MAIL_AGENT_MODELS = new Set([
-  DEFAULT_MAIL_AGENT_MODEL,
+  "claude-opus-4-8",
   "claude-sonnet-5",
   "gpt-5.6-sol",
 ]);

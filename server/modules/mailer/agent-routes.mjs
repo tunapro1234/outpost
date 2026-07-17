@@ -8,10 +8,10 @@ import { authenticatedMailerUser, mailerUsers } from "./auth.mjs";
 import {
   readCalibration,
   readCalibrationSource,
-  stampCalibration,
   writeCalibration,
 } from "./calibration.mjs";
 import { recordCalibrationDraft } from "./calibration-sessions.mjs";
+import { buildPersonBrief, briefContextText } from "./brief.mjs";
 import {
   createMailAgentBridge,
   ensureMailAgentBrief,
@@ -19,7 +19,7 @@ import {
 } from "./mail-agent.mjs";
 import { readMailAgentConfig, writeMailAgentConfig } from "./model-config.mjs";
 import { hasMail } from "../reach/service.mjs";
-import { loadSignals, resolveCompany, scorePerson } from "./service.mjs";
+import { loadSignals } from "./service.mjs";
 import { userStats } from "./stats.mjs";
 import {
   deleteUserSkill,
@@ -31,13 +31,16 @@ import { appendUsage, estimatedUsage } from "./usage.mjs";
 import {
   calibrationDraftPrompt,
   codexText,
-  compileMailContext,
   parseCalibrationDraft,
   readMailSkills,
   streamCalibrationDraft,
 } from "./writer.mjs";
 
-const STUDIO_SKILLS = ["tone-map.md", "cold-intro.md", "subject-lines.md", "variants.md"];
+// The studio writes a SINGLE draft, so the full four-file skill set (~19 KB,
+// incl. the irrelevant variants.md) is wasteful and pushes claude's time-to-
+// first-token past 30s. A distilled ruleset (~5.5 KB) keeps every canonical
+// rule but cuts first-token dramatically. See calibration-studio.md.
+const STUDIO_SKILLS = ["calibration-studio.md"];
 
 function fail(statusCode, message) {
   const error = new Error(message);
@@ -95,21 +98,10 @@ function startSse(reply) {
   return openSse(reply);
 }
 
-async function collectStream(stream) {
-  if (!stream) throw new Error("Mail agent tmux oturumu hazır değil veya meşgul");
-  let output = "";
-  for await (const delta of stream) output += String(delta ?? "");
-  return output;
-}
-
 function generatedResult(result) {
   return result && typeof result === "object" && !Array.isArray(result) && "text" in result
     ? result
     : { text: String(result ?? ""), usage: null };
-}
-
-function feedbackPrompt(user, feedback, voice) {
-  return `Aşağıdaki Studio geri bildirimini voice dosyana işle. Mevcut tercihleri koru, yalnız geri bildirimden güvenle çıkarılabilen yazım kurallarını ekle veya düzelt. mails/calibration/${user}.md dosyasını güncelle ve frontmatter calibrated_at alanını şu an ile damgala. Taslak yazma; işlem bitince kısa onay ver.\n\nGERİ BİLDİRİM:\n${JSON.stringify(feedback, null, 2)}\n\nMEVCUT VOICE:\n${voice}`;
 }
 
 function gptFeedbackPrompt(feedback, voice) {
@@ -164,7 +156,7 @@ export async function mailAgentRoutes(app, {
   bridge: suppliedBridge,
   runCodex = codexText,
   runClaudeDraft = streamCalibrationDraft,
-  compileContext = compileMailContext,
+  buildBrief = buildPersonBrief,
   contextAgent = { id: "mail-calibration", model: "gpt-5.6-luna", params: {} },
   now = () => new Date(),
 }) {
@@ -255,6 +247,15 @@ export async function mailAgentRoutes(app, {
     }
     return writeCalibration(resolveWorkspace(request), user, request.body.content, { now });
   });
+  app.get("/calibration/brief/:personId", async (request) => {
+    authenticatedMailerUser(request, defaultUser);
+    const workspace = resolveWorkspace(request);
+    const person = workspace.index.entities.get(request.params.personId);
+    if (!person || person.meta.type !== "person" || !hasMail(person)) {
+      fail(404, "Mail adresi olan kişi bulunamadı");
+    }
+    return buildBrief(person, workspace.index, await loadSignals(workspace));
+  });
   app.get("/calibration/skills", async (request) => {
     const user = authenticatedMailerUser(request, defaultUser);
     return listUserSkills(resolveWorkspace(request), user, { fileSystem });
@@ -303,9 +304,7 @@ export async function mailAgentRoutes(app, {
     if (!person || person.meta.type !== "person" || !hasMail(person)) {
       fail(404, "Mail adresi olan kişi bulunamadı");
     }
-    const userProfile = await profile(user);
     const { model } = await readMailAgentConfig(workspace, user, { fileSystem });
-    const session = mailAgentSession(workspace, userProfile.name, user);
     const abortController = new AbortController();
     let clientClosed = false;
     startSse(reply);
@@ -313,72 +312,80 @@ export async function mailAgentRoutes(app, {
       clientClosed = !reply.raw.writableEnded;
       if (clientClosed) abortController.abort();
     });
-    let phase = feedback ? "feedback" : "context";
-    try {
-      if (feedback) {
-        await sendEvent(reply, { phase });
-        const voice = await readCalibrationSource(workspace, user);
-        if (model === "gpt-5.6-sol") {
-          const prompt = gptFeedbackPrompt(feedback, voice);
-          const generated = generatedResult(await runCodex(prompt, {
-            model,
-            workspace,
-            agent: contextAgent,
-            user,
-            kind: "chat",
-            recordUsage: false,
-            includeUsage: true,
-          }));
-          await writeCalibration(workspace, user, parseVoiceUpdate(generated.text), { now });
-          await appendUsage(workspace, {
-            ts: now().toISOString(), user, agent: "codex", kind: "chat",
-            chars: prompt.length + generated.text.length,
-            ...(generated.usage ?? estimatedUsage(prompt.length, generated.text.length)),
-          }, { fileSystem }).catch((error) =>
-            app.log.warn({ err: error }, "Codex feedback usage yazılamadı"));
-        } else {
-          await ensureMailAgentBrief(workspace, user, {
-            fileSystem, templatePath: briefTemplatePath,
-          });
-          const prompt = feedbackPrompt(user, feedback, voice);
-          const output = await collectStream(await bridgeFor(workspace, user, session, model)(
-            prompt,
-            { signal: abortController.signal, workspace, user },
-          ));
-          await stampCalibration(workspace, user, { now });
-          await appendUsage(workspace, {
-            ts: now().toISOString(), user, agent: "mail", kind: "chat",
-            chars_in: prompt.length, chars_out: output.length,
-          }, { fileSystem }).catch((error) =>
-            app.log.warn({ err: error }, "Mail agent feedback usage yazılamadı"));
+    let phase = "context";
+    const t0 = performance.now();
+    const marks = {};
+    const mark = (key) => { marks[key] = Math.round(performance.now() - t0); };
+    let firstToken = false;
+
+    // Persist the feedback into the voice file — but do NOT let it gate the
+    // draft. The draft prompt below already carries this feedback as red-notes,
+    // so the mail can stream immediately while the voice update (a slower whole-
+    // file rewrite that only benefits FUTURE drafts) runs in parallel.
+    const runVoiceUpdate = async (voice) => {
+      const prompt = gptFeedbackPrompt(feedback, voice);
+      if (model === "gpt-5.6-sol") {
+        const generated = generatedResult(await runCodex(prompt, {
+          model, workspace, agent: contextAgent, user,
+          kind: "chat", recordUsage: false, includeUsage: true,
+        }));
+        await writeCalibration(workspace, user, parseVoiceUpdate(generated.text), { now });
+        await appendUsage(workspace, {
+          ts: now().toISOString(), user, agent: "codex", kind: "chat",
+          chars: prompt.length + generated.text.length,
+          ...(generated.usage ?? estimatedUsage(prompt.length, generated.text.length)),
+        }, { fileSystem }).catch((error) =>
+          app.log.warn({ err: error }, "Codex feedback usage yazılamadı"));
+      } else {
+        let output = "";
+        let usage = null;
+        for await (const event of runClaudeDraft(prompt, {
+          signal: abortController.signal, workspace, model, bin: claudeBin,
+        })) {
+          if (event?.usage) usage = event.usage;
+          const delta = typeof event === "string" ? event : event?.delta;
+          if (typeof delta === "string") output += delta;
         }
+        await writeCalibration(workspace, user, parseVoiceUpdate(output), { now });
+        await appendUsage(workspace, {
+          ts: now().toISOString(), user, agent: "claude", kind: "chat",
+          chars_in: prompt.length, chars_out: output.length,
+          ...(usage ?? {}),
+        }, { fileSystem });
+      }
+    };
+
+    try {
+      let voiceUpdate = null;
+      if (feedback) {
+        mark("feedback_start");
+        const voice = await readCalibrationSource(workspace, user);
+        voiceUpdate = runVoiceUpdate(voice).then(
+          () => mark("feedback_end"),
+          (error) => app.log.warn({ err: error }, "Feedback voice güncellemesi başarısız"),
+        );
       }
 
       phase = "context";
       await sendEvent(reply, { phase });
-      const company = resolveCompany(person, workspace.index);
-      const scored = scorePerson(person, workspace.index, await loadSignals(workspace));
-      const context = await compileContext({
-        person,
-        company,
-        queueItem: {
-          id: person.id,
-          company_id: company?.id ?? null,
-          score: scored.score,
-          reasons: scored.reasons,
-        },
-        agent: contextAgent,
-        workspace,
-        user,
-      });
+      mark("context_start");
+      // Deterministic context (<100ms, no LLM) built from the same brief the
+      // Studio card shows — so what the user sees, the writer knows. This
+      // replaces the ~15s luna call on every draft AND every rewrite.
+      const context = briefContextText(
+        buildBrief(person, workspace.index, await loadSignals(workspace)),
+      );
+      mark("context_end");
       const [skills, userSkills, calibration] = await Promise.all([
         readMailSkills(STUDIO_SKILLS),
         readUserSkillsPrompt(workspace, user, { fileSystem }),
         readCalibrationSource(workspace, user),
       ]);
       const prompt = calibrationDraftPrompt(context, skills, userSkills, calibration, feedback);
+      mark("skills_end");
       phase = "writing";
       await sendEvent(reply, { phase });
+      mark("writing_start");
       let output = "";
       if (model === "gpt-5.6-sol") {
         const generated = generatedResult(await runCodex(prompt, {
@@ -391,6 +398,7 @@ export async function mailAgentRoutes(app, {
           includeUsage: true,
         }));
         output = generated.text;
+        mark("first_token");
         if (output) await sendEvent(reply, { delta: output });
         await appendUsage(workspace, {
           ts: now().toISOString(), user, agent: "codex", kind: "draft",
@@ -407,6 +415,7 @@ export async function mailAgentRoutes(app, {
           if (event?.usage) usage = event.usage;
           const delta = typeof event === "string" ? event : event?.delta;
           if (typeof delta !== "string" || !delta) continue;
+          if (!firstToken) { firstToken = true; mark("first_token"); }
           output += delta;
           if (!await sendEvent(reply, { delta })) break;
         }
@@ -417,12 +426,24 @@ export async function mailAgentRoutes(app, {
         }, { fileSystem }).catch((error) =>
           app.log.warn({ err: error }, "Claude Studio usage yazılamadı"));
       }
+      mark("writing_end");
+      // The mail is on screen; now settle the parallel voice update (usually
+      // already done) so the client's post-done refetch sees the new voice.
+      if (voiceUpdate) {
+        phase = "voice";
+        await sendEvent(reply, { phase });
+        await voiceUpdate;
+      }
       const draft = parseCalibrationDraft(output, {
         fallbackSubject: person.meta.name ?? person.id,
       });
       await recordCalibrationDraft(workspace, user, {
         ts: now().toISOString(), person_id: person.id, draft,
       }, { feedback, fileSystem });
+      mark("done");
+      app.log.info({
+        calibDraft: true, model, feedback: Boolean(feedback), person: personId, marks,
+      }, "calibration draft timing");
       if (!clientClosed) await sendEvent(reply, { done: true, draft });
     } catch (error) {
       if (!clientClosed) {

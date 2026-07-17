@@ -19,6 +19,7 @@ import type {
   MailQueueSummary,
   MailRejectPayload,
   MailRejectResult,
+  PersonBrief,
   PersonalAgent,
   ReachStats,
   Metrics,
@@ -104,7 +105,7 @@ function fallbackEntity(id: string): Entity {
   return {
     id,
     meta,
-    body: `${name} — ${typeLabel}. Bu düğüm için ayrıntılı not henüz yok.`,
+    body: `${name}, ${typeLabel}. Bu düğüm için ayrıntılı not henüz yok.`,
     relations,
     unresolved: [],
   };
@@ -371,6 +372,20 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ content }),
     });
+  },
+
+  // Deterministic person brief for the Studio card (GET .../calibration/brief/
+  // :id). Null on 404 / error so the card simply doesn't render.
+  async calibrationBrief(personId: string): Promise<PersonBrief | null> {
+    try {
+      const res = await fetch(
+        `${workspaceBase()}/calibration/brief/${encodeURIComponent(personId)}`,
+      );
+      if (!res.ok) return null;
+      return (await res.json()) as PersonBrief;
+    } catch {
+      return null;
+    }
   },
 
   // ---- mail agent model config (SPEC-MAILCAL §11) ------------------------

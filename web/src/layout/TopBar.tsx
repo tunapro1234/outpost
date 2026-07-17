@@ -92,7 +92,7 @@ export default function TopBar({
           <input
             ref={searchRef}
             value={q}
-            placeholder="Search — people, orgs, channels…"
+            placeholder="Search people, orgs, channels…"
             onChange={(e) => {
               setQ(e.target.value);
               setOpen(true);

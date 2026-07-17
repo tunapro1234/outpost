@@ -122,7 +122,7 @@ test("mail agent fake tmux ile opus session spawn eder ve [mail id] çıktısın
   ]);
   assert.ok(calls.some(([, args]) => args[0] === "new-session" &&
     args.includes("op-ws-fixture-usr-tuna-gul-mail") &&
-    args.at(-1).includes("--model claude-opus-4-8")));
+    args.at(-1).includes("--model claude-sonnet-5")));
   assert.ok(calls.some(([, args]) => args.includes(`[mail ${id}] İstek: mailagent/tuna/inbox/${id}.md oku; cevabı mailagent/tuna/outbox/${id}.md dosyasına yaz; bitince mailagent/tuna/outbox/${id}.done oluştur.`)));
   const brief = await fs.readFile(
     path.join(workspaceDirectory, "mailagent", "tuna", "CLAUDE-MAIL.md"),
@@ -164,23 +164,25 @@ test("calibration GET boş şablon döndürür, PUT calibrated_at damgalar", asy
 
 test("Calibration Studio feedback'i voice'tan önce işler, tek taslağı stream edip önceki session kaydına bağlar", async (t) => {
   const prompts = [];
-  const bridge = async (prompt) => {
-    prompts.push(prompt);
-    return (async function* stream() {
-      yield "voice güncellendi";
-    })();
-  };
   const runClaudeDraft = async function* (prompt) {
     prompts.push(prompt);
+    if (prompt.includes("Yalnız JSON döndür")) {
+      // headless voice update — same JSON contract as the gpt path
+      yield { delta: JSON.stringify({ content: "# Güncel kalem\n\nDaha kısa yaz." }) };
+      return;
+    }
     const output = draftText(`D${prompts.length}`);
     yield { delta: output.slice(0, 12) };
     yield { delta: output.slice(12) };
     yield { usage: { tokens_in: 80, tokens_out: 20, estimated: false } };
   };
   const { app, workspace } = await fixture(t, {
-    mailAgentBridge: bridge,
     mailAgentClaudeDraft: runClaudeDraft,
-    mailAgentCompileContext: async ({ person }) => `bağlam:${person.id}`,
+    mailAgentBuildBrief: (person) => ({
+      person: { id: person.id, name: `bağlam:${person.id}`, role: null, mail: null,
+        mail_state: "none", scan_state: "scanned", scan_depth: 1 },
+      employer: null, hooks: [], score: { value: 1, reasons: [] }, known: [], findings: [],
+    }),
   });
 
   const first = await app.inject({
@@ -209,14 +211,17 @@ test("Calibration Studio feedback'i voice'tan önce işler, tek taslağı stream
     },
   });
   assert.equal(second.statusCode, 200);
-  assert.deepEqual(sseEvents(second).slice(0, 3), [
-    { phase: "feedback" },
-    { phase: "context" },
-    { phase: "writing" },
-  ]);
+  // The voice update runs in parallel with the draft (feedback rides in the
+  // draft's red-notes), so the mail streams first, then a "voice" phase while
+  // the voice file settles — no blocking "feedback" phase up front.
+  assert.deepEqual(
+    sseEvents(second).filter((event) => event.phase).map((event) => event.phase),
+    ["context", "writing", "voice"],
+  );
   assert.equal(prompts.length, 3);
-  assert.match(prompts[1], /voice dosyana işle/);
-  assert.match(prompts[1], /Kısa oluşu/);
+  const voicePrompt = prompts.find((p) => p.includes("Yalnız JSON döndür"));
+  assert.ok(voicePrompt, "voice update prompt gönderildi");
+  assert.match(voicePrompt, /Kısa oluşu/);
   assert.match(prompts[2], /TEK bir gerçek outreach mail taslağı/);
   assert.match(prompts[2], /bağlam:kurucu/);
   assert.match(prompts[2], /SON GERİ BİLDİRİM \/ RED NOTLARI/);
@@ -322,7 +327,6 @@ test("Calibration draft düz metnini parse eder; bozuk biçimde ham body ve kiş
 
 test("Calibration draft hatası oluştuğu fazı SSE error olayında bildirir", async (t) => {
   const { app } = await fixture(t, {
-    mailAgentCompileContext: async () => "bağlam",
     mailAgentClaudeDraft: async function* () {
       throw new Error("Claude yazma hatası");
     },
@@ -542,14 +546,15 @@ test("mail agent config model geçişinde session'ı kill eder; Sonnet spawn ve 
   const headers = { "x-remote-user": "tuna" };
   assert.deepEqual((await context.app.inject({
     url: "/api/ws/fixture/mailagent/config", headers,
-  })).json(), { model: "claude-opus-4-8" });
-  const sonnet = await context.app.inject({
+  })).json(), { model: "claude-sonnet-5" });
+  // Default artık sonnet-5: geçiş testi Opus'a geçerek kill-session'ı tetikler
+  const opus = await context.app.inject({
     method: "PUT",
     url: "/api/ws/fixture/mailagent/config",
     headers,
-    payload: { model: "claude-sonnet-5" },
+    payload: { model: "claude-opus-4-8" },
   });
-  assert.deepEqual(sonnet.json(), { model: "claude-sonnet-5" });
+  assert.deepEqual(opus.json(), { model: "claude-opus-4-8" });
   assert.ok(calls.some(([, args]) => args[0] === "kill-session"));
   const chat = await context.app.inject({
     method: "POST",
@@ -559,7 +564,7 @@ test("mail agent config model geçişinde session'ı kill eder; Sonnet spawn ve 
   });
   assert.equal(sseEvents(chat)[0].delta, "Sonnet yanıtı");
   assert.ok(calls.some(([, args]) => args[0] === "new-session" &&
-    args.at(-1).includes("--model claude-sonnet-5")));
+    args.at(-1).includes("--model claude-opus-4-8")));
 
   await context.app.inject({
     method: "PUT",
@@ -638,7 +643,11 @@ test("Calibration Studio GPT modunda koşu-başına Codex üretir ve feedback vo
   const { app, workspace } = await fixture(t, {
     mailAgentExec: async () => { throw new Error("oturum yok"); },
     mailAgentCodex: runCodex,
-    mailAgentCompileContext: async ({ person }) => `gpt-bağlam:${person.id}`,
+    mailAgentBuildBrief: (person) => ({
+      person: { id: person.id, name: `gpt-bağlam:${person.id}`, role: null, mail: null,
+        mail_state: "none", scan_state: "scanned", scan_depth: 1 },
+      employer: null, hooks: [], score: { value: 1, reasons: [] }, known: [], findings: [],
+    }),
   });
   const headers = { "x-remote-user": "tuna" };
   await app.inject({
@@ -733,4 +742,28 @@ test("personal-agents kimlikli kullanıcının assistant ve mail session durumun
   ]);
   assert.match(agents[0].lastActivity, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(agents[1].lastActivity, null);
+});
+
+test("calibration brief deterministik olarak kişi, işveren, hook ve skoru döndürür", async (t) => {
+  const { app } = await fixture(t);
+  const response = await app.inject({
+    url: "/api/ws/fixture/calibration/brief/kurucu",
+    headers: { "x-remote-user": "tuna" },
+  });
+  assert.equal(response.statusCode, 200);
+  const brief = response.json();
+  assert.equal(brief.person.name, "Kurucu Aday");
+  assert.equal(brief.person.mail, "kurucu@example.com");
+  assert.equal(brief.person.scan_state, "scanned");
+  assert.ok(brief.employer);
+  assert.equal(brief.employer.name, "Öncelikli Şirket");
+  assert.equal(brief.employer.meaning, "EMPLOYER");
+  assert.deepEqual(brief.hooks, ["FRC mentoru", "robotik takım kurucusu"]);
+  assert.equal(typeof brief.score.value, "number");
+  assert.ok(brief.known.some((item) => item.label === "Email" && item.text === "kurucu@example.com"));
+  const missing = await app.inject({
+    url: "/api/ws/fixture/calibration/brief/mailsiz",
+    headers: { "x-remote-user": "tuna" },
+  });
+  assert.equal(missing.statusCode, 404);
 });

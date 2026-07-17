@@ -10,7 +10,7 @@
 // deltas and no phases — the reader stays backward-compatible with both.
 import { workspaceBase } from "./api";
 
-export type DraftPhase = "feedback" | "context" | "writing";
+export type DraftPhase = "feedback" | "context" | "writing" | "voice";
 
 export interface StructuredDraft {
   subject?: string | null;
@@ -43,10 +43,10 @@ export async function streamSSE(
   });
 
   if (!res.ok || !res.body) {
-    let msg = `Generation is unavailable (HTTP ${res.status}).`;
-    if (res.status === 404) msg = "This endpoint is not available yet.";
+    let msg = `We couldn't generate that just now (HTTP ${res.status}).`;
+    if (res.status === 404) msg = "This isn't wired up on the server yet.";
     if (res.status === 409)
-      msg = "The selected model can't do this — switch models to continue.";
+      msg = "This model can't handle that. Switch models to keep going.";
     try {
       const b = await res.json();
       if (b?.error) msg = b.error;

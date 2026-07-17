@@ -123,7 +123,7 @@ export default function FilterBar(props: Props) {
   if (f.scoreMin != null || f.scoreMax != null || !f.includeUnscored) {
     const parts: string[] = [];
     if (f.scoreMin != null && f.scoreMax != null)
-      parts.push(`${f.scoreMin}–${f.scoreMax}`);
+      parts.push(`${f.scoreMin}-${f.scoreMax}`);
     else if (f.scoreMin != null) parts.push(`≥${f.scoreMin}`);
     else if (f.scoreMax != null) parts.push(`≤${f.scoreMax}`);
     if (!f.includeUnscored) parts.push("scored");
@@ -137,7 +137,7 @@ export default function FilterBar(props: Props) {
   if (f.degreeMin != null || f.degreeMax != null || f.hideIsolated) {
     const parts: string[] = [];
     if (f.degreeMin != null && f.degreeMax != null)
-      parts.push(`${f.degreeMin}–${f.degreeMax}`);
+      parts.push(`${f.degreeMin}-${f.degreeMax}`);
     else if (f.degreeMin != null) parts.push(`≥${f.degreeMin}`);
     else if (f.degreeMax != null) parts.push(`≤${f.degreeMax}`);
     if (f.hideIsolated) parts.push("no isolated");
@@ -169,7 +169,7 @@ export default function FilterBar(props: Props) {
   if (f.closenessMin > 0 || f.closenessMax < 5)
     chips.push({
       key: "closeness",
-      label: `Closeness ${f.closenessMin}–${f.closenessMax}`,
+      label: `Closeness ${f.closenessMin}-${f.closenessMax}`,
       clear: () => set({ closenessMin: 0, closenessMax: 5 }),
     });
   if (!f.showRelation)
@@ -321,7 +321,7 @@ export default function FilterBar(props: Props) {
                     })
                   }
                 />
-                <span className="np-dash">–</span>
+                <span className="np-dash">-</span>
                 <input
                   type="number"
                   className="np-num"
@@ -358,7 +358,7 @@ export default function FilterBar(props: Props) {
                     })
                   }
                 />
-                <span className="np-dash">–</span>
+                <span className="np-dash">-</span>
                 <input
                   type="number"
                   className="np-num"
@@ -491,7 +491,7 @@ export default function FilterBar(props: Props) {
                   }
                 />
                 <span className="np-val">
-                  {f.closenessMin}–{f.closenessMax}
+                  {f.closenessMin}-{f.closenessMax}
                 </span>
               </div>
             </div>

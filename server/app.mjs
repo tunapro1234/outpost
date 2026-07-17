@@ -105,7 +105,7 @@ export async function createApp({
   mailAgentBridge,
   mailAgentCodex,
   mailAgentClaudeDraft,
-  mailAgentCompileContext,
+  mailAgentBuildBrief,
   mailAgentContextAgent,
   metricsNow,
   usersPath,
@@ -261,7 +261,7 @@ export async function createApp({
     bridge: mailAgentBridge,
     runCodex: mailAgentCodex,
     runClaudeDraft: mailAgentClaudeDraft,
-    compileContext: mailAgentCompileContext,
+    buildBrief: mailAgentBuildBrief,
     contextAgent: mailAgentContextAgent,
   });
   await app.register(mailerRoutes, {
