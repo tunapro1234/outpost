@@ -11,6 +11,7 @@ import type {
   GraphNode,
   MailDraft,
   MailItem,
+  MailQueueSummary,
   ReachStats,
   Metrics,
   Profile,
@@ -239,6 +240,20 @@ export const api = {
       const res = await fetch(`${workspaceBase()}/reach/stats`);
       if (!res.ok) return null;
       return (await res.json()) as ReachStats;
+    } catch {
+      return null;
+    }
+  },
+
+  // Mail queue summary — scanned-and-ready ("queue") vs still-to-scan
+  // ("awaitingScan") people. Returns null on 404 / error so the pipeline band
+  // can hide gracefully while the endpoint is still shipping.
+  async mailqueue(): Promise<MailQueueSummary | null> {
+    if (MOCK) return null;
+    try {
+      const res = await fetch(`${workspaceBase()}/mailqueue`);
+      if (!res.ok) return null;
+      return (await res.json()) as MailQueueSummary;
     } catch {
       return null;
     }

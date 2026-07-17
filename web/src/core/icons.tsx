@@ -67,6 +67,13 @@ export const IconCopilot = ({ size = 16 }: IProps) => (
     <path d="M18.5 14.5c.28 1.3.72 1.74 2 2-1.28.26-1.72.7-2 2-.28-1.3-.72-1.74-2-2 1.28-.26 1.72-.7 2-2Z" />
   </svg>
 );
+// Assistant mark — a single four-point spark inside a soft chat outline.
+export const IconAssistant = ({ size = 16 }: IProps) => (
+  <svg {...base(size)}>
+    <path d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.3-4A7.5 7.5 0 1 1 20 11.5Z" />
+    <path d="M12 8.2c.35 1.9 1 2.55 2.9 2.9-1.9.35-2.55 1-2.9 2.9-.35-1.9-1-2.55-2.9-2.9 1.9-.35 2.55-1 2.9-2.9Z" />
+  </svg>
+);
 export const IconSend = ({ size = 16 }: IProps) => (
   <svg {...base(size)}>
     <path d="M12 19V5" />

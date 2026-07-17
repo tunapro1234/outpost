@@ -11,7 +11,7 @@ export type ViewKey =
   | "overview"
   | "network"
   | "reach"
-  | "gather"
+  | "agents"
   | "integrations"
   | "profile";
 
@@ -23,7 +23,10 @@ const PATH_TO_VIEW: Record<string, ViewKey> = {
   "/": "overview",
   "/network": "network",
   "/reach": "reach",
-  "/gather": "gather",
+  "/agents": "agents",
+  // legacy alias — the module used to live at /gather. Kept so old links and
+  // bookmarks still resolve; navigate() below rewrites the URL to /agents.
+  "/gather": "agents",
   "/integrations": "integrations",
   "/profile": "profile",
 };
@@ -32,10 +35,20 @@ const VIEW_TO_PATH: Record<ViewKey, string> = {
   overview: "/",
   network: "/network",
   reach: "/reach",
-  gather: "/gather",
+  agents: "/agents",
   integrations: "/integrations",
   profile: "/profile",
 };
+
+// Rewrite the legacy /gather URL to /agents on first load so bookmarks and
+// shared links land on the canonical path without a broken page.
+if (typeof window !== "undefined" && window.location.pathname === "/gather") {
+  window.history.replaceState(
+    null,
+    "",
+    "/agents" + window.location.search + window.location.hash
+  );
+}
 
 export function viewPath(key: ViewKey): string {
   return VIEW_TO_PATH[key];

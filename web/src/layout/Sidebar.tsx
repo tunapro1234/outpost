@@ -5,7 +5,7 @@ export type NavKey =
   | "overview"
   | "network"
   | "reach"
-  | "gather"
+  | "agents"
   | "integrations"
   | "profile";
 
@@ -52,7 +52,7 @@ const Icons: Record<NavKey, JSX.Element> = {
     </svg>
   ),
   reach: <S d="M22 3 11 14M22 3l-7 18-4-8-8-4 19-6z" />,
-  gather: (
+  agents: (
     <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
       <rect x="4" y="8" width="16" height="11" rx="2.5" />
       <path d="M12 8V4M9 4h6M8.5 13v2M15.5 13v2" />
@@ -75,7 +75,7 @@ const TOP: { k: NavKey; label: string }[] = [
   { k: "overview", label: "Overview" },
   { k: "network", label: "Network" },
   { k: "reach", label: "Reach" },
-  { k: "gather", label: "Gather" },
+  { k: "agents", label: "Agents" },
 ];
 const BOTTOM: { k: NavKey; label: string }[] = [
   { k: "integrations", label: "Integrations" },

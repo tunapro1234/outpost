@@ -10,6 +10,7 @@ import type {
 import { api } from "@/core/api";
 import AgentsStrip from "./AgentsStrip";
 import AgentSpeed from "./AgentSpeed";
+import PipelineFlow from "./PipelineFlow";
 
 // ---- helpers -------------------------------------------------------------
 function timeAgo(iso: string | null): string {
@@ -397,10 +398,10 @@ export default function GatherView() {
     <div className="view-pad gather2">
       <div className="g-head">
         <div>
-          <h2>Gather</h2>
+          <h2>Agents</h2>
           <span className="int-sub">
-            Agent flock that discovers and stages new leads — human-approved into
-            the network.
+            Mission control for the agent fleet — discovery, enrichment and
+            outreach, every step human-approved.
           </span>
         </div>
         <button className="btn" onClick={load}>
@@ -418,6 +419,9 @@ export default function GatherView() {
         localRunningId={running?.agentId ?? null}
         onSelect={setSelectedId}
       />
+
+      {/* ---------- pipeline flow (end-to-end production line) ---------- */}
+      <PipelineFlow />
 
       {/* ---------- tabs ---------- */}
       <div className="g-tabs">

@@ -3,10 +3,12 @@ import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import { WorkspaceRegistry } from "./lib/config.mjs";
 import { apiError, serveWeb } from "./lib/http.mjs";
+import { assistantRoutes } from "./modules/assistant/routes.mjs";
 import { copilotRoutes } from "./modules/copilot/routes.mjs";
 import { runClaude } from "./modules/copilot/runner.mjs";
 import { ControlRegistry } from "./modules/control/registry.mjs";
 import { controlRoutes } from "./modules/control/routes.mjs";
+import { dashboardRoutes } from "./modules/dashboard/routes.mjs";
 import { gatherRoutes } from "./modules/gather/routes.mjs";
 import { GatherRunner } from "./modules/gather/runner.mjs";
 import { GatherScheduler } from "./modules/gather/scheduler.mjs";
@@ -85,6 +87,13 @@ export async function createApp({
   followUpRun,
   gatherRunner = new GatherRunner(),
   copilotRunner = runClaude,
+  assistantExec,
+  assistantFileSystem,
+  assistantSleep,
+  assistantClaudeBin,
+  assistantBriefTemplatePath,
+  assistantSpawnWaitMs,
+  assistantBridgeOptions,
   metricsNow,
   usersPath,
   htpasswdPath,
@@ -181,6 +190,23 @@ export async function createApp({
     resolveWorkspace: resolveScopedWorkspace,
     runner: copilotRunner,
     defaultUser,
+  });
+  await app.register(dashboardRoutes, {
+    prefix: "/api/ws/:ws",
+    resolveWorkspace: resolveScopedWorkspace,
+    defaultUser,
+  });
+  await app.register(assistantRoutes, {
+    prefix: "/api/ws/:ws",
+    resolveWorkspace: resolveScopedWorkspace,
+    defaultUser,
+    exec: assistantExec,
+    fileSystem: assistantFileSystem,
+    sleep: assistantSleep,
+    claudeBin: assistantClaudeBin,
+    briefTemplatePath: assistantBriefTemplatePath,
+    spawnWaitMs: assistantSpawnWaitMs,
+    bridgeOptions: assistantBridgeOptions,
   });
   await app.register(mailRoutes, {
     prefix: "/api/ws/:ws",

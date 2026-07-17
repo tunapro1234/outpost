@@ -150,6 +150,13 @@ export interface MailItem {
   raw?: string;
 }
 
+// ---- mail queue summary (server GET /api/ws/:ws/mailqueue) --------------
+// Only the counts are consumed by the pipeline band; queue/awaitingScan
+// arrays are omitted here since the band never reads the rows.
+export interface MailQueueSummary {
+  counts: { queue: number; awaitingScan: number };
+}
+
 export interface ReachStats {
   sent: number;
   replied: number;

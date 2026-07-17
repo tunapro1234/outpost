@@ -14,6 +14,7 @@ import IntegrationsView from "@/modules/integrations/IntegrationsView";
 import ProfileView from "@/modules/profile/ProfileView";
 import OverviewView from "@/modules/overview/OverviewView";
 import CopilotDrawer from "@/modules/copilot/CopilotDrawer";
+import AssistantDrawer from "@/modules/assistant/AssistantDrawer";
 import ControlToast from "@/components/ControlToast";
 import { copilotEnabled } from "@/core/copilot";
 import { connectControl, type ControlCommand } from "@/core/control";
@@ -51,7 +52,7 @@ const TITLES: Record<NavKey, string> = {
   overview: "Overview",
   network: "Network",
   reach: "Reach",
-  gather: "Gather",
+  agents: "Agents",
   integrations: "Integrations",
   profile: "Profile",
 };
@@ -137,6 +138,27 @@ export default function App() {
   const [copilotAllowed, setCopilotAllowed] = useState(false);
   const [copilotOpen, setCopilotOpen] = useState(false);
 
+  // ---- assistant (right drawer, every viewer) ----
+  // Opened from the Overview prompt bar. Mutually exclusive with the copilot
+  // drawer — opening one closes the other. `assistantSeed` carries a pending
+  // prompt-bar message the drawer auto-sends on open; `assistantReplyKey` bumps
+  // when a reply finishes so Overview can refetch its (possibly rearranged)
+  // dashboard layout.
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantSeed, setAssistantSeed] = useState<string | null>(null);
+  const [assistantReplyKey, setAssistantReplyKey] = useState(0);
+
+  const openCopilot = useCallback(() => {
+    setAssistantOpen(false);
+    setCopilotOpen(true);
+  }, []);
+
+  const submitAssistant = useCallback((text: string) => {
+    setCopilotOpen(false);
+    setAssistantSeed(text);
+    setAssistantOpen(true);
+  }, []);
+
   const changeWorkspace = useCallback(
     (id: string) => {
       if (id === workspace) return true;
@@ -145,6 +167,7 @@ export default function App() {
       configureWorkspace(next.id);
       localStorage.setItem(WORKSPACE_STORAGE_KEY, next.id);
       setCopilotOpen(false);
+      setAssistantOpen(false);
       setSelectedId(null);
       setFocusNodeId(null);
       setWorkspaceState(next.id);
@@ -349,12 +372,14 @@ export default function App() {
       if ((e.metaKey || e.ctrlKey) && (e.key === "j" || e.key === "J")) {
         if (!copilotAllowed) return;
         e.preventDefault();
-        setCopilotOpen((v) => !v);
+        if (copilotOpen) setCopilotOpen(false);
+        else openCopilot();
       } else if (e.key === "/" && !typing) {
         e.preventDefault();
         searchRef.current?.focus();
       } else if (e.key === "Escape") {
-        if (copilotOpen) setCopilotOpen(false);
+        if (assistantOpen) setAssistantOpen(false);
+        else if (copilotOpen) setCopilotOpen(false);
         else if (!typing) {
           if (filters.egoId) setFilters({ ...filters, egoId: null });
           else if (selectedId) setSelectedId(null);
@@ -363,7 +388,15 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, filters, setFilters, copilotAllowed, copilotOpen]);
+  }, [
+    selectedId,
+    filters,
+    setFilters,
+    copilotAllowed,
+    copilotOpen,
+    assistantOpen,
+    openCopilot,
+  ]);
 
   const gotoNode = useCallback((id: string) => {
     if (window.location.pathname !== viewPath("network")) navigate(viewPath("network"));
@@ -474,10 +507,10 @@ export default function App() {
   const renderCopilot = (showFab: boolean) =>
     copilotAllowed && (
       <>
-        {showFab && !copilotOpen && (
+        {showFab && !copilotOpen && !assistantOpen && (
           <button
             className="copilot-fab"
-            onClick={() => setCopilotOpen(true)}
+            onClick={openCopilot}
             title="Copilot — ⌘J"
             aria-label="Open copilot"
           >
@@ -492,6 +525,19 @@ export default function App() {
           />
         )}
       </>
+    );
+
+  // Assistant drawer — available to every viewer, opened from the Overview
+  // prompt bar. Lives at layout level so it stays reachable across views.
+  const renderAssistant = () =>
+    assistantOpen && (
+      <AssistantDrawer
+        key={workspace ?? undefined}
+        seed={assistantSeed}
+        onSeedConsumed={() => setAssistantSeed(null)}
+        onReplyComplete={() => setAssistantReplyKey((k) => k + 1)}
+        onClose={() => setAssistantOpen(false)}
+      />
     );
 
   if (!workspace) {
@@ -537,6 +583,7 @@ export default function App() {
           </div>
         )}
         {renderCopilot(true)}
+        {renderAssistant()}
         <ControlToast message={controlToast} />
       </div>
     );
@@ -696,6 +743,8 @@ export default function App() {
               mails={mails}
               onOpenEntity={openFull}
               onNavigate={navigateHome}
+              onAssistantSubmit={submitAssistant}
+              assistantReplyKey={assistantReplyKey}
             />
           )}
           {view === "reach" && (
@@ -706,7 +755,7 @@ export default function App() {
               onOpenEntity={openFull}
             />
           )}
-          {view === "gather" && <GatherView />}
+          {view === "agents" && <GatherView />}
           {view === "integrations" && <IntegrationsView />}
           {view === "profile" && <ProfileView />}
 
@@ -732,6 +781,7 @@ export default function App() {
         </div>
       )}
       {renderCopilot(!(selectedId && isNetwork))}
+      {renderAssistant()}
       <ControlToast message={controlToast} />
     </div>
   );
