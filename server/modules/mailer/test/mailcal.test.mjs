@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { createApp } from "../../../app.mjs";
 import { temporaryDirectory } from "../../../test-support/helpers.mjs";
@@ -13,7 +15,12 @@ import {
   rejectMailDraft,
 } from "../drafts.mjs";
 import { appendUsage } from "../usage.mjs";
-import { generateMailVariants, runMailWriterCycle } from "../writer.mjs";
+import {
+  generateMailVariants,
+  parseCalibrationDraft,
+  runMailWriterCycle,
+  streamCalibrationDraft,
+} from "../writer.mjs";
 
 const TEST_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(TEST_DIRECTORY, "fixtures", "workspaces", "fixture");
@@ -37,6 +44,10 @@ function draftJson(prefix = "Studio") {
     body: `${prefix} gövde`,
     rationale: `${prefix} gerekçe`,
   });
+}
+
+function draftText(prefix = "Studio") {
+  return `Subject: ${prefix} konu\n\n${prefix} gövde\n\n---\nRationale: ${prefix} gerekçe`;
 }
 
 function sseEvents(response) {
@@ -155,14 +166,20 @@ test("Calibration Studio feedback'i voice'tan önce işler, tek taslağı stream
   const prompts = [];
   const bridge = async (prompt) => {
     prompts.push(prompt);
-    const output = prompt.includes("GERİ BİLDİRİM:") ? "voice güncellendi" : draftJson(`D${prompts.length}`);
     return (async function* stream() {
-      yield output.slice(0, 12);
-      yield output.slice(12);
+      yield "voice güncellendi";
     })();
+  };
+  const runClaudeDraft = async function* (prompt) {
+    prompts.push(prompt);
+    const output = draftText(`D${prompts.length}`);
+    yield { delta: output.slice(0, 12) };
+    yield { delta: output.slice(12) };
+    yield { usage: { tokens_in: 80, tokens_out: 20, estimated: false } };
   };
   const { app, workspace } = await fixture(t, {
     mailAgentBridge: bridge,
+    mailAgentClaudeDraft: runClaudeDraft,
     mailAgentCompileContext: async ({ person }) => `bağlam:${person.id}`,
   });
 
@@ -173,6 +190,10 @@ test("Calibration Studio feedback'i voice'tan önce işler, tek taslağı stream
     payload: { person_id: "kurucu" },
   });
   assert.equal(first.statusCode, 200);
+  assert.deepEqual(sseEvents(first).slice(0, 2), [
+    { phase: "context" },
+    { phase: "writing" },
+  ]);
   assert.deepEqual(sseEvents(first).at(-1), {
     done: true,
     draft: { subject: "D1 konu", body: "D1 gövde", rationale: "D1 gerekçe" },
@@ -188,11 +209,17 @@ test("Calibration Studio feedback'i voice'tan önce işler, tek taslağı stream
     },
   });
   assert.equal(second.statusCode, 200);
+  assert.deepEqual(sseEvents(second).slice(0, 3), [
+    { phase: "feedback" },
+    { phase: "context" },
+    { phase: "writing" },
+  ]);
   assert.equal(prompts.length, 3);
   assert.match(prompts[1], /voice dosyana işle/);
   assert.match(prompts[1], /Kısa oluşu/);
   assert.match(prompts[2], /TEK bir gerçek outreach mail taslağı/);
   assert.match(prompts[2], /bağlam:kurucu/);
+  assert.match(prompts[2], /SON GERİ BİLDİRİM \/ RED NOTLARI/);
   const records = (await fs.readFile(
     path.join(workspace.directory, "mails/calibration/sessions/tuna.jsonl"), "utf8",
   )).trim().split("\n").map(JSON.parse);
@@ -201,6 +228,15 @@ test("Calibration Studio feedback'i voice'tan önce işler, tek taslağı stream
     rating: 4, liked: "Kısa oluşu", disliked: "Kapanış",
   });
   assert.equal(records[1].draft.subject, "D3 konu");
+  const draftUsage = (await fs.readFile(
+    path.join(workspace.directory, "usage.jsonl"), "utf8",
+  )).trim().split("\n").map(JSON.parse).filter((item) => item.kind === "draft");
+  assert.deepEqual(draftUsage.map((item) => ({
+    agent: item.agent, tokens_in: item.tokens_in, tokens_out: item.tokens_out,
+  })), [
+    { agent: "claude", tokens_in: 80, tokens_out: 20 },
+    { agent: "claude", tokens_in: 80, tokens_out: 20 },
+  ]);
   const calibration = (await app.inject({
     url: "/api/ws/fixture/calibration",
     headers: { "x-remote-user": "tuna" },
@@ -214,6 +250,94 @@ test("Calibration Studio feedback'i voice'tan önce işler, tek taslağı stream
     payload: { person_id: "mailsiz" },
   });
   assert.equal(invalid.statusCode, 404);
+});
+
+test("Calibration Claude headless runner stream-json deltalarını ve result usage'ını aktarır", async () => {
+  let invocation;
+  const spawnProcess = (bin, args, options) => {
+    invocation = { bin, args, options };
+    const child = new EventEmitter();
+    child.stdin = new PassThrough();
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.exitCode = null;
+    child.signalCode = null;
+    child.kill = (signal) => { child.signalCode = signal; };
+    queueMicrotask(() => {
+      child.stdout.write(`${JSON.stringify({
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "Subject: Selam\n\n" } },
+      })}\n`);
+      child.stdout.write(`${JSON.stringify({
+        type: "content_block_delta", delta: { text: "Gövde\n---\nRationale: Hook" },
+      })}\n`);
+      child.stdout.end(`${JSON.stringify({
+        type: "result", result: "tekrar edilmemeli",
+        usage: { input_tokens: 31, output_tokens: 9 },
+      })}\n`);
+      child.stderr.end();
+      child.exitCode = 0;
+      child.emit("close", 0, null);
+    });
+    return child;
+  };
+
+  const events = [];
+  for await (const event of streamCalibrationDraft("PROMPT", {
+    workspace: { directory: process.cwd() },
+    model: "claude-sonnet-5",
+    bin: "fake-claude",
+    spawnProcess,
+  })) events.push(event);
+
+  assert.equal(invocation.bin, "fake-claude");
+  assert.deepEqual(invocation.args, [
+    "--model", "claude-sonnet-5", "--safe-mode", "--disable-slash-commands",
+    "--disallowedTools", "*", "--no-session-persistence", "-p",
+    "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+  ]);
+  assert.deepEqual(events, [
+    { delta: "Subject: Selam\n\n" },
+    { delta: "Gövde\n---\nRationale: Hook" },
+    { usage: { tokens_in: 31, tokens_out: 9, estimated: false } },
+  ]);
+});
+
+test("Calibration draft düz metnini parse eder; bozuk biçimde ham body ve kişi subject fallback'i döner", () => {
+  assert.deepEqual(parseCalibrationDraft(
+    "Subject: Robotik için kısa fikir\n\nMerhaba,\n\nKonuşalım mı?\n\n---\nRationale: Robotik hook'u kullanıldı.",
+  ), {
+    subject: "Robotik için kısa fikir",
+    body: "Merhaba,\n\nKonuşalım mı?",
+    rationale: "Robotik hook'u kullanıldı.",
+  });
+  assert.deepEqual(parseCalibrationDraft("Biçimsiz ama korunması gereken çıktı", {
+    fallbackSubject: "Kurucu Aday",
+  }), {
+    subject: "Kurucu Aday",
+    body: "Biçimsiz ama korunması gereken çıktı",
+    rationale: "Ham model çıktısı; yapılandırılmış alanlar ayrıştırılamadı.",
+  });
+});
+
+test("Calibration draft hatası oluştuğu fazı SSE error olayında bildirir", async (t) => {
+  const { app } = await fixture(t, {
+    mailAgentCompileContext: async () => "bağlam",
+    mailAgentClaudeDraft: async function* () {
+      throw new Error("Claude yazma hatası");
+    },
+  });
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/ws/fixture/calibration/draft",
+    headers: { "x-remote-user": "tuna" },
+    payload: { person_id: "kurucu" },
+  });
+  assert.deepEqual(sseEvents(response), [
+    { phase: "context" },
+    { phase: "writing" },
+    { error: "Claude yazma hatası", phase: "writing" },
+  ]);
 });
 
 test("kullanıcı skill API'si markdown/JSON CRUD, boyut ve 12 dosya limitlerini uygular", async (t) => {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/core/api";
 import { streamSSE } from "@/core/sse";
+import type { DraftPhase, StructuredDraft } from "@/core/sse";
 import { relativeTime } from "@/core/format";
 import { trNormalize } from "@/core/normalize";
 import type {
@@ -125,42 +126,41 @@ export default function CalibrationStudio({
   }, [queue]);
 
   const relCal = relativeTime(cal?.calibrated_at);
+  const activeModel = MODELS.find((m) => m.id === model) ?? MODELS[0];
 
   return (
     <div className="studio">
-      <header className="mail-header studio-header">
-        <div className="mh-left">
-          <button className="mh-back" onClick={onBack}>
-            ← Mail
+      {/* Header — one aligned band: back + title on a shared baseline, sub below */}
+      <header className="studio-header">
+        <div className="sh-titlerow">
+          <button className="sh-back" onClick={onBack}>
+            <span aria-hidden="true">←</span> Mail
           </button>
-          <h1 className="mh-title">Calibration</h1>
-          <span className="mh-sub">
-            Train your mail voice on real people — draft, rate, rewrite.
-          </span>
+          <span className="sh-sep" aria-hidden="true" />
+          <h1 className="sh-title">Calibration</h1>
         </div>
+        <p className="sh-sub">
+          Train your mail voice on real people — draft, rate, rewrite.
+        </p>
       </header>
 
-      {/* (a) top strip: person + model + calibrated badge */}
+      {/* (a) top strip: person + model + calibrated badge on one centered row,
+          with the model's one-liner tucked underneath so it never skews the row */}
       <div className="studio-strip">
-        <PersonPicker
-          people={people}
-          person={person}
-          onPick={setPerson}
-        />
-        <ModelPicker
-          model={model}
-          loaded={modelLoaded}
-          onChange={changeModel}
-        />
-        <div className="studio-calbadge">
-          {cal?.calibrated_at && relCal ? (
-            <span className="cal-badge" title={cal.calibrated_at}>
-              Calibrated {relCal}
-            </span>
-          ) : (
-            <span className="cal-badge muted">Not calibrated yet</span>
-          )}
+        <div className="strip-row">
+          <PersonPicker people={people} person={person} onPick={setPerson} />
+          <ModelPicker model={model} loaded={modelLoaded} onChange={changeModel} />
+          <div className="studio-calbadge">
+            {cal?.calibrated_at && relCal ? (
+              <span className="cal-badge" title={cal.calibrated_at}>
+                Calibrated {relCal}
+              </span>
+            ) : (
+              <span className="cal-badge muted">Not calibrated yet</span>
+            )}
+          </div>
         </div>
+        <div className={`strip-desc${gpt ? " warn" : ""}`}>{activeModel.desc}</div>
       </div>
 
       {/* (b) main column + (c) helper column */}
@@ -339,24 +339,18 @@ function ModelPicker({
   loaded: boolean;
   onChange: (m: MailAgentModel) => void;
 }) {
-  const active = MODELS.find((m) => m.id === model) ?? MODELS[0];
   return (
-    <div className="studio-model">
-      <div className="sm-seg" role="group" aria-label="Mail agent model">
-        {MODELS.map((m) => (
-          <button
-            key={m.id}
-            className={m.id === model ? "on" : ""}
-            disabled={!loaded}
-            onClick={() => m.id !== model && onChange(m.id)}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-      <div className={`sm-desc${model === "gpt-5.6-sol" ? " warn" : ""}`}>
-        {active.desc}
-      </div>
+    <div className="sm-seg" role="group" aria-label="Mail agent model">
+      {MODELS.map((m) => (
+        <button
+          key={m.id}
+          className={m.id === model ? "on" : ""}
+          disabled={!loaded}
+          onClick={() => m.id !== model && onChange(m.id)}
+        >
+          {m.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -365,13 +359,44 @@ function ModelPicker({
 // (b) Draft panel — write / stream a draft, then rate + rewrite.
 
 function parseDraft(text: string): { subject: string | null; body: string } {
+  // Belt-and-suspenders for the Tuna case: a raw model output must NEVER reach
+  // the reader as a JSON blob. If the text is a JSON object carrying a body
+  // (old server with no { done, draft } frame, or a model that ignored the
+  // plain-text instruction and returned JSON in one chunk), pull the fields
+  // out. Anything we can't parse still gets its \n escapes unfolded below so
+  // the reader sees prose, never `{"subject":"…","body":"…\n\n…"}`.
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const o = JSON.parse(trimmed) as {
+        subject?: unknown;
+        body?: unknown;
+      };
+      if (typeof o.body === "string") {
+        return {
+          subject: typeof o.subject === "string" ? o.subject.trim() : null,
+          body: o.body,
+        };
+      }
+    } catch {
+      // Not valid JSON — fall through to the plain-text paths.
+    }
+  }
   const m = text.match(/^[ \t]*subject:[ \t]*(.*)$/im);
   if (m && m.index != null) {
     const subject = m[1].trim();
     const body = text.slice(m.index + m[0].length).replace(/^\s+/, "");
-    return { subject, body };
+    return { subject, body: unescapeIfEscaped(body) };
   }
-  return { subject: null, body: text };
+  return { subject: null, body: unescapeIfEscaped(text) };
+}
+
+// Last-resort readability: if a string still carries literal backslash-n (an
+// un-decoded JSON body that slipped through), turn the escapes into real
+// newlines so the reader gets prose, not `line1\n\nline2`.
+function unescapeIfEscaped(s: string): string {
+  if (!/\\[nrt]/.test(s) || /\n/.test(s)) return s;
+  return s.replace(/\\r\\n|\\n|\\r/g, "\n").replace(/\\t/g, "\t");
 }
 
 // Turn a raw stream/server error into a calm, English studio message. The
@@ -387,6 +412,45 @@ function friendlyDraftError(raw: string): string {
   return s;
 }
 
+// The status chip's label for each streaming phase. `null` = writing has begun
+// but no phase frame arrived (older single-shot servers) — treat as "Writing".
+function phaseLabel(phase: DraftPhase | null): string {
+  switch (phase) {
+    case "feedback":
+      return "Reading your notes…";
+    case "context":
+      return "Preparing context…";
+    case "writing":
+      return "Writing…";
+    default:
+      return "Writing…";
+  }
+}
+
+// The phase worded for the calm failure line ("Draft failed while <…>.").
+function phaseWord(phase: DraftPhase | null): string {
+  switch (phase) {
+    case "feedback":
+      return "reading your feedback";
+    case "context":
+      return "preparing context";
+    case "writing":
+      return "writing";
+    default:
+      return "drafting";
+  }
+}
+
+// mm:ss elapsed, clamped at 0.
+function fmtElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+type Feedback = { rating: number; liked: string; disliked: string };
+
 function DraftPanel({
   person,
   onVoiceMaybeChanged,
@@ -397,13 +461,40 @@ function DraftPanel({
   const [draft, setDraft] = useState("");
   const [started, setStarted] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [phase, setPhase] = useState<DraftPhase | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorPhase, setErrorPhase] = useState<DraftPhase | null>(null);
+  // The structured draft from a { done, draft } frame, if any — otherwise we
+  // fall back to parsing the streamed text (backward-compatible).
+  const [finalDraft, setFinalDraft] = useState<StructuredDraft | null>(null);
+  const [rationaleOpen, setRationaleOpen] = useState(false);
+
+  // Live elapsed counter — ticks while streaming.
+  const [elapsed, setElapsed] = useState(0);
+  const startAtRef = useRef(0);
 
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [liked, setLiked] = useState("");
   const [disliked, setDisliked] = useState("");
   const [lockNote, setLockNote] = useState(false);
+
+  // Remember the last request so Retry can replay it verbatim.
+  const lastFeedbackRef = useRef<Feedback | undefined>(undefined);
+  // Whether any delta arrived this run — lets onDone know if it must seed the
+  // draft box from a structured done frame (single-shot, delta-less servers).
+  const gotDeltaRef = useRef(false);
+
+  // The live draft box — auto-scrolled to the bottom as tokens arrive, unless
+  // the reader has scrolled up to read something earlier.
+  const streamRef = useRef<HTMLDivElement>(null);
+  const stickBottomRef = useRef(true);
+  const onStreamScroll = () => {
+    const el = streamRef.current;
+    if (!el) return;
+    stickBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  };
 
   const abortRef = useRef<AbortController | null>(null);
   useEffect(
@@ -413,6 +504,23 @@ function DraftPanel({
     []
   );
 
+  // Drive the elapsed timer while streaming.
+  useEffect(() => {
+    if (!streaming) return;
+    const id = window.setInterval(() => {
+      setElapsed(Date.now() - startAtRef.current);
+    }, 500);
+    return () => window.clearInterval(id);
+  }, [streaming]);
+
+  // Keep the live stream pinned to the bottom as it grows.
+  useEffect(() => {
+    if (!streaming || phase === "context" || phase === "feedback") return;
+    if (!stickBottomRef.current) return;
+    const el = streamRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [draft, streaming, phase]);
+
   // Reset the whole surface whenever the target person changes.
   const personId = person?.id ?? null;
   useEffect(() => {
@@ -421,22 +529,36 @@ function DraftPanel({
     setDraft("");
     setStarted(false);
     setStreaming(false);
+    setPhase(null);
     setError(null);
+    setErrorPhase(null);
+    setFinalDraft(null);
+    setRationaleOpen(false);
+    setElapsed(0);
     setRating(0);
     setLiked("");
     setDisliked("");
     setLockNote(false);
   }, [personId]);
 
-  const run = (feedback?: { rating: number; liked: string; disliked: string }) => {
+  const run = (feedback?: Feedback) => {
     if (!person || streaming) return;
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    lastFeedbackRef.current = feedback;
+    gotDeltaRef.current = false;
+    startAtRef.current = Date.now();
+    stickBottomRef.current = true;
     setStarted(true);
     setStreaming(true);
+    setPhase(feedback ? "feedback" : null);
     setDraft("");
     setError(null);
+    setErrorPhase(null);
+    setFinalDraft(null);
+    setRationaleOpen(false);
+    setElapsed(0);
     if (!feedback) setLockNote(false);
 
     streamSSE(
@@ -444,11 +566,32 @@ function DraftPanel({
       { person_id: person.id, ...(feedback ? { feedback } : {}) },
       ctrl.signal,
       {
-        onDelta: (t) => setDraft((prev) => prev + t),
-        onError: (m) => setError(friendlyDraftError(m)),
-        onDone: () => {
+        onPhase: (p) => setPhase(p),
+        onDelta: (t) => {
+          // First token means writing is underway even without a phase frame.
+          gotDeltaRef.current = true;
+          setPhase((prev) => prev ?? "writing");
+          setDraft((prev) => prev + t);
+        },
+        onError: (m, p) => {
+          setError(friendlyDraftError(m));
+          if (p) setErrorPhase(p);
+        },
+        onDone: (structured) => {
           setStreaming(false);
+          setPhase(null);
           abortRef.current = null;
+          if (structured) {
+            setFinalDraft(structured);
+            // If the server delivered the body only in the done frame (no
+            // deltas), surface it in the draft text too so the fallback parser
+            // and copy paths still have the content.
+            if (!gotDeltaRef.current && structured.body)
+              setDraft(
+                (structured.subject ? `Subject: ${structured.subject}\n\n` : "") +
+                  structured.body
+              );
+          }
           if (feedback) {
             // The agent may have updated the voice file before rewriting.
             onVoiceMaybeChanged();
@@ -461,14 +604,22 @@ function DraftPanel({
       }
     ).catch((err) => {
       setStreaming(false);
+      setPhase(null);
       abortRef.current = null;
       if ((err as Error)?.name !== "AbortError")
         setError("The draft stream failed. Try again.");
     });
   };
 
-  const { subject, body } = parseDraft(draft);
-  const canFeedback = started && !streaming && !!draft && !error;
+  const retry = () => run(lastFeedbackRef.current);
+
+  // The rendered subject/body: prefer the structured done frame, else parse the
+  // streamed text. The error-phase label reads from the last known phase.
+  const parsed = parseDraft(draft);
+  const subject = finalDraft?.subject ?? parsed.subject;
+  const body = finalDraft?.body ?? parsed.body;
+  const rationale = finalDraft?.rationale?.trim() || "";
+  const canFeedback = started && !streaming && !!body && !error;
 
   if (!person) {
     return (
@@ -503,27 +654,73 @@ function DraftPanel({
         </div>
       ) : (
         <>
-          <div className="draft-doc">
-            {subject != null && (
-              <div className="draft-subject">
-                <span className="draft-subject-k">Subject</span>
-                <span className="draft-subject-v">{subject || "…"}</span>
-              </div>
-            )}
-            <div className="draft-body">
-              {body || (streaming ? "" : "—")}
-              {streaming && <span className="cp-caret" />}
+          {/* live status chip — phase + a running mm:ss counter */}
+          {streaming && (
+            <div className="draft-status" role="status" aria-live="polite">
+              <span className="ds-spin" aria-hidden="true" />
+              <span className="ds-label">{phaseLabel(phase)}</span>
+              <span className="ds-timer">{fmtElapsed(elapsed)}</span>
             </div>
-          </div>
+          )}
 
-          {error && <div className="draft-err">{error}</div>}
+          {/* the draft document — live token stream while writing, settled
+              subject/body blocks once done. Hidden only for a pre-writing
+              phase (context/feedback) with nothing written yet, or on error. */}
+          {!error && (streaming ? phase === "writing" || !!draft : !!body) && (
+            <div className="draft-doc">
+              {subject != null && (
+                <div className="draft-subject">
+                  <span className="draft-subject-k">Subject</span>
+                  <span className="draft-subject-v">{subject || "…"}</span>
+                </div>
+              )}
+              <div
+                className={`draft-body${streaming ? " live" : ""}`}
+                ref={streamRef}
+                onScroll={onStreamScroll}
+              >
+                {body || (streaming ? "" : "—")}
+                {streaming && phase === "writing" && <span className="cp-caret" />}
+              </div>
+            </div>
+          )}
 
-          {lockNote && (
+          {/* rationale — a quiet, foldable "why it wrote it this way" */}
+          {!streaming && !error && rationale && (
+            <div className={`draft-rationale${rationaleOpen ? " open" : ""}`}>
+              <button
+                className="dr-toggle"
+                onClick={() => setRationaleOpen((o) => !o)}
+                aria-expanded={rationaleOpen}
+              >
+                <span className="dr-caret">{rationaleOpen ? "▾" : "▸"}</span>
+                Why it wrote it this way
+              </button>
+              {rationaleOpen && <div className="dr-body">{rationale}</div>}
+            </div>
+          )}
+
+          {/* calm failure block — no alarm red, just a plain line + retry */}
+          {error && (
+            <div className="draft-fail" role="alert">
+              <div className="df-msg">
+                {errorPhase
+                  ? `Draft failed while ${phaseWord(errorPhase)}. Try again.`
+                  : error}
+              </div>
+              <button className="btn ghost sm" onClick={retry} disabled={streaming}>
+                Retry
+              </button>
+            </div>
+          )}
+
+          {lockNote && !error && (
             <div className="draft-lock">
               Style locking in — voice file updated.
             </div>
           )}
 
+          {!error && (
           <div className="draft-fb">
             <div className="draft-fb-head">
               <span className="draft-fb-title">How did this land?</span>
@@ -595,6 +792,7 @@ function DraftPanel({
               </button>
             </div>
           </div>
+          )}
         </>
       )}
     </div>

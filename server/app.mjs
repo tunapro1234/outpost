@@ -104,6 +104,7 @@ export async function createApp({
   mailAgentBridgeOptions,
   mailAgentBridge,
   mailAgentCodex,
+  mailAgentClaudeDraft,
   mailAgentCompileContext,
   mailAgentContextAgent,
   metricsNow,
@@ -259,6 +260,7 @@ export async function createApp({
     bridgeOptions: mailAgentBridgeOptions,
     bridge: mailAgentBridge,
     runCodex: mailAgentCodex,
+    runClaudeDraft: mailAgentClaudeDraft,
     compileContext: mailAgentCompileContext,
     contextAgent: mailAgentContextAgent,
   });

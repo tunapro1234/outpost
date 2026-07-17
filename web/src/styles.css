@@ -6089,23 +6089,55 @@ button.md-company {
   color: var(--text-dim);
 }
 
-/* Calibration studio header — same band language, single column */
+/* Calibration studio header — back + title share one baseline, sub sits under */
 .studio-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 16px;
   margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
 }
-.mh-back {
+.sh-titlerow {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.sh-back {
   border: none;
   background: none;
   padding: 0;
   color: var(--text-faint);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 550;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
   transition: color 0.14s;
 }
-.mh-back:hover {
+.sh-back:hover {
   color: var(--text);
 }
-.mh-sub {
+.sh-back span {
+  margin-right: 3px;
+}
+/* thin vertical divider between back and title, aligned to the cap height */
+.sh-sep {
+  align-self: center;
+  width: 1px;
+  height: 15px;
+  background: var(--line);
+}
+.sh-title {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 680;
+  letter-spacing: -0.015em;
+  line-height: 1.05;
+  color: var(--text);
+}
+.sh-sub {
+  margin: 0;
   font-size: 12.5px;
   color: var(--text-faint);
 }
@@ -6153,14 +6185,28 @@ textarea.np-input {
   color: var(--text-faint);
 }
 
-/* (a) top strip */
+/* (a) top strip — a centered control row, with the model one-liner beneath it
+   so the row's own vertical rhythm never gets skewed by a taller cell */
 .studio-strip {
   display: flex;
-  align-items: center;
-  gap: 18px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 8px;
   padding-bottom: 16px;
   border-bottom: 1px solid var(--line-soft);
+}
+.strip-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.strip-desc {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  min-height: 15px;
+}
+.strip-desc.warn {
+  color: var(--warn);
 }
 .studio-person {
   flex: 1 1 280px;
@@ -6172,7 +6218,7 @@ textarea.np-input {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 38px;
+  height: 40px;
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -6258,7 +6304,7 @@ textarea.np-input {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 38px;
+  height: 40px;
   padding: 0 8px 0 14px;
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -6267,13 +6313,15 @@ textarea.np-input {
 .sp-info {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  justify-content: center;
+  gap: 2px;
   min-width: 0;
   flex: 1;
 }
 .sp-name {
   font-size: 13.5px;
   font-weight: 650;
+  line-height: 1.15;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -6281,23 +6329,35 @@ textarea.np-input {
 }
 .sp-org {
   font-size: 11px;
+  line-height: 1.2;
   color: var(--text-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* priority score — a quiet pill so it reads as one unit, vertically centered */
 .sp-score {
-  font-size: 13px;
+  flex: 0 0 auto;
+  font-size: 12px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   color: var(--text-dim);
+  background: var(--surface-3);
+  border-radius: 999px;
+  padding: 3px 9px;
+  line-height: 1.2;
 }
 .sp-clear {
   display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
   border: none;
   background: transparent;
   color: var(--text-faint);
-  padding: 5px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
   border-radius: 6px;
 }
 .sp-clear:hover {
@@ -6305,13 +6365,10 @@ textarea.np-input {
   background: var(--surface-3);
 }
 
-.studio-model {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
 .sm-seg {
   display: inline-flex;
+  align-items: center;
+  min-height: 40px;
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -6324,7 +6381,7 @@ textarea.np-input {
   color: var(--text-dim);
   font-size: 12px;
   font-weight: 550;
-  padding: 5px 11px;
+  padding: 7px 12px;
   border-radius: 6px;
   transition: background 0.14s, color 0.14s;
 }
@@ -6338,13 +6395,6 @@ textarea.np-input {
 }
 .sm-seg button:disabled {
   opacity: 0.5;
-}
-.sm-desc {
-  font-size: 11.5px;
-  color: var(--text-faint);
-}
-.sm-desc.warn {
-  color: var(--warn);
 }
 .studio-calbadge {
   margin-left: auto;
@@ -6446,6 +6496,102 @@ textarea.np-input {
   line-height: 1.7;
   color: var(--text);
   min-height: 40px;
+}
+/* while tokens stream, the box is scroll-capped and auto-pinned to the bottom */
+.draft-body.live {
+  max-height: 360px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+/* live status chip — phase label + a running mm:ss counter */
+.draft-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 12px;
+  padding: 6px 12px 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+.ds-spin {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  animation: ds-spin 0.7s linear infinite;
+}
+@keyframes ds-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ds-label {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--text-dim);
+}
+.ds-timer {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+}
+
+/* rationale — a quiet foldable "why it wrote it this way" */
+.draft-rationale {
+  margin-top: 12px;
+}
+.dr-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: none;
+  background: none;
+  padding: 2px 0;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--text-dim);
+  transition: color 0.14s;
+}
+.dr-toggle:hover {
+  color: var(--text);
+}
+.dr-caret {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.dr-body {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* calm failure block — no alarm red, just a plain line and a Retry */
+.draft-fail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+.df-msg {
+  font-size: 13px;
+  color: var(--text-dim);
 }
 .draft-err {
   margin-top: 12px;

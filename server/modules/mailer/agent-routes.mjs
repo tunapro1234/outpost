@@ -34,6 +34,7 @@ import {
   compileMailContext,
   parseCalibrationDraft,
   readMailSkills,
+  streamCalibrationDraft,
 } from "./writer.mjs";
 
 const STUDIO_SKILLS = ["tone-map.md", "cold-intro.md", "subject-lines.md", "variants.md"];
@@ -162,6 +163,7 @@ export async function mailAgentRoutes(app, {
   bridgeOptions,
   bridge: suppliedBridge,
   runCodex = codexText,
+  runClaudeDraft = streamCalibrationDraft,
   compileContext = compileMailContext,
   contextAgent = { id: "mail-calibration", model: "gpt-5.6-luna", params: {} },
   now = () => new Date(),
@@ -311,8 +313,10 @@ export async function mailAgentRoutes(app, {
       clientClosed = !reply.raw.writableEnded;
       if (clientClosed) abortController.abort();
     });
+    let phase = feedback ? "feedback" : "context";
     try {
       if (feedback) {
+        await sendEvent(reply, { phase });
         const voice = await readCalibrationSource(workspace, user);
         if (model === "gpt-5.6-sol") {
           const prompt = gptFeedbackPrompt(feedback, voice);
@@ -350,6 +354,8 @@ export async function mailAgentRoutes(app, {
         }
       }
 
+      phase = "context";
+      await sendEvent(reply, { phase });
       const company = resolveCompany(person, workspace.index);
       const scored = scorePerson(person, workspace.index, await loadSignals(workspace));
       const context = await compileContext({
@@ -370,7 +376,9 @@ export async function mailAgentRoutes(app, {
         readUserSkillsPrompt(workspace, user, { fileSystem }),
         readCalibrationSource(workspace, user),
       ]);
-      const prompt = calibrationDraftPrompt(context, skills, userSkills, calibration);
+      const prompt = calibrationDraftPrompt(context, skills, userSkills, calibration, feedback);
+      phase = "writing";
+      await sendEvent(reply, { phase });
       let output = "";
       if (model === "gpt-5.6-sol") {
         const generated = generatedResult(await runCodex(prompt, {
@@ -391,33 +399,34 @@ export async function mailAgentRoutes(app, {
         }, { fileSystem }).catch((error) =>
           app.log.warn({ err: error }, "Codex Studio usage yazılamadı"));
       } else {
-        await ensureMailAgentBrief(workspace, user, {
-          fileSystem, templatePath: briefTemplatePath,
+        let usage = null;
+        const stream = runClaudeDraft(prompt, {
+          signal: abortController.signal, workspace, model, bin: claudeBin,
         });
-        const stream = await bridgeFor(workspace, user, session, model)(prompt, {
-          signal: abortController.signal, workspace, user,
-        });
-        if (!stream) throw new Error("Mail agent tmux oturumu hazır değil veya meşgul");
-        for await (const rawDelta of stream) {
-          const delta = String(rawDelta ?? "");
+        for await (const event of stream) {
+          if (event?.usage) usage = event.usage;
+          const delta = typeof event === "string" ? event : event?.delta;
+          if (typeof delta !== "string" || !delta) continue;
           output += delta;
-          if (delta && !await sendEvent(reply, { delta })) break;
+          if (!await sendEvent(reply, { delta })) break;
         }
         await appendUsage(workspace, {
-          ts: now().toISOString(), user, agent: "mail", kind: "draft",
-          chars_in: prompt.length, chars_out: output.length,
+          ts: now().toISOString(), user, agent: "claude", kind: "draft",
+          chars: prompt.length + output.length,
+          ...(usage ?? estimatedUsage(prompt.length, output.length)),
         }, { fileSystem }).catch((error) =>
-          app.log.warn({ err: error }, "Mail agent Studio usage yazılamadı"));
+          app.log.warn({ err: error }, "Claude Studio usage yazılamadı"));
       }
-      const draft = parseCalibrationDraft(output);
+      const draft = parseCalibrationDraft(output, {
+        fallbackSubject: person.meta.name ?? person.id,
+      });
       await recordCalibrationDraft(workspace, user, {
         ts: now().toISOString(), person_id: person.id, draft,
       }, { feedback, fileSystem });
       if (!clientClosed) await sendEvent(reply, { done: true, draft });
     } catch (error) {
       if (!clientClosed) {
-        await sendEvent(reply, { error: publicError(error) });
-        await sendEvent(reply, { done: true });
+        await sendEvent(reply, { error: publicError(error), phase });
       }
     } finally {
       if (!clientClosed) reply.raw.end();

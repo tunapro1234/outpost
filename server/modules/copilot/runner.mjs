@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import readline from "node:readline";
+import { jsonDelta } from "../../lib/claude-stream-json.mjs";
 import { redactSecrets } from "./context.mjs";
 
 const MAX_STDERR = 16_000;
@@ -15,26 +16,6 @@ export const CLAUDE_ARGS = [
   "--verbose",
   "--include-partial-messages",
 ];
-
-function jsonDelta(record, state) {
-  const streamDelta = record?.event?.delta?.text ??
-    (record?.type === "content_block_delta" ? record.delta?.text : undefined);
-  if (typeof streamDelta === "string") {
-    state.partial = true;
-    return streamDelta;
-  }
-  if (record?.type === "assistant" && !state.partial) {
-    const text = record.message?.content
-      ?.filter((item) => item?.type === "text" && typeof item.text === "string")
-      .map((item) => item.text)
-      .join("");
-    if (text) return text;
-  }
-  if (record?.type === "result" && !state.partial && !state.emitted) {
-    return typeof record.result === "string" ? record.result : null;
-  }
-  return null;
-}
 
 function runnerError(result, stderr) {
   if (result.error?.code === "ENOENT") return new Error("Claude CLI kurulu değil");

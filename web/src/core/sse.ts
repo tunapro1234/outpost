@@ -1,13 +1,29 @@
 // Minimal SSE-over-POST reader shared by the streaming surfaces that don't go
 // through the chat engine — notably the Calibration studio's draft stream
 // (POST /calibration/draft). Same frame format as core/chat.ts: newline-
-// delimited `data: {json}` lines carrying { delta } / { error } / { done }.
+// delimited `data: {json}` lines. Frames carry any of:
+//   { phase: "feedback" | "context" | "writing" }  — stage changes
+//   { delta: "..." }                                 — live token stream
+//   { done: true, draft?: { subject, body, rationale } } — final structure
+//   { error: "...", phase?: "..." }                  — failure
+// Older servers may send a bare { done: true } with no draft, or stream only
+// deltas and no phases — the reader stays backward-compatible with both.
 import { workspaceBase } from "./api";
+
+export type DraftPhase = "feedback" | "context" | "writing";
+
+export interface StructuredDraft {
+  subject?: string | null;
+  body?: string | null;
+  rationale?: string | null;
+}
 
 export interface SSEHandlers {
   onDelta: (text: string) => void;
-  onError: (message: string) => void;
-  onDone: () => void;
+  onError: (message: string, phase?: DraftPhase) => void;
+  onDone: (draft?: StructuredDraft) => void;
+  // Optional — only newer servers emit phase frames.
+  onPhase?: (phase: DraftPhase) => void;
 }
 
 // POSTs `body` to a workspace-relative path and streams the reply. Resolves
@@ -45,20 +61,32 @@ export async function streamSSE(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  // A structured { done: true, draft } frame, if the server sends one — handed
+  // to onDone once the stream closes so the caller can settle the final shape.
+  let finalDraft: StructuredDraft | undefined;
 
   const flushLine = (raw: string) => {
     const line = raw.trim();
     if (!line.startsWith("data:")) return;
     const payload = line.slice(5).trim();
     if (!payload) return;
-    let obj: { delta?: string; error?: string; done?: boolean };
+    let obj: {
+      phase?: DraftPhase;
+      delta?: string;
+      error?: string;
+      done?: boolean;
+      draft?: StructuredDraft;
+    };
     try {
       obj = JSON.parse(payload);
     } catch {
       return; // skip malformed/partial frames
     }
-    if (obj.delta) handlers.onDelta(obj.delta);
-    else if (obj.error) handlers.onError(obj.error);
+    if (obj.error) handlers.onError(obj.error, obj.phase);
+    else if (obj.done) {
+      if (obj.draft) finalDraft = obj.draft;
+    } else if (obj.delta) handlers.onDelta(obj.delta);
+    else if (obj.phase) handlers.onPhase?.(obj.phase);
   };
 
   for (;;) {
@@ -72,5 +100,5 @@ export async function streamSSE(
     }
   }
   if (buffer) flushLine(buffer);
-  handlers.onDone();
+  handlers.onDone(finalDraft);
 }

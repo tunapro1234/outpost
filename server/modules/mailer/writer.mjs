@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import readline from "node:readline";
 import { fileURLToPath } from "node:url";
+import { jsonDelta, updateClaudeUsage } from "../../lib/claude-stream-json.mjs";
 import { codexServiceTierArgs } from "../../lib/codex.mjs";
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
 import {
@@ -92,15 +94,37 @@ function jsonObject(output) {
   }
 }
 
-export function parseCalibrationDraft(output) {
-  const value = jsonObject(output);
-  if (!value || typeof value !== "object" || Array.isArray(value) ||
-    !["subject", "body", "rationale"].every((key) =>
-      typeof value[key] === "string" && value[key].trim())) {
-    throw new Error("Taslak subject/body/rationale alanlarını içermeli");
+export function parseCalibrationDraft(output, { fallbackSubject = "Merhaba" } = {}) {
+  const source = String(output ?? "").trim();
+  try {
+    const value = jsonObject(source);
+    if (!value || typeof value !== "object" || Array.isArray(value) ||
+      !["subject", "body", "rationale"].every((key) =>
+        typeof value[key] === "string" && value[key].trim())) {
+      throw new Error("Taslak subject/body/rationale alanlarını içermeli");
+    }
+    return Object.fromEntries(["subject", "body", "rationale"]
+      .map((key) => [key, value[key].trim()]));
+  } catch {
+    const firstBreak = source.search(/\r?\n/);
+    const subjectLine = firstBreak < 0 ? source : source.slice(0, firstBreak);
+    const subject = /^Subject:\s*(.+)$/i.exec(subjectLine)?.[1]?.trim();
+    const remainder = firstBreak < 0 ? "" : source.slice(firstBreak).replace(/^\r?\n/, "");
+    const rationaleMarker = /\r?\n---\r?\nRationale:\s*/gi;
+    let marker;
+    let lastMarker;
+    while ((marker = rationaleMarker.exec(remainder))) lastMarker = marker;
+    if (subject && lastMarker) {
+      const body = remainder.slice(0, lastMarker.index).trim();
+      const rationale = remainder.slice(lastMarker.index + lastMarker[0].length).trim();
+      if (body && rationale) return { subject, body, rationale };
+    }
+    return {
+      subject: String(fallbackSubject || "Merhaba").trim(),
+      body: source,
+      rationale: "Ham model çıktısı; yapılandırılmış alanlar ayrıştırılamadı.",
+    };
   }
-  return Object.fromEntries(["subject", "body", "rationale"]
-    .map((key) => [key, value[key].trim()]));
 }
 
 export function parseVariants(output) {
@@ -191,13 +215,105 @@ BAĞLAM PAKETİ:
 ${context}`;
 }
 
-export function calibrationDraftPrompt(context, skills, userSkills, calibration) {
-  return `Bu hedef kişi için TEK bir gerçek outreach mail taslağı üret. Yalnız JSON döndür: {"subject":"...","body":"...","rationale":"..."}. Rationale kullanılan gerçek hook'u ve ton seçimini kısa açıklasın. Olgu uydurma, gönderim yapma.
+export function calibrationDraftPrompt(context, skills, userSkills, calibration, feedback) {
+  return `Bu hedef kişi için TEK bir gerçek outreach mail taslağı üret. Çıktı yalnız DÜZ METİN olsun: ilk satır "Subject: ...", ardından boş satır ve mail gövdesi; en sonda ayrı satırlarda "---" ve "Rationale: ...". Rationale kullanılan gerçek hook'u ve ton seçimini kısa açıklasın. Markdown fence veya JSON kullanma. Olgu uydurma, gönderim yapma.
 
 ${mailKnowledgePrompt(skills, userSkills, calibration)}
 
+${feedback ? `SON GERİ BİLDİRİM / RED NOTLARI (yeni taslakta düzelt):\n${JSON.stringify(feedback, null, 2)}\n` : ""}
+
 BAĞLAM PAKETİ:
 ${context}`;
+}
+
+const CALIBRATION_CLAUDE_ARGS = [
+  "--safe-mode",
+  "--disable-slash-commands",
+  "--disallowedTools", "*",
+  "--no-session-persistence",
+  "-p",
+  "--output-format", "stream-json",
+  "--verbose",
+  "--include-partial-messages",
+];
+
+export async function* streamCalibrationDraft(prompt, {
+  workspace,
+  model = DEFAULT_MAIL_AGENT_MODEL,
+  bin = process.env.OUTPOST_CLAUDE_BIN ?? "claude",
+  signal,
+  timeoutMs = 120_000,
+  spawnProcess = spawn,
+} = {}) {
+  const child = spawnProcess(bin, ["--model", model, ...CALIBRATION_CLAUDE_ARGS], {
+    cwd: workspace?.directory ?? process.cwd(),
+    env: process.env,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  child.stdin.on("error", () => {});
+  child.stdin.end(prompt);
+
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    if (stderr.length < 16_000) stderr += chunk.toString("utf8");
+  });
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    child.kill("SIGKILL");
+  }, timeoutMs);
+  timer.unref?.();
+  const abort = () => child.kill("SIGTERM");
+  signal?.addEventListener("abort", abort, { once: true });
+  const completed = new Promise((resolve) => {
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    child.once("error", (error) => finish({ error }));
+    child.once("close", (code, closedSignal) => finish({ code, signal: closedSignal }));
+  });
+
+  const state = { partial: false, emitted: false };
+  let usage = null;
+  try {
+    const lines = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
+    for await (const line of lines) {
+      if (!line.trim()) continue;
+      let delta;
+      try {
+        const record = JSON.parse(line);
+        delta = jsonDelta(record, state);
+        usage = updateClaudeUsage(record, usage);
+      } catch {
+        delta = `${line}\n`;
+      }
+      if (delta) {
+        state.emitted = true;
+        yield { delta };
+      }
+    }
+    const result = await completed;
+    if (signal?.aborted) {
+      const error = new Error("Mail taslağı isteği iptal edildi");
+      error.name = "AbortError";
+      throw error;
+    }
+    if (timedOut) throw new Error("Claude CLI 120 saniyede zaman aşımına uğradı");
+    if (result.error?.code === "ENOENT") throw new Error("Claude CLI kurulu değil");
+    if (result.error) throw new Error(`Claude CLI başlatılamadı: ${result.error.message}`);
+    if (result.code !== 0) {
+      const detail = stderr.replace(/\s+/g, " ").trim().slice(-800);
+      throw new Error(`Claude CLI başarısız (${result.code ?? result.signal ?? "bilinmeyen"})${detail ? `: ${detail}` : ""}`);
+    }
+    yield { usage };
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+  }
 }
 
 export function rejectedNotesPrompt(notes) {
