@@ -9,6 +9,7 @@ import type {
   CalibrationSkill,
   MailAgentModel,
   MailQueueSummary,
+  PersonBrief,
 } from "@/core/types";
 import {
   IconAssistant,
@@ -166,6 +167,7 @@ export default function CalibrationStudio({
       {/* (b) main column + (c) helper column */}
       <div className="studio-body">
         <div className="studio-main">
+          <BriefCard person={person} />
           <DraftPanel
             person={person}
             onVoiceMaybeChanged={() => {
@@ -356,6 +358,108 @@ function ModelPicker({
 }
 
 // ===========================================================================
+// (b) Brief card — what the writer knows about this person, shown above the
+// draft. Deterministic (no LLM), from the same source as the writer's context,
+// so the user sees exactly what the mail is grounded in. Each fact carries a
+// confidence: verified (published/cited) · scan (derived) · unverified (guess).
+
+const CONF_LABEL: Record<string, string> = {
+  verified: "verified",
+  scan: "from scan",
+  unverified: "unverified",
+};
+
+function BriefCard({ person }: { person: QueuePerson | null }) {
+  const [brief, setBrief] = useState<PersonBrief | null>(null);
+  const [loading, setLoading] = useState(false);
+  const personId = person?.id ?? null;
+
+  useEffect(() => {
+    if (!personId) {
+      setBrief(null);
+      return;
+    }
+    let alive = true;
+    setLoading(true);
+    setBrief(null);
+    api
+      .calibrationBrief(personId)
+      .then((b) => {
+        if (alive) setBrief(b);
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [personId]);
+
+  if (!person) return null;
+  if (loading && !brief) {
+    return <div className="brief-card loading">Gathering what we know…</div>;
+  }
+  if (!brief) return null;
+
+  const finding = brief.findings[0];
+  return (
+    <div className="brief-card">
+      <div className="brief-head">
+        <span className="brief-title">What the writer knows</span>
+        <span className="brief-score" title="Priority score">
+          score {brief.score.value}
+        </span>
+      </div>
+
+      <div className="brief-facts">
+        {brief.known.map((k, i) => (
+          <div className="brief-fact" key={i}>
+            <span className="bf-label">{k.label}</span>
+            <span className="bf-text">{k.text}</span>
+            {k.confidence && (
+              <span className={`bf-conf ${k.confidence}`}>
+                {CONF_LABEL[k.confidence] ?? k.confidence}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {finding?.text && (
+        <div className="brief-finding">
+          {finding.text}
+          {finding.urls[0] && (
+            <a
+              className="bf-src"
+              href={finding.urls[0]}
+              target="_blank"
+              rel="noreferrer"
+              title={finding.urls[0]}
+            >
+              source
+            </a>
+          )}
+        </div>
+      )}
+
+      <div className="brief-hooks">
+        {brief.hooks.length ? (
+          brief.hooks.map((h, i) => (
+            <span className="brief-hook" key={i}>
+              {h}
+            </span>
+          ))
+        ) : (
+          <span className="brief-hook none">
+            No verified hook — writer falls back to a neutral routing ask.
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
 // (b) Draft panel — write / stream a draft, then rate + rewrite.
 
 function parseDraft(text: string): { subject: string | null; body: string } {
@@ -422,6 +526,8 @@ function phaseLabel(phase: DraftPhase | null): string {
       return "Preparing context…";
     case "writing":
       return "Writing…";
+    case "voice":
+      return "Saving your feedback…";
     default:
       return "Writing…";
   }
@@ -436,6 +542,8 @@ function phaseWord(phase: DraftPhase | null): string {
       return "preparing context";
     case "writing":
       return "writing";
+    case "voice":
+      return "saving your feedback";
     default:
       return "drafting";
   }
@@ -660,6 +768,7 @@ function DraftPanel({
               <span className="ds-spin" aria-hidden="true" />
               <span className="ds-label">{phaseLabel(phase)}</span>
               <span className="ds-timer">{fmtElapsed(elapsed)}</span>
+              {phase === "writing" && <span className="ds-hint">usually ~15-20s</span>}
             </div>
           )}
 

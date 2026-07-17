@@ -255,7 +255,7 @@ export default function ReachView({
         <div className="empty-state">
           <div className="es-title">Mail service coming online</div>
           <div className="es-sub">
-            The workspace mail endpoint is not reachable yet.
+            We can't reach the workspace mail service just yet. Hang tight.
           </div>
         </div>
       ) : tab === "drafts" ? (
@@ -263,16 +263,16 @@ export default function ReachView({
           <div className="empty-state">
             <div className="es-title">Draft service coming online</div>
             <div className="es-sub">
-              The draft approval endpoint is not reachable yet. Once the
-              mail-writer stages drafts they will queue up here for review.
+              We can't reach the draft service just yet. Once the mail-writer
+              stages drafts, they'll line up here for your review.
             </div>
           </div>
         ) : filteredDrafts.length === 0 ? (
           <div className="empty-state">
             <div className="es-title">No drafts awaiting approval</div>
             <div className="es-sub">
-              Generated mail drafts appear here with their variants, score and
-              reasons — approve or reject each before anything is queued.
+              New drafts land here with their variants, score and reasons. You
+              approve or reject each one before anything is queued.
             </div>
           </div>
         ) : (
@@ -301,9 +301,9 @@ export default function ReachView({
                     {d.stale && (
                       <span
                         className="md-stale"
-                        title="This draft predates your latest calibration — it will be re-written automatically."
+                        title="This draft is from before your latest calibration, so it will be rewritten automatically."
                       >
-                        outdated — queued for rewrite
+                        outdated, queued for rewrite
                       </span>
                     )}
                     <span className="md-row-variants">
@@ -340,8 +340,8 @@ export default function ReachView({
           <div className="empty-state">
             <div className="es-title">No mail sent yet</div>
             <div className="es-sub">
-              Once outreach mail is logged, every message shows up here with its
-              target entity.
+              Every message you send lands here, right next to the person it
+              went to.
             </div>
           </div>
         ) : (
@@ -352,7 +352,7 @@ export default function ReachView({
           <div className="empty-state">
             <div className="es-title">No replies yet</div>
             <div className="es-sub">
-              Inbound replies to your outreach will be collected on this tab.
+              When people write back to your outreach, you'll find their replies here.
             </div>
           </div>
         ) : (

@@ -209,6 +209,46 @@ export interface Calibration {
   calibrated_at: string | null;
 }
 
+// ---- deterministic person brief (GET /calibration/brief/:personId) ------
+// Built with no LLM from the vault entity + employer edge + score — the same
+// source the writer's context is derived from, so what the card shows, the
+// writer knows. Shown above the draft in the Studio.
+export type BriefConfidence = "verified" | "scan" | "unverified";
+
+export interface BriefKnown {
+  label: string;
+  text: string;
+  confidence: BriefConfidence | null;
+}
+
+export interface BriefFinding {
+  text: string;
+  urls: string[];
+}
+
+export interface PersonBrief {
+  person: {
+    id: string;
+    name: string;
+    role: string | null;
+    mail: string | null;
+    mail_state: string;
+    scan_state: string;
+    scan_depth: number | null;
+  };
+  employer: {
+    id: string;
+    name: string;
+    type: string;
+    relation: string | null;
+    meaning: string | null;
+  } | null;
+  hooks: string[];
+  score: { value: number; reasons: string[] };
+  known: BriefKnown[];
+  findings: BriefFinding[];
+}
+
 // ---- mail agent model config (SPEC-MAILCAL §11) -------------------------
 // GET/PUT /api/ws/:ws/mailagent/config. gpt-5.6-sol has no persistent chat —
 // generation only (a chat POST returns 409 while it is selected).

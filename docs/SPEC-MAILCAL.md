@@ -99,3 +99,48 @@ ayrık, ikonlu bir "Calibration" düğmesi/görünümü (ayrı alt-sayfa hissi, 
   koşu-başına codex exec (aynı prompt sözleşmesi, headless) — dürüst etiket: "no persistent
   memory chat yok, sadece üretim" (chat sekmesi gpt seçiliyken uyarı gösterir; luna LİSTEDE YOK).
 - UI: Studio üstünde küçük model seçici + açıklama.
+
+---
+# V3 EKLERİ (2026-07-17 akşam — Studio hız turu + brief kartı)
+
+## 12. Studio taslak üretimi — hız profili ve optimizasyonlar
+Tuna sorusu: "45+ sn writing mi bilgi çekme mi?". Faz başına ölçüm (POST /calibration/draft,
+`app.log.info "calibration draft timing"` marks; opus-4.8):
+
+| Faz | ÖNCE | SONRA |
+|---|---|---|
+| context (luna codex) | ~15s | **0s** (deterministik) |
+| claude spawn → ilk token (MAIL EKRANDA) | ~46s | **~15s** |
+| token stream | ~9s | ~9s |
+| **ilk-tur mail ekranda** | ~60s | **~15-17s** |
+| **rewrite mail ekranda** | ~52s | **~15s** |
+
+Kök neden ölçümle bulundu: ilk-token gecikmesi PROMPT BOYUTUYLA orantılı (ham claude tiny
+prompt=3.8s, 19KB prompt=30s), model "düşünmesi"/soğuk başlatma DEĞİL. Uygulananlar:
+- **Prompt diyeti:** studio TEK taslak yazar → 4 skill dosyası (~19KB, gereksiz `variants.md` dahil)
+  yerine damıtılmış tek `skills/mail/calibration-studio.md` (~5.5KB, tüm kanonik kural + SPEC §7
+  yasakları korunur). İlk-token ~46s→~15s.
+- **Deterministik bağlam (`brief.mjs`):** luna context çağrısı (~15s) KALDIRILDI; bağlam artık
+  vault entity + `resolveEmployer` kenarı + `scorePerson` nedenlerinden LLM'siz (<100ms) kurulur.
+  Yazar bağlamı ile brief kartı AYNI kaynaktan türer (tutarlılık garantisi).
+- **Rewrite: paralel voice update.** Geri bildirim zaten draft prompt'una red-notları olarak
+  giriyor; bu yüzden voice dosyası güncellemesi (tüm dosyayı yeniden yazan ~35s'lik ağır adım)
+  DRAFT'I BLOKLAMAZ — draft hemen akar (mail ~15s), voice update PARALEL koşar ve arka planda
+  biter. Faz sırası: context → writing → **voice** ("Saving your feedback…"). Voice update artık
+  headless (tmux değil): claude modelleri için de gpt yolundaki aynı JSON sözleşmesi → tmux
+  oturumuna bağımlılık yok, daha sağlam.
+- Faz çipinde süre beklentisi: writing fazında "usually ~15-20s".
+- NOT: rewrite ≤15s hedefi "mail ekranda" için tutar; done/feedback-kilit-açılması voice
+  update bitince (~40s) olur çünkü yeni voice done'dan önce persist edilir (client refetch doğru
+  voice'u görsün). Opus ilk-token'ı ~15s olduğundan "mail ekranda" bunun altına inemez.
+
+## 13. Kişi brief kartı (GET /api/ws/:ws/calibration/brief/:personId)
+Deterministik, LLM'siz. Studio'da taslağın ÜSTÜNDE "What the writer knows" kartı:
+- `person` {name, role, mail, mail_state, scan_state, scan_depth}, `employer` {name, type,
+  relation (kenar etiketi, citation temizlenmiş), meaning}, `hooks[]`, `score` {value, reasons[]},
+  `known[]` {label, text, confidence}, `findings[]` {text, urls[]} (note gövdesinin lead
+  paragrafı + kaynak URL'leri).
+- Güven etiketi: **verified** (yayımlanmış/citation) · **scan** (taramadan) · **unverified**
+  (tahmin/etiketsiz). UI'da renkli çip; mail "(tahmin)" tekrarı temizlenir, çip taşır.
+- İşveren bilgisi `service.mjs`'teki `resolveEmployer`'dan alınır (hedef-seçim reformuyla tek
+  kaynak); brief kendi türetmesini yapmaz.

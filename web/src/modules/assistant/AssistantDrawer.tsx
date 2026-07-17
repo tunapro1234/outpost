@@ -39,8 +39,8 @@ export default function AssistantDrawer({
           </div>
           <div className="cp-empty-title">Assistant</div>
           <div className="cp-empty-sub">
-            Your personal assistant — it can answer from the vault and rearrange
-            this dashboard for you.
+            Your personal assistant. Ask it anything from the vault, or let it
+            rearrange this dashboard for you.
           </div>
         </div>
       )}

@@ -114,8 +114,8 @@ export default function ProfileView() {
 
       {!live && (
         <div className="prof-note">
-          Showing local defaults — the profile service is not reachable yet.
-          Edits will be sent once it is available.
+          We can't reach the profile service yet, so these are local defaults.
+          Your edits will save as soon as it's back.
         </div>
       )}
 

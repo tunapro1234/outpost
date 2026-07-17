@@ -41,7 +41,7 @@ function PromptBar({ onSubmit }: { onSubmit: (text: string) => void }) {
       <input
         className="ov-prompt-input"
         value={value}
-        placeholder="What do you want to do — or see?"
+        placeholder="What would you like to do, or see?"
         aria-label="Ask your assistant"
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
@@ -216,11 +216,10 @@ export default function OverviewView({
       <div className="view-pad overview">
         <PromptBar onSubmit={onAssistantSubmit} />
         <div className="empty-state">
-          <div className="es-title">Metrics unavailable</div>
+          <div className="es-title">Metrics coming online</div>
           <div className="es-sub">
-            The <code>/metrics</code> endpoint did not respond. Once it is live
-            this dashboard will show reach, mail volume and gather activity at a
-            glance.
+            The <code>/metrics</code> endpoint didn't answer. Once it's live,
+            you'll see reach, mail volume and gather activity here at a glance.
           </div>
         </div>
       </div>
@@ -284,7 +283,7 @@ export default function OverviewView({
   const daily30Total = daily.reduce((s, d) => s + d.count, 0);
   const rangeLabel =
     o.firstMailAt && o.lastMailAt
-      ? `${fmtDate(o.firstMailAt)} — ${fmtDate(o.lastMailAt)}`
+      ? `${fmtDate(o.firstMailAt)} to ${fmtDate(o.lastMailAt)}`
       : "No outreach yet";
 
   // ---- section elements, keyed by SectionId --------------------------------
@@ -342,7 +341,7 @@ export default function OverviewView({
         <div className="ov-card-meta">{fmtNum(metrics.totals.entities)} total</div>
       </div>
       {typeRows.length === 0 ? (
-        <div className="ov-chart-empty">No entities yet.</div>
+        <div className="ov-chart-empty">Nothing here yet.</div>
       ) : (
         <>
           <div className="ov-typebar">

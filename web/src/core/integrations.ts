@@ -29,7 +29,7 @@ export const INTEGRATIONS: Integration[] = [
   {
     id: "gitea",
     name: "Gitea",
-    desc: "Repo tunapro/outpost — version control and data history.",
+    desc: "Repo tunapro/outpost for version control and data history.",
     status: "connected",
     detail:
       "Person/org notes and the index are versioned on Gitea. A watcher tracks changes.",
@@ -53,7 +53,7 @@ export const INTEGRATIONS: Integration[] = [
   {
     id: "google-places",
     name: "Google Places",
-    desc: "Discovery source — venue and organization data.",
+    desc: "Discovery source for venue and organization data.",
     status: "planned",
     detail:
       "Places API for geographic discovery. Automatic collection of new candidate organizations. Coming soon.",
@@ -61,7 +61,7 @@ export const INTEGRATIONS: Integration[] = [
   {
     id: "serper",
     name: "Serper.dev",
-    desc: "SERP data — search-result enrichment.",
+    desc: "SERP data for search-result enrichment.",
     status: "planned",
     detail:
       "Programmatic search results to enrich hooks and sources. Coming soon.",
@@ -69,7 +69,7 @@ export const INTEGRATIONS: Integration[] = [
   {
     id: "obsidian",
     name: "Obsidian vault",
-    desc: "Data source — person/org markdown notes.",
+    desc: "Data source for person and org markdown notes.",
     status: "connected",
     detail:
       "The network's raw data is derived from markdown files in the Obsidian vault. A watcher indexes them.",

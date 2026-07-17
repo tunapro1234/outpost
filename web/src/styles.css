@@ -6422,6 +6422,121 @@ textarea.np-input {
 }
 
 /* (b) draft panel */
+/* brief card — deterministic "what the writer knows", above the draft */
+.brief-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 13px 15px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.brief-card.loading {
+  color: var(--text-faint);
+  font-size: 12.5px;
+}
+.brief-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.brief-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+.brief-score {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.brief-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.brief-fact {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.bf-label {
+  flex: 0 0 68px;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.bf-text {
+  flex: 1 1 auto;
+  color: var(--text);
+  word-break: break-word;
+}
+.bf-conf {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.bf-conf.verified {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 35%, transparent);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
+.bf-conf.scan {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.bf-conf.unverified {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
+.brief-finding {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  border-top: 1px solid var(--line);
+  padding-top: 9px;
+}
+.bf-src {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.bf-src:hover {
+  text-decoration: underline;
+}
+.brief-hooks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.brief-hook {
+  font-size: 11.5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-dim);
+}
+.brief-hook.none {
+  background: none;
+  padding: 0;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
 .draft-panel {
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -6538,6 +6653,16 @@ textarea.np-input {
   font-variant-numeric: tabular-nums;
   color: var(--text-faint);
   letter-spacing: 0.02em;
+}
+.ds-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+.ds-hint::before {
+  content: "·";
+  margin-right: 7px;
+  opacity: 0.6;
 }
 
 /* rationale — a quiet foldable "why it wrote it this way" */

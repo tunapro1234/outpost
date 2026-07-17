@@ -120,7 +120,7 @@ export default function ExclusionBanner({
                 </span>
               </>
             )}
-            {excl.reason && <>{" — "}{excl.reason}</>}
+            {excl.reason && <>{": "}{excl.reason}</>}
           </div>
         </div>
         {owner && !confirming && (
@@ -137,7 +137,7 @@ export default function ExclusionBanner({
       {owner && confirming && (
         <div className="excl-banner-confirm">
           <div className="excl-banner-confirm-msg">
-            <b>{name}</b> will re-enter outreach — are you sure?
+            <b>{name}</b> will re-enter outreach. Are you sure?
           </div>
           <input
             className="np-input"

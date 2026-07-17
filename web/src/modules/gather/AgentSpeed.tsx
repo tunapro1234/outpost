@@ -157,7 +157,7 @@ export default function AgentSpeed({
         <div className={`g-speed-status ${status}`}>
           {status === "saving" && "Saving…"}
           {status === "saved" && "Saved"}
-          {status === "error" && "Couldn't save — reverted"}
+          {status === "error" && "Couldn't save, so we reverted it"}
         </div>
       </div>
 
@@ -202,7 +202,7 @@ export default function AgentSpeed({
           {unavailable
             ? "speed control coming online"
             : step === 0
-              ? "No scheduled runs — use Run now"
+              ? "Nothing scheduled. Hit Run now to go"
               : throughput < 1
                 ? `≈ ${Math.round(throughput * 24)} ${noun}/day`
                 : `≈ ${Math.round(throughput)} ${noun}/hour`}

@@ -353,7 +353,7 @@ export default function App() {
       })
       .catch((e) => {
         if (!alive) return;
-        setError(e?.message ?? "Failed to load graph");
+        setError(e?.message ?? "We couldn't load the graph");
         setFull(EMPTY);
         setLoaded(true);
       });
@@ -626,7 +626,7 @@ export default function App() {
         {error && (
           <div className="err-toast">
             {error}
-            {api.mock ? "" : " — is the server on 127.0.0.1:3002 running?"}
+            {api.mock ? "" : ". Is the server on 127.0.0.1:3002 running?"}
           </div>
         )}
         {renderAssistant(true)}
@@ -826,7 +826,7 @@ export default function App() {
       {error && (
         <div className="err-toast">
           {error}
-          {api.mock ? "" : " — is the server on 127.0.0.1:3002 running?"}
+          {api.mock ? "" : ". Is the server on 127.0.0.1:3002 running?"}
         </div>
       )}
       {renderAssistant(!(selectedId && isNetwork))}

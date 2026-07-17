@@ -40,7 +40,7 @@ export async function streamChat(
   });
 
   if (!res.ok || !res.body) {
-    handlers.onError(`Assistant is unavailable (HTTP ${res.status}).`);
+    handlers.onError(`The assistant isn't responding right now (HTTP ${res.status}).`);
     handlers.onDone();
     return;
   }
