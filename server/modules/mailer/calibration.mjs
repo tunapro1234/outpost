@@ -5,6 +5,29 @@ import { parseMarkdown, serializeMarkdown } from "../../lib/vault.mjs";
 export const EMPTY_CALIBRATION = `# Mail kalibrasyonu
 
 Bu dosyada tercih edilen ton, hitap, uzunluk, kaçınılacak kalıplar ve iyi örnekler tutulur.
+Aşağıdaki taban bölümler varsayılandır. Kullanıcı geri bildirimleri bunların üstüne eklenir
+ve çelişkide kullanıcı kuralı kazanır.
+
+## Taban: karşındaki insan için yaz (Carnegie ilkesi)
+- Her cümleyi alıcının dünyasından kur. Konu onun işi, onun öğrencisi, onun sorunu. Biz değil.
+- Ona gerçekten yarayacak bir şey sun ya da onun işini merak et. Kendini anlatmak mail sebebi değildir.
+- Kimlik cümlesi tek satırdır, gerisi alıcı hakkındadır. "Siz" dili "biz" dilinden fazla olsun.
+- Samimi ilgi göster, pohpohlama. Onun yaptığı işe dair somut ve doğrulanmış bir gözlem,
+  genel övgüden yüz kat değerlidir.
+- Bir şey isteyeceksen önce onun ne kazanacağı belli olsun. Kazanımı olmayan istek yazılmaz.
+
+## Taban: cold outreach disiplini (araştırma damıtımı)
+- Kısa tut. Hedef 80 kelime, tavan 120. Mobilde kaydırmadan bitmeli.
+- Tek konu, tek soru, tek CTA. Seçenek yağmuru yok.
+- İlk temasta zaman isteme baskısı düşük olsun. Görüşme ricası kısa ve reddi kolay olmalı.
+- Kişiselleştirme gerçek bir iş sinyalinden gelir. Hobi, okul, sosyal medya detayı kullanılmaz.
+- Konu satırı kısa ve somut. Alıcının kurumuna veya işine dokunur, pazarlama kokmaz.
+- Doğrulanmamış hiçbir iddia yazılmaz. Emin değilsen o cümleyi sil.
+
+## Taban: noktalama
+- Em dash ve en dash yasak. Noktalı virgül yasak. Ayırmak gerekiyorsa cümleyi böl ya da virgül kullan.
+- Ünlem yok, emoji yok, üç nokta süsü yok. Sade noktalama: nokta, virgül, soru işareti,
+  gerektiğinde iki nokta.
 `;
 
 function calibrationPath(workspace, user) {

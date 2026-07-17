@@ -1,8 +1,30 @@
 score_weights:
-  company_importance: 0.40
-  authority: 0.25
-  depth: 0.20
-  hook_bonus: 0.15
+  company_importance: 0.34
+  authority: 0.2125
+  depth: 0.17
+  hook_bonus: 0.1275
+  fit: 0.15
+
+fit_threshold: 40
+
+# Önce subtype, eşleşme yoksa aynı listedeki entity tipi kullanılır.
+buyer_subtypes:
+  atolye: 100
+  bilim-merkezi: 100
+  kolej: 100
+  okul: 90
+  kurs: 90
+  belediye: 90
+  deneyap: 90
+  bilsem: 90
+  universite: 45
+  dernek: 40
+  takim: 20
+  kanal: 10
+  school: 90
+  institution: 60
+  company: 50
+  channel: 10
 
 authority_scores:
   founder: 100

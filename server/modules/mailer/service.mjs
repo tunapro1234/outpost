@@ -9,6 +9,20 @@ const MODULE_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SIGNALS_PATH = path.join(MODULE_DIRECTORY, "signals.yaml");
 const AUTHORITY_VALUES = new Set(["founder", "exec", "manager", "staff", "unknown"]);
 const QUEUE_MAIL_STATES = new Set(["none", "closed"]);
+const EDGE_MEANING = Object.freeze({
+  EMPLOYER: "EMPLOYER",
+  ALUMNI: "ALUMNI",
+  CONTEXT: "CONTEXT",
+  UNLABELED: "UNLABELED",
+  OTHER: "OTHER",
+});
+const EMPLOYER_LABEL_TERMS = [
+  "kurucu", "mudur", "yonetici", "direktor", "koordinator",
+  "sorumlu", "ogretmen", "egitmen", "temsilcisi", "baskan", "danisman", "mentor",
+];
+const CONTEXT_LABEL_TERMS = [
+  "yaristigi", "kaydi", "kopru", "kaynak", "program", "sponsor bagi", "kanal",
+];
 
 function objectValue(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -60,35 +74,91 @@ function normalizedState(value, fallback) {
     : fallback;
 }
 
-export function inferAuthority(meta = {}) {
+function includesAny(value, terms) {
+  return terms.some((term) => value.includes(term));
+}
+
+export function classifyEdgeLabel(label) {
+  if (typeof label !== "string" || !label.trim()) return EDGE_MEANING.UNLABELED;
+  const normalized = normalizeSearch(label);
+  // Bir etiket kaynak/citation metninde başka rol sözcükleri taşıyabilir. Mezuniyet
+  // anlamı bu yüzden işveren anlamından önce ve kesin dışlanır.
+  if (normalized.includes("mezun")) return EDGE_MEANING.ALUMNI;
+  if (includesAny(normalized, EMPLOYER_LABEL_TERMS)) return EDGE_MEANING.EMPLOYER;
+  if (includesAny(normalized, CONTEXT_LABEL_TERMS)) return EDGE_MEANING.CONTEXT;
+  return EDGE_MEANING.OTHER;
+}
+
+function authorityFromRole(role) {
+  const normalizedRole = normalizeSearch(role);
+  if (!normalizedRole) return "unknown";
+  if (/\b(founder\w*|kurucu\w*|ceo)\b/u.test(normalizedRole)) return "founder";
+  if (/\b(mudur\w*|director\w*|direktor\w*|head|yonetici\w*|baskan\w*)\b/u.test(normalizedRole)) {
+    return "exec";
+  }
+  if (/\b(manager\w*|lead\w*|koordinator\w*|sorumlu\w*|temsilci\w*|danisman\w*|mentor\w*)\b/u.test(normalizedRole)) {
+    return "manager";
+  }
+  return "staff";
+}
+
+function edgeRoleEvidence(label) {
+  return String(label ?? "")
+    .split(/\s+(?:\(|\[)|[.;]/u, 1)[0]
+    .trim();
+}
+
+export function inferAuthority(meta = {}, employerLabel = null) {
   const configured = normalizedState(meta.authority, "");
   if (AUTHORITY_VALUES.has(configured)) {
-    return { authority: configured, inferred: false };
+    return { authority: configured, inferred: false, verified: true, source: "authority" };
+  }
+
+  if (classifyEdgeLabel(employerLabel) === EDGE_MEANING.EMPLOYER) {
+    return {
+      authority: authorityFromRole(employerLabel),
+      inferred: true,
+      verified: true,
+      source: "employer_edge",
+      evidence: edgeRoleEvidence(employerLabel),
+    };
   }
 
   const role = [meta.role, meta.rol]
     .find((value) => typeof value === "string" && value.trim());
-  const normalizedRole = normalizeSearch(role);
-  if (!normalizedRole) return { authority: "unknown", inferred: true };
-  if (/\b(founder\w*|kurucu\w*|ceo)\b/u.test(normalizedRole)) {
-    return { authority: "founder", inferred: true };
+  if (!role) {
+    return { authority: "unknown", inferred: true, verified: false, source: "missing" };
   }
-  if (/\b(mudur\w*|director\w*|direktor\w*|head)\b/u.test(normalizedRole)) {
-    return { authority: "exec", inferred: true };
+  const inferred = authorityFromRole(role);
+  const authority = ["founder", "exec"].includes(inferred) ? "manager" : inferred;
+  // Frontmatter rolü tek başına founder/exec yetkisini doğrulamaz. Deepener'ın
+  // doğruladığı authority alanı veya güvenilir employer kenarı yoksa tavan manager.
+  return {
+    authority,
+    inferred: true,
+    verified: false,
+    source: "role",
+    role: role.trim(),
+    ...(inferred !== authority ? { uncappedAuthority: inferred } : {}),
+  };
+}
+
+function adjacentRelations(person, index) {
+  const relations = [];
+  for (const edge of index.edges) {
+    const relatedId = edge.source === person.id
+      ? edge.target
+      : edge.target === person.id ? edge.source : null;
+    if (!relatedId) continue;
+    const entity = index.entities.get(relatedId);
+    if (entity) relations.push({ entity, edge });
   }
-  if (/\b(manager\w*|lead\w*|koordinator\w*)\b/u.test(normalizedRole)) {
-    return { authority: "manager", inferred: true };
-  }
-  return { authority: "staff", inferred: true };
+  return relations;
 }
 
 function adjacentEntities(person, index) {
-  const ids = new Set();
-  for (const edge of index.edges) {
-    if (edge.source === person.id) ids.add(edge.target);
-    if (edge.target === person.id) ids.add(edge.source);
-  }
-  return [...ids].map((id) => index.entities.get(id)).filter(Boolean);
+  return [...new Map(adjacentRelations(person, index)
+    .map(({ entity }) => [entity.id, entity])).values()];
 }
 
 // Kişinin "kurumu" her org tipi olabilir (vault'ta işveren çoğu zaman
@@ -97,11 +167,35 @@ function adjacentEntities(person, index) {
 const ORG_TYPE_RANK = { company: 0, institution: 1, school: 2 };
 
 export function resolveCompany(person, index) {
-  return adjacentEntities(person, index)
-    .filter((entity) => entity.meta.type in ORG_TYPE_RANK)
-    .sort((left, right) =>
-      (ORG_TYPE_RANK[left.meta.type] - ORG_TYPE_RANK[right.meta.type]) ||
-      (companyImportance(right).value - companyImportance(left).value))[0] ?? null;
+  return resolveEmployer(person, index).company;
+}
+
+function compareEmployerCandidates(left, right) {
+  return (ORG_TYPE_RANK[left.entity.meta.type] - ORG_TYPE_RANK[right.entity.meta.type]) ||
+    (companyImportance(right.entity).value - companyImportance(left.entity).value) ||
+    left.entity.meta.name.localeCompare(right.entity.meta.name, "tr", { sensitivity: "base" });
+}
+
+export function resolveEmployer(person, index) {
+  const relations = adjacentRelations(person, index)
+    .filter(({ entity }) => entity.meta.type in ORG_TYPE_RANK)
+    .map((relation) => ({
+      ...relation,
+      meaning: classifyEdgeLabel(relation.edge.label),
+    }));
+  const employer = relations
+    .filter(({ meaning }) => meaning === EDGE_MEANING.EMPLOYER)
+    .sort(compareEmployerCandidates)[0];
+  if (employer) {
+    return { company: employer.entity, edge: employer.edge, meaning: employer.meaning };
+  }
+  const unlabeled = relations
+    .filter(({ meaning, entity }) => meaning === EDGE_MEANING.UNLABELED &&
+      (entity.meta.type === "company" || entity.meta.type === "institution"))
+    .sort(compareEmployerCandidates)[0];
+  return unlabeled
+    ? { company: unlabeled.entity, edge: unlabeled.edge, meaning: unlabeled.meaning }
+    : { company: null, edge: null, meaning: null };
 }
 
 export function companyImportance(company) {
@@ -167,15 +261,20 @@ function companyReason(company, importance) {
   return `Şirket önemi ${importance.value}/100: ${company.meta.name} için importance ve score olmadığından varsayılan 50 kullanıldı.`;
 }
 
-function authorityReason(result, value, meta) {
-  if (!result.inferred) {
+function authorityReason(result, value) {
+  if (result.source === "authority") {
     return `Yetki ${value}/100: authority alanındaki ${result.authority} seviyesi kullanıldı.`;
   }
-  const role = [meta.role, meta.rol]
-    .find((item) => typeof item === "string" && item.trim());
-  return role
-    ? `Yetki ${value}/100: “${role.trim()}” rolünden ${result.authority} seviyesi çıkarıldı.`
-    : `Yetki ${value}/100: authority ve rol bulunmadığı için unknown seviyesi kullanıldı.`;
+  if (result.source === "employer_edge") {
+    return `Yetki ${value}/100: '${result.evidence}' kenar etiketi.`;
+  }
+  if (result.source === "role") {
+    const cap = result.uncappedAuthority
+      ? "; doğrulanmadığı için manager tavanı uygulandı"
+      : "";
+    return `Yetki ${value}/100: “${result.role}” frontmatter rolünden ${result.authority} seviyesi çıkarıldı${cap}.`;
+  }
+  return `Yetki ${value}/100: doğrulanmış authority, employer kenar rolü veya frontmatter rolü bulunmadığı için unknown seviyesi kullanıldı.`;
 }
 
 function depthReason(state, value, scanDepth) {
@@ -194,30 +293,63 @@ function hookReason(result) {
     : "Hook bonusu 0/100: yazılabilir hook, avantajlı okul veya ortak bağlantı bulunamadı.";
 }
 
+export function companyFit(company, signals) {
+  if (!company) return { value: 0, source: "missing", key: null };
+  const configured = objectValue(signals.buyer_subtypes);
+  const subtype = normalizedState(company.meta.subtype, "");
+  if (subtype && Object.hasOwn(configured, subtype)) {
+    return { value: configScore(configured, subtype), source: "subtype", key: subtype };
+  }
+  const type = normalizedState(company.meta.type, "");
+  if (type && Object.hasOwn(configured, type)) {
+    return { value: configScore(configured, type), source: "type", key: type };
+  }
+  return { value: 0, source: "unmatched", key: subtype || type || null };
+}
+
+function fitReason(company, fit) {
+  if (!company) return "Alıcı uyumu 0/100: doğrulanmış işveren bulunamadı.";
+  if (fit.source === "subtype") {
+    return `Alıcı uyumu ${fit.value}/100: ${company.meta.name} için ${fit.key} subtype profili kullanıldı.`;
+  }
+  if (fit.source === "type") {
+    return `Alıcı uyumu ${fit.value}/100: ${company.meta.name} için ${fit.key} tip profili kullanıldı.`;
+  }
+  return `Alıcı uyumu 0/100: ${company.meta.name} için eşleşen buyer subtype/tip profili bulunamadı.`;
+}
+
 export function scorePerson(person, index, signals) {
-  const company = resolveCompany(person, index);
+  const employer = resolveEmployer(person, index);
+  const company = employer.company;
   const importance = companyImportance(company);
-  const authority = inferAuthority(person.meta);
+  const authority = inferAuthority(person.meta, employer.edge?.label);
   const authorityValue = configScore(signals.authority_scores, authority.authority, 15);
   const scanState = normalizedState(person.meta.scan_state, "unscanned");
   const depthValue = configScore(signals.depth_scores, scanState, 0);
   const hook = hookBonus(person, index, signals);
+  const fit = companyFit(company, signals);
   const weights = objectValue(signals.score_weights);
   const score = rounded(
-    importance.value * (weights.company_importance ?? 0.40) +
-    authorityValue * (weights.authority ?? 0.25) +
-    depthValue * (weights.depth ?? 0.20) +
-    hook.value * (weights.hook_bonus ?? 0.15),
+    importance.value * (weights.company_importance ?? 0.34) +
+    authorityValue * (weights.authority ?? 0.2125) +
+    depthValue * (weights.depth ?? 0.17) +
+    hook.value * (weights.hook_bonus ?? 0.1275) +
+    fit.value * (weights.fit ?? 0.15),
   );
   return {
     company,
+    employerEdge: employer.edge,
     companyImportance: importance.value,
+    authority: authority.authority,
+    authorityValue,
+    fit: fit.value,
     score,
     reasons: [
       companyReason(company, importance),
-      authorityReason(authority, authorityValue, person.meta),
+      authorityReason(authority, authorityValue),
       depthReason(scanState, depthValue, person.meta.scan_depth),
       hookReason(hook),
+      fitReason(company, fit),
     ],
   };
 }
@@ -235,6 +367,8 @@ function baseItem(person, scored) {
     name: person.meta.name,
     company_id: scored.company?.id ?? null,
     company_name: scored.company?.meta.name ?? null,
+    authority: scored.authority,
+    fit: scored.fit,
   };
 }
 
@@ -242,6 +376,8 @@ export async function mailQueue(workspace) {
   const signals = await loadSignals(workspace);
   const queue = [];
   const awaitingScan = [];
+  const referral = [];
+  const fitThreshold = finiteScore(signals.fit_threshold, 40);
   for (const person of workspace.index.entities.values()) {
     if (person.meta.type !== "person" || !hasMail(person)) continue;
     const { scanState, mailState } = candidateState(person);
@@ -250,6 +386,13 @@ export async function mailQueue(workspace) {
     // Kurum outreach kapsam dışıysa (Tuna reject kararı) o kurumdan KİMSE
     // kuyruğa/tarama listesine giremez.
     if (scored.company?.meta?.outreach === "excluded") continue;
+    if (!scored.company || scored.fit < fitThreshold) {
+      referral.push({
+        ...baseItem(person, scored),
+        reason: scored.company ? "low-fit org" : "no verified employer",
+      });
+      continue;
+    }
     if (scanState === "scanned") {
       queue.push({
         ...baseItem(person, scored),
@@ -270,9 +413,16 @@ export async function mailQueue(workspace) {
     left.name.localeCompare(right.name, "tr", { sensitivity: "base" }));
   awaitingScan.sort((left, right) => right.companyImportance - left.companyImportance ||
     left.name.localeCompare(right.name, "tr", { sensitivity: "base" }));
+  referral.sort((left, right) => left.reason.localeCompare(right.reason) ||
+    left.name.localeCompare(right.name, "tr", { sensitivity: "base" }));
   return {
     queue,
     awaitingScan,
-    counts: { queue: queue.length, awaitingScan: awaitingScan.length },
+    referral,
+    counts: {
+      queue: queue.length,
+      awaitingScan: awaitingScan.length,
+      referral: referral.length,
+    },
   };
 }

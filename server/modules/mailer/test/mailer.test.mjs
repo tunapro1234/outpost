@@ -6,7 +6,14 @@ import { fileURLToPath } from "node:url";
 import { createApp } from "../../../app.mjs";
 import { serializeMarkdown } from "../../../lib/vault.mjs";
 import { temporaryDirectory } from "../../../test-support/helpers.mjs";
-import { inferAuthority, resolveCompany } from "../service.mjs";
+import {
+  classifyEdgeLabel,
+  companyFit,
+  inferAuthority,
+  loadSignals,
+  mailQueue,
+  resolveCompany,
+} from "../service.mjs";
 import {
   createMailDraftStage,
   listMailDraftRecords,
@@ -56,17 +63,64 @@ async function readFeedback(workspace) {
   }
 }
 
-test("authority yoksa role/rol metninden belirtilen yetki seviyesini çıkarır", () => {
-  assert.deepEqual(inferAuthority({ role: "Co-Founder & CEO" }), {
-    authority: "founder", inferred: true,
-  });
-  assert.equal(inferAuthority({ rol: "Bölge Müdürü" }).authority, "exec");
+test("kenar etiketini employer, alumni ve zayıf context olarak sınıflandırır", () => {
+  for (const label of [
+    "kurucu temsilcisi", "müdür yardımcısı", "sınıf öğretmeni", "mentor bağı",
+  ]) assert.equal(classifyEdgeLabel(label), "EMPLOYER", label);
+  assert.equal(classifyEdgeLabel("mezunu; mezuniyet yılı 2012"), "ALUMNI");
+  for (const label of ["yarıştığı program", "first takım kaydı", "sponsor bağı", "iletişim kanalı"]) {
+    assert.equal(classifyEdgeLabel(label), "CONTEXT", label);
+  }
+  assert.equal(classifyEdgeLabel(null), "UNLABELED");
+});
+
+test("doğrulanmamış founder/exec rolünü manager seviyesinde tavana alır, employer kenarını doğrular", () => {
+  const capped = inferAuthority({ role: "Co-Founder & CEO" });
+  assert.equal(capped.authority, "manager");
+  assert.equal(capped.verified, false);
+  assert.equal(capped.uncappedAuthority, "founder");
+  assert.equal(inferAuthority({ rol: "Bölge Müdürü" }).authority, "manager");
   assert.equal(inferAuthority({ role: "Program Lead" }).authority, "manager");
   assert.equal(inferAuthority({ role: "Robotik Eğitmeni" }).authority, "staff");
   assert.equal(inferAuthority({}).authority, "unknown");
-  assert.deepEqual(inferAuthority({ authority: "exec", role: "uzman" }), {
-    authority: "exec", inferred: false,
-  });
+  const edgeVerified = inferAuthority({ role: "uzman" }, "müdür yardımcısı");
+  assert.equal(edgeVerified.authority, "exec");
+  assert.equal(edgeVerified.verified, true);
+  assert.equal(edgeVerified.evidence, "müdür yardımcısı");
+  const metaVerified = inferAuthority({ authority: "exec", role: "uzman" });
+  assert.equal(metaVerified.authority, "exec");
+  assert.equal(metaVerified.verified, true);
+});
+
+test("alumni/context kenarlarını employer saymaz; fit subtype'ı tipe tercih eder ve uygunsuzları referral'a koyar", async () => {
+  const alumni = { id: "mezun", meta: {
+    type: "person", name: "Mezun Aday", mail: "mezun@example.com",
+    scan_state: "scanned", mail_state: "none", role: "kurucu",
+  } };
+  const mentor = { id: "mentor", meta: {
+    type: "person", name: "Takım Mentoru", mail: "mentor@example.com",
+    scan_state: "scanned", mail_state: "none",
+  } };
+  const college = { id: "kolej", meta: { type: "school", name: "Örnek Kolej", subtype: "kolej" } };
+  const team = { id: "takim", meta: { type: "school", name: "Örnek Takım", subtype: "takim" } };
+  const index = {
+    entities: new Map([alumni, mentor, college, team].map((entity) => [entity.id, entity])),
+    edges: [
+      { source: alumni.id, target: college.id, label: "mezunu; mezuniyet yılı 2018", kind: "relation" },
+      { source: mentor.id, target: team.id, label: "mentor bağı", kind: "relation" },
+    ],
+  };
+  const signals = await loadSignals();
+  assert.equal(resolveCompany(alumni, index), null);
+  assert.equal(companyFit(college, signals).value, 100);
+  assert.equal(companyFit(team, signals).value, 20);
+  const result = await mailQueue({ directory: null, index });
+  assert.deepEqual(result.queue, []);
+  assert.deepEqual(result.referral.map(({ id, reason }) => ({ id, reason })), [
+    { id: "mentor", reason: "low-fit org" },
+    { id: "mezun", reason: "no verified employer" },
+  ]);
+  assert.deepEqual(result.counts, { queue: 0, awaitingScan: 0, referral: 2 });
 });
 
 test("şirketi frontmatter yerine wikilink kenarından çözer ve en önemli komşuyu seçer", async (t) => {
@@ -111,6 +165,8 @@ test("şirketi frontmatter yerine wikilink kenarından çözer ve en önemli kom
       name: "Kenar Adayı",
       company_id: "acil",
       company_name: "Acil Şirket",
+      authority: "exec",
+      fit: 50,
       companyImportance: 95,
     },
   );
@@ -127,48 +183,47 @@ test("GET mailqueue skor bileşenlerini açıklar, uygunluğu süzer ve awaiting
   const response = await app.inject({ url: "/api/ws/fixture/mailqueue" });
   assert.equal(response.statusCode, 200);
   const result = response.json();
-  assert.deepEqual(result.counts, { queue: 4, awaitingScan: 2 });
+  assert.deepEqual(result.counts, { queue: 3, awaitingScan: 1, referral: 2 });
   assert.deepEqual(result.queue.map(({ id, score }) => ({ id, score })), [
-    { id: "kurucu", score: 87.2 },
-    { id: "kapali", score: 83 },
-    { id: "direktor", score: 68 },
-    { id: "okul-sinyali", score: 57.75 },
+    { id: "kurucu", score: 81.62 },
+    { id: "kapali", score: 78.05 },
+    { id: "direktor", score: 65.3 },
   ]);
   assert.deepEqual(result.queue[0], {
     id: "kurucu",
     name: "Kurucu Aday",
     company_id: "oncelikli",
     company_name: "Öncelikli Şirket",
-    score: 87.2,
+    authority: "founder",
+    fit: 50,
+    score: 81.62,
     reasons: [
       "Şirket önemi 80/100: Öncelikli Şirket importance değeri kullanıldı.",
       "Yetki 100/100: authority alanındaki founder seviyesi kullanıldı.",
       "Tarama derinliği 100/100: scan_state scanned, scan_depth 3 olarak değerlendirildi.",
       "Hook bonusu 68/100: 2 hook hesaba katıldı.",
+      "Alıcı uyumu 50/100: Öncelikli Şirket için company tip profili kullanıldı.",
     ],
     mail_state: "none",
     scan_state: "scanned",
   });
   assert.equal(result.queue[1].mail_state, "closed");
   assert.match(result.queue[2].reasons[0], /score değeri kullanıldı/);
-  assert.match(result.queue[2].reasons[1], /Direktörü.*exec/u);
-  assert.match(result.queue[3].reasons[0], /varsayılan 50/);
-  assert.match(result.queue[3].reasons[3], /İTÜ okul sinyali/);
+  assert.equal(result.queue[2].reasons[1], "Yetki 80/100: 'teknoloji direktörü' kenar etiketi.");
   assert.deepEqual(result.awaitingScan, [
     {
       id: "kismi",
       name: "Kısmi Taranan",
       company_id: "acil",
       company_name: "Acil Şirket",
+      authority: "exec",
+      fit: 50,
       companyImportance: 95,
     },
-    {
-      id: "taranmamis",
-      name: "Taranmamış Aday",
-      company_id: "oncelikli",
-      company_name: "Öncelikli Şirket",
-      companyImportance: 80,
-    },
+  ]);
+  assert.deepEqual(result.referral.map(({ id, reason }) => ({ id, reason })), [
+    { id: "okul-sinyali", reason: "no verified employer" },
+    { id: "taranmamis", reason: "no verified employer" },
   ]);
   assert.ok(!result.queue.some(({ id }) => ["mailsiz", "taslak"].includes(id)));
 });
@@ -188,8 +243,8 @@ test("workspace signals.yaml repo şablonunu alan bazında override eder", async
   t.after(() => app.close());
 
   const result = (await app.inject({ url: "/api/ws/fixture/mailqueue" })).json();
-  assert.equal(result.queue.find(({ id }) => id === "kurucu").score, 92);
-  assert.equal(result.queue.find(({ id }) => id === "direktor").score, 68);
+  assert.equal(result.queue.find(({ id }) => id === "kurucu").score, 85.7);
+  assert.equal(result.queue.find(({ id }) => id === "direktor").score, 65.3);
 });
 
 test("writer cycle aynı şirketten yalnız bir kişi seçer ve pending şirketi tamamen dışlar", async (t) => {
