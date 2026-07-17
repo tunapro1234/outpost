@@ -93,3 +93,10 @@ Perşembe 10.00'da demo ayarlayalım mı? Dönüşünüzü bekliyorum 🚀
 Neden kötü: BİZİM hakkımızda; ünlem/emoji; doğrulanmamış fiyat + "30 kit" + "resmi kit"; jargon;
 gün-saat dayatması; satış demoyu ilk mailde istiyor; kolay hayır yok; 120 kelime ruhunu aşan
 yoğunluk. Bu mail çöpe gider.
+
+## Yönlendirme kalıbı ne zaman (kritik ayrım)
+- Hedef kişi DOĞRULANMIŞ karar verici ise (founder/exec, kenar kanıtlı) hook olmasa bile
+  YÖNLENDİRME İSTEME. Karar vericiye "beni X ile tanıştırır mısınız" yazmak fırsatı ona geri
+  fırlatmaktır. Doğrudan kalıba geç: kısa değer cümlesi + dinleme/özet CTA'sı.
+- Yönlendirme kalıbı YALNIZ şu durumlar içindir: genel kurumsal adres (info@), rolü belirsiz
+  ya da düşük yetkili kişi.
