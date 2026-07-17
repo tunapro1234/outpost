@@ -5,6 +5,7 @@ import { BlockList, isIP } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { codexServiceTierArgs } from "../../lib/codex.mjs";
 import { createRunRecord, writeRun } from "./journal.mjs";
 import { findAgent, readAgentRegistry } from "./registry.mjs";
 import { writeStageProposal } from "./stage.mjs";
@@ -275,6 +276,7 @@ export async function codexClassify({
     const args = [
       "exec",
       "-m", agent.model,
+      ...codexServiceTierArgs(agent),
       "-c", 'model_reasoning_effort="medium"',
       "--sandbox", "read-only",
       "--ephemeral",

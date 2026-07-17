@@ -9,6 +9,7 @@ import type {
 } from "@/core/types";
 import { api } from "@/core/api";
 import AgentsStrip from "./AgentsStrip";
+import AgentSpeed from "./AgentSpeed";
 
 // ---- helpers -------------------------------------------------------------
 function timeAgo(iso: string | null): string {
@@ -298,6 +299,13 @@ export default function GatherView() {
 
   const selected = agents?.find((a) => a.id === selectedId) ?? null;
 
+  // Merge a server-updated agent record back into local state (throughput edits).
+  const applyAgentUpdate = useCallback((updated: Agent) => {
+    setAgents((prev) =>
+      prev ? prev.map((a) => (a.id === updated.id ? { ...a, ...updated } : a)) : prev
+    );
+  }, []);
+
   const runNow = useCallback(async (id: string) => {
     try {
       const { runId } = await api.runAgent(id);
@@ -572,6 +580,12 @@ export default function GatherView() {
           )}
 
           <p className="g-panel-desc">{taskDesc(selected.task)}</p>
+
+          <AgentSpeed
+            agent={selected}
+            kind={agentKind(selected)}
+            onUpdated={applyAgentUpdate}
+          />
 
           <div className="g-panel-block">
             <div className="g-block-label">Parameters</div>

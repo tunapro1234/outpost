@@ -1,11 +1,57 @@
 import { latestRun, listRuns, readRun } from "./journal.mjs";
-import { GATHER_KINDS, readAgentRegistry } from "./registry.mjs";
+import { GATHER_KINDS, readAgentRegistry, updateAgentRegistry } from "./registry.mjs";
+import { validCronExpression } from "./scheduler.mjs";
 import { decideStage, listStage, stageStats } from "./stage.mjs";
+
+const AGENT_PATCH_FIELDS = new Set(["schedule", "enabled", "params"]);
 
 function fail(statusCode, message) {
   const error = new Error(message);
   error.statusCode = statusCode;
   throw error;
+}
+
+function requireUser(request, defaultUser) {
+  const header = request.headers["x-remote-user"];
+  if (header !== undefined) {
+    if (typeof header === "string" && header.trim()) return header.trim();
+    fail(401, "authentication required");
+  }
+  if (typeof defaultUser === "string" && defaultUser.trim()) return defaultUser.trim();
+  fail(401, "authentication required");
+}
+
+function agentPatch(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    fail(400, "JSON gövdesi nesne olmalı");
+  }
+  for (const key of Object.keys(payload)) {
+    if (!AGENT_PATCH_FIELDS.has(key)) fail(400, `Agent alanı güncellenemez: ${key}`);
+  }
+  const changes = {};
+  if (payload.schedule !== undefined) {
+    if (typeof payload.schedule !== "string") fail(400, "schedule metin olmalı");
+    const schedule = payload.schedule.trim();
+    if (schedule !== "manual" && !validCronExpression(schedule)) {
+      fail(400, "schedule manual veya geçerli 5-alan cron olmalı");
+    }
+    changes.schedule = schedule;
+  }
+  if (payload.enabled !== undefined) {
+    if (typeof payload.enabled !== "boolean") fail(400, "enabled bool olmalı");
+    changes.enabled = payload.enabled;
+  }
+  if (payload.params !== undefined) {
+    if (!payload.params || typeof payload.params !== "object" || Array.isArray(payload.params)) {
+      fail(400, "params nesne olmalı");
+    }
+    if (Object.hasOwn(payload.params, "limit") &&
+      (!Number.isInteger(payload.params.limit) || payload.params.limit < 1 || payload.params.limit > 20)) {
+      fail(400, "params.limit 1-20 arası tamsayı olmalı");
+    }
+    changes.params = payload.params;
+  }
+  return changes;
 }
 
 function runSummary(run) {
@@ -38,7 +84,7 @@ function runSummaryText(run) {
   ].join(" · ");
 }
 
-export async function gatherRoutes(app, { resolveWorkspace, runner }) {
+export async function gatherRoutes(app, { resolveWorkspace, runner, defaultUser }) {
   app.get("/gather/overview", async (request) => {
     const workspace = resolveWorkspace(request);
     const agents = await readAgentRegistry(workspace);
@@ -72,6 +118,12 @@ export async function gatherRoutes(app, { resolveWorkspace, runner }) {
       ...agent,
       last_run: runSummary(await latestRun(workspace, agent.id)),
     })));
+  });
+
+  app.patch("/agents/:id", async (request) => {
+    requireUser(request, defaultUser);
+    const changes = agentPatch(request.body);
+    return updateAgentRegistry(resolveWorkspace(request), request.params.id, changes);
   });
 
   app.post("/agents/:id/run", async (request, reply) => {

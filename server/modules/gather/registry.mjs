@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import yaml from "js-yaml";
 
@@ -14,6 +15,7 @@ export const GATHER_KINDS = ["discover-company", "discover-person", "enrich"];
 const VALID_KINDS = new Set(GATHER_KINDS);
 const VALID_PERSON_SOURCES = new Set(["company", "standalone"]);
 const ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+const writeQueues = new Map();
 
 function fail(filePath, index, message) {
   throw new Error(`${filePath}: agent ${index + 1}: ${message}`);
@@ -111,6 +113,58 @@ export async function readAgentRegistry(workspace) {
     ids.add(agent.id);
   }
   return agents;
+}
+
+async function writeAgentDocument(filePath, document) {
+  const temporary = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(temporary, yaml.dump(document, { noRefs: true, lineWidth: -1 }), "utf8");
+    await fs.rename(temporary, filePath);
+  } catch (error) {
+    await fs.unlink(temporary).catch(() => {});
+    throw error;
+  }
+}
+
+export async function updateAgentRegistry(workspace, id, changes) {
+  const filePath = path.join(workspace.directory, "agents.yaml");
+  const previous = writeQueues.get(filePath) ?? Promise.resolve();
+  const operation = previous.catch(() => {}).then(async () => {
+    let document;
+    try {
+      document = yaml.load(await fs.readFile(filePath, "utf8"));
+    } catch (error) {
+      if (error.code === "ENOENT") {
+        const notFound = new Error("Agent bulunamadı");
+        notFound.statusCode = 404;
+        throw notFound;
+      }
+      throw error;
+    }
+    const records = Array.isArray(document) ? document : document?.agents;
+    if (!Array.isArray(records)) {
+      throw new Error(`${filePath}: agent listesi dizi olmalı`);
+    }
+    const record = records.find((candidate) => candidate?.id === id);
+    if (!record) {
+      const notFound = new Error("Agent bulunamadı");
+      notFound.statusCode = 404;
+      throw notFound;
+    }
+    if (changes.schedule !== undefined) record.schedule = changes.schedule;
+    if (changes.enabled !== undefined) record.enabled = changes.enabled;
+    if (changes.params !== undefined) {
+      record.params = { ...(record.params ?? {}), ...changes.params };
+    }
+    await writeAgentDocument(filePath, document);
+    return findAgent(await readAgentRegistry(workspace), id);
+  });
+  writeQueues.set(filePath, operation);
+  try {
+    return await operation;
+  } finally {
+    if (writeQueues.get(filePath) === operation) writeQueues.delete(filePath);
+  }
 }
 
 export function findAgent(agents, id) {

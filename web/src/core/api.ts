@@ -397,6 +397,24 @@ export const api = {
     return json<Agent[]>(`${workspaceBase()}/agents`);
   },
 
+  // Update an agent's schedule / enabled / params (throughput control).
+  // Throws Error(message) on failure — message is "HTTP 404" when the endpoint
+  // is not deployed yet, so the caller can degrade the control gracefully.
+  async patchAgent(
+    id: string,
+    patch: {
+      schedule?: string;
+      enabled?: boolean;
+      params?: Record<string, unknown>;
+    }
+  ): Promise<Agent> {
+    return json<Agent>(`${workspaceBase()}/agents/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+  },
+
   async runAgent(id: string): Promise<{ runId: string }> {
     return json<{ runId: string }>(
       `${workspaceBase()}/agents/${encodeURIComponent(id)}/run`,

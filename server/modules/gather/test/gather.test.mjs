@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import yaml from "js-yaml";
 import { WorkspaceRegistry } from "../../../lib/config.mjs";
 import { serializeMarkdown } from "../../../lib/vault.mjs";
 import { temporaryDirectory, writeEntity } from "../../../test-support/helpers.mjs";
@@ -17,7 +18,12 @@ import {
 } from "../runner.mjs";
 import { GatherScheduler, cronMatches } from "../scheduler.mjs";
 import { decideStage, listStage } from "../stage.mjs";
-import { expectedGain, runDeepeningPolicy } from "../person-deepener.mjs";
+import {
+  codexPersonSearch,
+  expectedGain,
+  runDeepeningPolicy,
+} from "../person-deepener.mjs";
+import { codexText, compileMailContext } from "../../mailer/writer.mjs";
 
 async function fixtureWorkspace(t) {
   const root = await temporaryDirectory("outpost-gather-");
@@ -208,6 +214,59 @@ test("codex stdin erken kapanırsa child hatası process'i düşürmeden complet
     bin,
     timeoutMs: 5_000,
   }), /codex classify (?:I\/O hatası|başarısız)/);
+});
+
+test("fast agent tüm Codex exec yollarına service_tier config'ini geçirir", async (t) => {
+  const root = await temporaryDirectory("outpost-fast-tier-");
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const capture = path.join(root, "argv.jsonl");
+  const bin = path.join(root, "fake-codex.mjs");
+  await fs.writeFile(bin, `#!/usr/bin/env node
+import fs from "node:fs";
+fs.appendFileSync(${JSON.stringify(capture)}, JSON.stringify(process.argv.slice(2)) + "\\n");
+process.stdin.resume();
+process.stdin.on("end", () => {
+  process.stdout.write(process.argv.includes("--output-schema")
+    ? '{"emails":[],"phones":[],"people":[],"summary":"ok"}'
+    : '{}');
+});
+`, { mode: 0o700 });
+  const agent = { model: "test-model", params: { service_tier: "fast" } };
+
+  await codexClassify({
+    agent,
+    entity: { meta: { name: "Örnek" } },
+    pageData: { sourceUrl: "https://example.com", directLinks: [], text: "örnek" },
+    bin,
+    timeoutMs: 5_000,
+  });
+  await codexPersonSearch({
+    agent,
+    person: { meta: { name: "Ada" }, body: "" },
+    company: null,
+    step: "school",
+    findings: {},
+    bin,
+    timeoutMs: 5_000,
+  });
+  await compileMailContext({
+    person: { meta: { name: "Ada" } },
+    company: null,
+    queueItem: { score: 10, reasons: [] },
+    agent,
+    workspace: { directory: root },
+  }, {
+    skillsPath: root,
+    runLuna: (prompt, options) => codexText(prompt, { ...options, bin }),
+  });
+
+  const calls = (await fs.readFile(capture, "utf8")).trim().split("\n").map(JSON.parse);
+  assert.equal(calls.length, 3);
+  for (const args of calls) {
+    const tierIndex = args.indexOf('service_tier="fast"');
+    assert.ok(tierIndex > 0, `fast tier argümanı eksik: ${JSON.stringify(args)}`);
+    assert.equal(args[tierIndex - 1], "-c");
+  }
 });
 
 test("agent registry kind/source doğrular ve repo şablonlarını okur", async (t) => {
@@ -642,6 +701,119 @@ test("gather API agents/run/runs/stage sözleşmesini ws scope altında sunar", 
     url: "/api/ws/fixture/runs?agent=site-scanner",
   })).json().length, 1);
   assert.equal((await app.inject({ url: "/api/ws/fixture/stage" })).json().length, 1);
+});
+
+test("PATCH agent kimliği doğrular, alanları merge edip agents.yaml'a atomik yazar", async (t) => {
+  const workspace = await fixtureWorkspace(t);
+  const agentsPath = path.join(workspace.directory, "agents.yaml");
+  await fs.writeFile(agentsPath, `version: 1
+agents:
+  - id: site-scanner
+    name: Site Scanner
+    zone: gathering
+    model: gpt-5.6-luna
+    task: scrape-classify
+    integration: browser
+    params:
+      filter: {type: company}
+      limit: 5
+    schedule: manual
+    enabled: false
+    custom: korunacak
+  - id: diger
+    name: Diğer
+    zone: gathering
+    model: gpt-5.6-luna
+    task: scrape-classify
+    integration: browser
+    schedule: manual
+    enabled: false
+`, "utf8");
+  const app = await createApp({
+    workspacesPath: path.dirname(workspace.directory),
+    outpostVault: null,
+    watch: false,
+    defaultUser: null,
+  });
+  t.after(() => app.close());
+  const url = "/api/ws/fixture/agents/site-scanner";
+
+  assert.equal((await app.inject({ method: "PATCH", url, payload: { enabled: true } })).statusCode, 401);
+  assert.equal((await app.inject({
+    method: "PATCH",
+    url,
+    headers: { "x-remote-user": "" },
+    payload: { enabled: true },
+  })).statusCode, 401);
+  for (const payload of [
+    { schedule: "0 0 1 1" },
+    { schedule: "61 * * * *" },
+    { schedule: "1,bad * * * *" },
+    { params: { limit: 0 } },
+    { params: { limit: 21 } },
+    { params: { limit: 1.5 } },
+  ]) {
+    const response = await app.inject({
+      method: "PATCH",
+      url,
+      headers: { "x-remote-user": "tuna" },
+      payload,
+    });
+    assert.equal(response.statusCode, 400, JSON.stringify(response.json()));
+  }
+
+  const updated = await app.inject({
+    method: "PATCH",
+    url,
+    headers: { "x-remote-user": "tuna" },
+    payload: {
+      schedule: "3 4 * * *",
+      enabled: true,
+      params: { limit: 7, service_tier: "fast" },
+    },
+  });
+  assert.equal(updated.statusCode, 200);
+  assert.equal(updated.json().schedule, "3 4 * * *");
+  assert.equal(updated.json().enabled, true);
+  assert.deepEqual(updated.json().params, {
+    filter: { type: "company" },
+    limit: 7,
+    service_tier: "fast",
+  });
+
+  const document = yaml.load(await fs.readFile(agentsPath, "utf8"));
+  assert.equal(document.version, 1);
+  assert.equal(document.agents[0].custom, "korunacak");
+  assert.deepEqual(document.agents[0].params, updated.json().params);
+  assert.equal(document.agents[1].enabled, false);
+  assert.ok(!(await fs.readdir(workspace.directory)).some((name) => name.endsWith(".tmp")));
+});
+
+test("PATCH agent OUTPOST_DEFAULT_USER eşdeğeri defaultUser ile çalışır", async (t) => {
+  const workspace = await fixtureWorkspace(t);
+  await fs.writeFile(path.join(workspace.directory, "agents.yaml"), `- id: site-scanner
+  name: Site Scanner
+  zone: gathering
+  model: gpt-5.6-luna
+  task: scrape-classify
+  integration: browser
+  schedule: manual
+  enabled: false
+`, "utf8");
+  const app = await createApp({
+    workspacesPath: path.dirname(workspace.directory),
+    outpostVault: null,
+    watch: false,
+    defaultUser: "tuna",
+  });
+  t.after(() => app.close());
+  const response = await app.inject({
+    method: "PATCH",
+    url: "/api/ws/fixture/agents/site-scanner",
+    payload: { enabled: true },
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().enabled, true);
 });
 
 test("cron-lite yalnızca enabled cron agentını dakika başına bir kez tetikler", async (t) => {

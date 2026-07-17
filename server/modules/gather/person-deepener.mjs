@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { codexServiceTierArgs } from "../../lib/codex.mjs";
 import { serializeMarkdown } from "../../lib/vault.mjs";
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
 import { companyImportance, loadSignals, resolveCompany } from "../mailer/service.mjs";
@@ -166,6 +167,7 @@ export async function codexPersonSearch({
   try {
     const args = [
       "exec", "-m", agent.model,
+      ...codexServiceTierArgs(agent),
       "-c", "tools.web_search=true",
       "-c", 'model_reasoning_effort="medium"',
       "--sandbox", "read-only", "--ephemeral", "--skip-git-repo-check",

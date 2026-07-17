@@ -1,6 +1,27 @@
 import { readAgentRegistry } from "./registry.mjs";
 
+function fieldValid(field, minimum, maximum) {
+  if (typeof field !== "string" || !field) return false;
+  return field.split(",").every((part) => {
+    if (!part) return false;
+    const stepMatch = /^(.+)\/(\d+)$/.exec(part);
+    const base = stepMatch?.[1] ?? part;
+    const step = stepMatch ? Number(stepMatch[2]) : 1;
+    if (!Number.isInteger(step) || step < 1) return false;
+    if (base === "*") return true;
+    const range = /^(\d+)-(\d+)$/.exec(base);
+    if (range) {
+      const start = Number(range[1]);
+      const end = Number(range[2]);
+      return start >= minimum && end <= maximum && start <= end;
+    }
+    const exact = Number(base);
+    return Number.isInteger(exact) && exact >= minimum && exact <= maximum;
+  });
+}
+
 function fieldMatches(field, value, minimum, maximum) {
+  if (!fieldValid(field, minimum, maximum)) return false;
   return field.split(",").some((part) => {
     const stepMatch = /^(.+)\/(\d+)$/.exec(part);
     const base = stepMatch?.[1] ?? part;
@@ -20,10 +41,22 @@ function fieldMatches(field, value, minimum, maximum) {
   });
 }
 
-export function cronMatches(expression, date = new Date()) {
+export function validCronExpression(expression) {
   if (typeof expression !== "string") return false;
   const fields = expression.trim().split(/\s+/);
   if (fields.length !== 5) return false;
+  return [
+    [fields[0], 0, 59],
+    [fields[1], 0, 23],
+    [fields[2], 1, 31],
+    [fields[3], 1, 12],
+    [fields[4], 0, 6],
+  ].every(([field, minimum, maximum]) => fieldValid(field, minimum, maximum));
+}
+
+export function cronMatches(expression, date = new Date()) {
+  if (!validCronExpression(expression)) return false;
+  const fields = expression.trim().split(/\s+/);
   return [
     [fields[0], date.getMinutes(), 0, 59],
     [fields[1], date.getHours(), 0, 23],

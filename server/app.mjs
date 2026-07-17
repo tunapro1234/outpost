@@ -51,7 +51,7 @@ async function mountApi(
   app,
   prefix,
   resolveWorkspace,
-  { legacy = false, gatherRunner, metricsNow } = {},
+  { legacy = false, gatherRunner, metricsNow, defaultUser } = {},
 ) {
   await app.register(overviewRoutes, { prefix, resolveWorkspace, now: metricsNow });
   await app.register(networkRoutes, { prefix, resolveWorkspace });
@@ -60,7 +60,12 @@ async function mountApi(
     resolveWorkspace,
     includeUnknownVault: legacy,
   });
-  await app.register(gatherRoutes, { prefix, resolveWorkspace, runner: gatherRunner });
+  await app.register(gatherRoutes, {
+    prefix,
+    resolveWorkspace,
+    runner: gatherRunner,
+    defaultUser,
+  });
 }
 
 export async function createApp({
@@ -166,7 +171,11 @@ export async function createApp({
     registry: controls,
   });
   const resolveScopedWorkspace = scopedResolver(registry);
-  await mountApi(app, "/api/ws/:ws", resolveScopedWorkspace, { gatherRunner, metricsNow });
+  await mountApi(app, "/api/ws/:ws", resolveScopedWorkspace, {
+    gatherRunner,
+    metricsNow,
+    defaultUser,
+  });
   await app.register(copilotRoutes, {
     prefix: "/api/ws/:ws",
     resolveWorkspace: resolveScopedWorkspace,
@@ -186,6 +195,7 @@ export async function createApp({
     legacy: true,
     gatherRunner,
     metricsNow,
+    defaultUser,
   });
 
   if (mailSchedule) await mailIngestor.start();
