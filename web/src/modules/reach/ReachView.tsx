@@ -3,7 +3,7 @@ import type { EntityListItem, MailItem, ReachStats } from "@/core/types";
 import { STATUS_COLORS, STATUS_LABELS, TYPE_LABELS } from "@/core/theme";
 import { trNormalize } from "@/core/normalize";
 import { relativeTime } from "@/core/format";
-import { IconAssistant } from "@/core/icons";
+import { IconAssistant, IconSearch } from "@/core/icons";
 import DraftCard from "@/modules/mail/DraftCard";
 import { useMailDrafts } from "@/modules/mail/useMailDrafts";
 import ExclusionsPanel from "./ExclusionsPanel";
@@ -172,7 +172,6 @@ export default function ReachView({
     return (
       <div className="view-pad mail">
         <CalibrationStudio
-          entities={entities}
           onBack={onCloseCalibration}
           onCalibrationChanged={drafts.reload}
         />
@@ -192,54 +191,59 @@ export default function ReachView({
     },
   ];
 
+  const activeLabel = TABS.find((t) => t.k === tab)?.label ?? "Mail";
+
   return (
     <div className="view-pad mail">
-      {/* Calm header: pill tabs left, faint KPI line beside them, a detached
-          Calibration button pinned to the far right. */}
-      <div className="mail-head">
-        <div className="tabs mail-tabs">
-          {TABS.map((t) => (
-            <button
-              key={t.k}
-              className={tab === t.k ? "on" : ""}
-              onClick={() => setTab(t.k)}
-            >
-              {t.label}
-              {t.count != null && <span className="mail-badge">{t.count}</span>}
-            </button>
-          ))}
+      {/* One header band: a big active-section title with thin text tabs
+          beneath it on the left; the KPI line, search and Calibration share
+          the same band on the right. A single hairline parts it from content. */}
+      <header className="mail-header">
+        <div className="mh-left">
+          <h1 className="mh-title">{activeLabel}</h1>
+          <nav className="mh-tabs" aria-label="Mail sections">
+            {TABS.map((t) => (
+              <button
+                key={t.k}
+                className={`mh-tab${tab === t.k ? " on" : ""}`}
+                onClick={() => setTab(t.k)}
+              >
+                {t.label}
+                {t.count != null && <span className="mh-badge">{t.count}</span>}
+              </button>
+            ))}
+          </nav>
         </div>
 
-        <span className="mail-kpiline">{kpiLine}</span>
-
-        <button
-          className="mail-cal-btn"
-          onClick={onOpenCalibration}
-          title="Open the calibration studio"
-        >
-          <IconAssistant size={15} />
-          Calibration
-        </button>
-      </div>
-
-      {/* Search belongs to list tabs only — a small right-aligned input under
-          the tab row, never a competing bar. */}
-      <div className="mail-subbar">
-        <input
-          className="np-input mail-search"
-          placeholder={
-            tab === "candidates"
-              ? "Search candidates…"
-              : tab === "drafts"
-                ? "Search drafts…"
-                : tab === "exclusions"
-                  ? "Search excluded…"
-                  : "Search mail…"
-          }
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-      </div>
+        <div className="mh-right">
+          <span className="mh-kpi">{kpiLine}</span>
+          <label className="mh-search">
+            <IconSearch size={14} />
+            <input
+              className="mh-search-input"
+              placeholder={
+                tab === "candidates"
+                  ? "Search candidates…"
+                  : tab === "drafts"
+                    ? "Search drafts…"
+                    : tab === "exclusions"
+                      ? "Search excluded…"
+                      : "Search mail…"
+              }
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </label>
+          <button
+            className="mh-cal"
+            onClick={onOpenCalibration}
+            title="Open the calibration studio"
+          >
+            <IconAssistant size={15} />
+            Calibration
+          </button>
+        </div>
+      </header>
 
       {tab === "exclusions" ? (
         <ExclusionsPanel

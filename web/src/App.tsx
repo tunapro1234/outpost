@@ -495,10 +495,9 @@ export default function App() {
         <button
           className="copilot-fab"
           onClick={openAssistant}
-          title="Assistant — ⌘J"
+          title="Assistant (⌘J)"
           aria-label="Open assistant"
         >
-          <IconAssistant size={18} />
           <span className="copilot-fab-label">Assistant</span>
         </button>
       )}

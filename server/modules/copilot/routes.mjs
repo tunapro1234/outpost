@@ -1,3 +1,4 @@
+import { openSse } from "../../lib/sse.mjs";
 import { buildCopilotPrompt, redactSecrets, workspaceSummary } from "./context.mjs";
 import { appendThreadMessage, readThread, resolveThreadId } from "./threads.mjs";
 import { createTmuxBridge } from "./tmux-bridge.mjs";
@@ -65,12 +66,7 @@ export async function copilotRoutes(app, {
     const workspace = resolveWorkspace(request);
     const { message, threadId } = validatePayload(request.body);
 
-    reply.raw.statusCode = 200;
-    reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
-    reply.raw.setHeader("cache-control", "no-cache, no-transform");
-    reply.raw.setHeader("connection", "keep-alive");
-    reply.raw.setHeader("x-accel-buffering", "no");
-    reply.hijack();
+    openSse(reply);
 
     const abortController = new AbortController();
     let clientClosed = false;

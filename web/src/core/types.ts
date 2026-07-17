@@ -151,9 +151,21 @@ export interface MailItem {
 }
 
 // ---- mail queue summary (server GET /api/ws/:ws/mailqueue) --------------
-// Only the counts are consumed by the pipeline band; queue/awaitingScan
-// arrays are omitted here since the band never reads the rows.
+// A queue row is always a PERSON with a usable mail address (the server filters
+// out org-type entities and excluded companies). `queue` holds scanned-and-
+// ready people (they carry a priority `score`); `awaitingScan` holds people who
+// still need a scan (no score yet). The pipeline band reads only `counts`; the
+// Calibration target picker reads the row arrays.
+export interface MailQueuePerson {
+  id: string;
+  name: string;
+  company_id: string | null;
+  company_name: string | null;
+  score?: number;
+}
 export interface MailQueueSummary {
+  queue?: MailQueuePerson[];
+  awaitingScan?: MailQueuePerson[];
   counts: { queue: number; awaitingScan: number };
 }
 

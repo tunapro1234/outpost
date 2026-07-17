@@ -88,13 +88,10 @@ async function sendEvent(reply, payload) {
   return !reply.raw.destroyed;
 }
 
+import { openSse } from "../../lib/sse.mjs";
+
 function startSse(reply) {
-  reply.raw.statusCode = 200;
-  reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
-  reply.raw.setHeader("cache-control", "no-cache, no-transform");
-  reply.raw.setHeader("connection", "keep-alive");
-  reply.raw.setHeader("x-accel-buffering", "no");
-  reply.hijack();
+  return openSse(reply);
 }
 
 async function collectStream(stream) {

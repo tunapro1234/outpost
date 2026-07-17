@@ -16,6 +16,17 @@
   --accent: #7f93ff;
   --accent-halo: rgba(127, 147, 255, 0.14);
   --accent-glow: rgba(127, 147, 255, 0.32);
+  /* Overview prompt bar runs an INVERTED scheme vs the app theme: a
+     near-white bar in dark mode, a near-black bar in light mode. The
+     accent glow/halo (above) is shared by both. */
+  --ovp-bg: #f3f3f5;
+  --ovp-border: rgba(0, 0, 0, 0.1);
+  --ovp-text: #17171a;
+  --ovp-placeholder: #7a7a83;
+  --ovp-send-bg: #17171a;
+  --ovp-send-fg: #f3f3f5;
+  --ovp-send-off-bg: rgba(0, 0, 0, 0.06);
+  --ovp-send-off-fg: rgba(0, 0, 0, 0.34);
   --sel-bg: #26262c;
   --ok: #5bb87e;
   --warn: #d6b74e;
@@ -44,6 +55,15 @@
   --accent: #3f5ae0;
   --accent-halo: rgba(63, 90, 224, 0.12);
   --accent-glow: rgba(63, 90, 224, 0.26);
+  /* inverted prompt bar: near-black in light mode */
+  --ovp-bg: #161619;
+  --ovp-border: rgba(255, 255, 255, 0.12);
+  --ovp-text: #f0f0f3;
+  --ovp-placeholder: #97979f;
+  --ovp-send-bg: #f0f0f3;
+  --ovp-send-fg: #17171a;
+  --ovp-send-off-bg: rgba(255, 255, 255, 0.1);
+  --ovp-send-off-fg: rgba(255, 255, 255, 0.42);
   --sel-bg: #e9e9ee;
   --ok: #2f8f57;
   --warn: #a9821a;
@@ -4173,36 +4193,26 @@ table.grid td.num {
   z-index: 44;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 12px 12px 14px;
-  border: 1px solid var(--text-faint);
-  border-right: none;
-  border-radius: 12px 0 0 12px;
-  background: var(--surface-2);
-  color: var(--text);
-  /* Full, present control — an accent-tinted edge halo so it reads as an
-     invitation rather than a ghost, in both light and dark themes. */
-  box-shadow: -14px 0 34px -20px rgba(0, 0, 0, 0.6),
-    0 0 0 3px var(--accent-halo);
-  transition: color 0.14s, border-color 0.14s, box-shadow 0.14s, padding 0.14s;
-}
-.copilot-fab .copilot-fab-ico,
-.copilot-fab > svg {
-  color: var(--accent);
+  padding: 10px 7px 10px 9px;
+  border: none;
+  border-radius: 10px 0 0 10px;
+  /* Ters kontrast (Tuna): dark temada açık zemin, light temada koyu zemin */
+  background: var(--text);
+  color: var(--bg);
+  box-shadow: -12px 0 28px -18px rgba(0, 0, 0, 0.55), 0 0 0 2px var(--accent-halo);
+  transition: box-shadow 0.14s, padding 0.14s;
 }
 .copilot-fab:hover {
-  color: var(--text);
-  border-color: var(--accent);
-  box-shadow: -14px 0 34px -18px rgba(0, 0, 0, 0.66),
-    0 0 22px -6px var(--accent-glow);
+  box-shadow: -12px 0 28px -16px rgba(0, 0, 0, 0.6), 0 0 0 3px var(--accent);
+  padding-right: 9px;
 }
 .copilot-fab .copilot-fab-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   writing-mode: vertical-rl;
-  transform: rotate(180deg);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bg);
 }
 
 .copilot-drawer {
@@ -4728,19 +4738,21 @@ table.grid td.num {
   max-width: 1100px;
   padding: 6px 6px 6px 20px;
   margin-bottom: 24px;
-  background: var(--surface);
-  border: 1px solid var(--text-faint);
+  /* Inverted vs the app theme — a near-white bar in dark mode, near-black in
+     light mode — so it reads as the page's undisputed hero. */
+  background: var(--ovp-bg);
+  border: 1px solid var(--ovp-border);
   border-radius: 16px;
-  /* The undisputed focal point: an elevated card with a soft accent halo that
-     lifts it above the dashboard without shouting. Deepens on focus. */
+  /* The loved accent halo/glow: a soft ring plus a gentle bloom even at rest,
+     deepening on focus. */
   box-shadow: 0 10px 30px -16px rgba(0, 0, 0, 0.55),
-    0 0 0 3px var(--accent-halo);
+    0 0 0 3px var(--accent-halo), 0 0 26px -10px var(--accent-glow);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .ov-prompt:focus-within {
   border-color: var(--accent);
   box-shadow: 0 12px 34px -14px rgba(0, 0, 0, 0.62),
-    0 0 0 4px var(--accent-halo), 0 0 30px -6px var(--accent-glow);
+    0 0 0 4px var(--accent-halo), 0 0 34px -6px var(--accent-glow);
 }
 .ov-prompt-input {
   flex: 1;
@@ -4748,13 +4760,13 @@ table.grid td.num {
   height: 54px;
   border: none;
   background: transparent;
-  color: var(--text);
+  color: var(--ovp-text);
   font-size: 16px;
   font-weight: 500;
   outline: none;
 }
 .ov-prompt-input::placeholder {
-  color: var(--text-dim);
+  color: var(--ovp-placeholder);
   font-weight: 500;
 }
 .ov-prompt-send {
@@ -4763,8 +4775,8 @@ table.grid td.num {
   height: 46px;
   border-radius: 13px;
   border: 1px solid transparent;
-  background: var(--text);
-  color: var(--bg);
+  background: var(--ovp-send-bg);
+  color: var(--ovp-send-fg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4774,8 +4786,8 @@ table.grid td.num {
   opacity: 0.9;
 }
 .ov-prompt-send:disabled {
-  background: var(--surface-3);
-  color: var(--text-faint);
+  background: var(--ovp-send-off-bg);
+  color: var(--ovp-send-off-fg);
   cursor: default;
 }
 
@@ -5857,66 +5869,163 @@ button.md-company {
 /* SPEC-MAILCAL V2 — Mail header + Calibration Studio           */
 /* ============================================================ */
 
-/* ---- calm Mail header: pill tabs, faint KPIs, detached button ---- */
-.mail-head {
+/* ---- Mail header band (v3): a real title bar, not a row of pills ----
+   Left: a big active-section title with thin text tabs beneath it.
+   Right, on the same band: KPI line · search · Calibration.
+   A single hairline divides the whole band from the content below. */
+.mail-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.mh-left {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.mh-title {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 680;
+  letter-spacing: -0.015em;
+  line-height: 1.05;
+  color: var(--text);
+}
+.mh-tabs {
   display: flex;
   align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin-bottom: 4px;
+  gap: 20px;
 }
-.mail-tabs {
-  flex: 0 0 auto;
+/* text tabs — no boxes; hierarchy alone carries the header feel */
+.mh-tab {
+  position: relative;
+  border: none;
+  background: none;
+  padding: 0 0 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--text-faint);
+  transition: color 0.14s;
 }
-/* small, soft count — must not pull the eye */
-.mail-badge {
+.mh-tab:hover {
+  color: var(--text-dim);
+}
+.mh-tab.on {
+  color: var(--text);
+  font-weight: 600;
+}
+/* active underline lands on the band's own hairline */
+.mh-tab.on::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -13px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 2px 2px 0 0;
+}
+.mh-badge {
   margin-left: 6px;
   font-size: 10.5px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--text-faint);
-  opacity: 0.85;
+  opacity: 0.9;
 }
-.mail-tabs button.on .mail-badge {
+.mh-tab.on .mh-badge {
   color: var(--text-dim);
 }
-.mail-kpiline {
+.mh-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.mh-kpi {
   font-size: 12px;
   color: var(--text-faint);
   white-space: nowrap;
   letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
 }
-.mail-cal-btn {
-  margin-left: auto;
+.mh-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 2px;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--line);
+  transition: border-color 0.14s, color 0.14s;
+}
+.mh-search:focus-within {
+  border-color: var(--text-dim);
+  color: var(--text-dim);
+}
+.mh-search-input {
+  width: 150px;
+  padding: 0;
+  border: none;
+  background: none;
+  outline: none;
+  color: var(--text);
+  font-size: 12.5px;
+}
+.mh-search-input::placeholder {
+  color: var(--text-faint);
+}
+/* Calibration: same text-and-icon language as the tabs, right-aligned and set
+   off by a hairline divider — a natural part of the band, not a detached box */
+.mh-cal {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  border: 1px solid var(--line);
-  background: var(--surface);
+  padding: 0 0 0 16px;
+  border: none;
+  border-left: 1px solid var(--line);
+  background: none;
   color: var(--text-dim);
   font-size: 12.5px;
   font-weight: 550;
-  padding: 6px 13px;
-  border-radius: 999px;
-  transition: border-color 0.15s, color 0.15s;
+  transition: color 0.14s;
 }
-.mail-cal-btn:hover {
-  color: var(--text);
-  border-color: var(--text-faint);
-}
-.mail-cal-btn svg {
+.mh-cal svg {
   color: var(--text-faint);
+  transition: color 0.14s;
 }
-.mail-cal-btn:hover svg {
+.mh-cal:hover {
+  color: var(--text);
+}
+.mh-cal:hover svg {
   color: var(--text-dim);
 }
-.mail-subbar {
-  display: flex;
-  justify-content: flex-end;
-  margin: 8px 0 18px;
+
+/* Calibration studio header — same band language, single column */
+.studio-header {
+  margin-bottom: 4px;
 }
-.mail-search {
-  max-width: 260px;
+.mh-back {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 550;
+  transition: color 0.14s;
+}
+.mh-back:hover {
+  color: var(--text);
+}
+.mh-sub {
+  font-size: 12.5px;
+  color: var(--text-faint);
 }
 
 /* ---- shared: textarea variant of np-input ---- */
@@ -6048,6 +6157,20 @@ textarea.np-input {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--text-dim);
+}
+/* "not scanned yet" — a quiet tag standing in for the score on unscanned people */
+.sp-opt-tag,
+.sp-tag {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-faint);
+  background: var(--surface-3);
+  padding: 2px 7px;
+  border-radius: 999px;
 }
 .sp-card {
   display: flex;
@@ -6277,22 +6400,29 @@ textarea.np-input {
 }
 .stars {
   display: inline-flex;
-  gap: 2px;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
 }
 .star {
   border: none;
   background: transparent;
-  color: var(--line);
-  font-size: 20px;
+  color: var(--text-faint);
+  font-size: 34px;
   line-height: 1;
-  padding: 0 2px;
+  padding: 0 3px;
+  cursor: pointer;
   transition: color 0.12s, transform 0.12s;
 }
 .star:hover {
-  transform: scale(1.12);
+  transform: scale(1.18);
+  color: var(--warn);
 }
 .star.on {
   color: var(--warn);
+  text-shadow: 0 0 14px var(--accent-halo);
 }
 .draft-fb-grid {
   display: grid;

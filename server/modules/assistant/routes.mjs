@@ -1,3 +1,4 @@
+import { openSse } from "../../lib/sse.mjs";
 import { redactSecrets } from "../copilot/context.mjs";
 import { resolveThreadId } from "../copilot/threads.mjs";
 import { UserStore } from "../profile/service.mjs";
@@ -102,12 +103,7 @@ export async function assistantRoutes(app, {
     const workspace = resolveWorkspace(request);
     const { message, threadId } = validatePayload(request.body);
 
-    reply.raw.statusCode = 200;
-    reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
-    reply.raw.setHeader("cache-control", "no-cache, no-transform");
-    reply.raw.setHeader("connection", "keep-alive");
-    reply.raw.setHeader("x-accel-buffering", "no");
-    reply.hijack();
+    openSse(reply);
 
     const abortController = new AbortController();
     let clientClosed = false;

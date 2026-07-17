@@ -6,8 +6,8 @@ import { trNormalize } from "@/core/normalize";
 import type {
   Calibration,
   CalibrationSkill,
-  EntityListItem,
   MailAgentModel,
+  MailQueueSummary,
 } from "@/core/types";
 import {
   IconAssistant,
@@ -21,11 +21,21 @@ import { ChatHistory, Composer, MessageRow } from "@/modules/chat/ChatDrawer";
 import { useChatEngine } from "@/modules/chat/useChatEngine";
 
 interface Props {
-  entities: EntityListItem[];
   onBack: () => void;
   // Fired after the voice file or a draft-with-feedback changes so the Mail
   // page can refetch drafts (older ones may now be stale).
   onCalibrationChanged: () => void;
+}
+
+// A calibration target — always a PERSON with a usable mail address, sourced
+// from the mail queue. `scanned` people carry a score and sit at the top;
+// awaiting-scan people show a "not scanned yet" tag instead of a score.
+export interface QueuePerson {
+  id: string;
+  name: string;
+  company_name: string | null;
+  score: number | null;
+  scanned: boolean;
 }
 
 // SPEC-MAILCAL §9–11 — the Calibration Studio. A calm, single-column workshop:
@@ -34,7 +44,6 @@ interface Props {
 // again. A narrow helper column carries your uploaded skills, the raw voice
 // file, and (for chat-capable models) a foldable conversation.
 export default function CalibrationStudio({
-  entities,
   onBack,
   onCalibrationChanged,
 }: Props) {
@@ -81,26 +90,60 @@ export default function CalibrationStudio({
   };
 
   // ---- target person ----
-  const [person, setPerson] = useState<EntityListItem | null>(null);
+  const [person, setPerson] = useState<QueuePerson | null>(null);
+
+  // ---- calibration targets: people (never orgs) with a usable mail address,
+  // straight from the mail queue. Scanned people carry a score; awaiting-scan
+  // people are still valid targets, tagged "not scanned yet". ----
+  const [queue, setQueue] = useState<MailQueueSummary | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api.mailqueue().then((q) => {
+      if (alive && q) setQueue(q);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const people = useMemo<QueuePerson[]>(() => {
+    if (!queue) return [];
+    const scanned = (queue.queue ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      company_name: p.company_name,
+      score: p.score ?? null,
+      scanned: true,
+    }));
+    const pending = (queue.awaitingScan ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      company_name: p.company_name,
+      score: null,
+      scanned: false,
+    }));
+    return [...scanned, ...pending];
+  }, [queue]);
 
   const relCal = relativeTime(cal?.calibrated_at);
 
   return (
     <div className="studio">
-      <div className="studio-back">
-        <button className="studio-back-btn" onClick={onBack}>
-          ← Mail
-        </button>
-        <span className="studio-title">Calibration studio</span>
-        <span className="studio-sub">
-          Train your mail voice on real people — draft, rate, rewrite.
-        </span>
-      </div>
+      <header className="mail-header studio-header">
+        <div className="mh-left">
+          <button className="mh-back" onClick={onBack}>
+            ← Mail
+          </button>
+          <h1 className="mh-title">Calibration</h1>
+          <span className="mh-sub">
+            Train your mail voice on real people — draft, rate, rewrite.
+          </span>
+        </div>
+      </header>
 
       {/* (a) top strip: person + model + calibrated badge */}
       <div className="studio-strip">
         <PersonPicker
-          entities={entities}
+          people={people}
           person={person}
           onPick={setPerson}
         />
@@ -151,13 +194,13 @@ export default function CalibrationStudio({
 // (a) Person picker — search the queue, show the chosen person as a card.
 
 function PersonPicker({
-  entities,
+  people,
   person,
   onPick,
 }: {
-  entities: EntityListItem[];
-  person: EntityListItem | null;
-  onPick: (e: EntityListItem | null) => void;
+  people: QueuePerson[];
+  person: QueuePerson | null;
+  onPick: (e: QueuePerson | null) => void;
 }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -171,27 +214,17 @@ function PersonPicker({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  const pool = useMemo(() => {
-    const hasMail = (m: string | null | undefined) => {
-      const s = (m ?? "").trim();
-      return s !== "" && s !== "-" && s !== "yok";
-    };
-    return entities
-      .filter((e) => hasMail(e.mail))
-      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  }, [entities]);
-
+  // Queue order is preserved (scanned-by-score first, then awaiting-scan); a
+  // search narrows by name or company.
   const matches = useMemo(() => {
     const nq = trNormalize(q);
     const base = nq
-      ? pool.filter((e) =>
-          trNormalize(
-            `${e.name} ${e.connected_org ?? ""} ${e.city ?? ""} ${e.subtype ?? ""}`
-          ).includes(nq)
+      ? people.filter((e) =>
+          trNormalize(`${e.name} ${e.company_name ?? ""}`).includes(nq)
         )
-      : pool;
+      : people;
     return base.slice(0, 40);
-  }, [pool, q]);
+  }, [people, q]);
 
   if (person) {
     return (
@@ -199,14 +232,17 @@ function PersonPicker({
         <div className="sp-card">
           <div className="sp-info">
             <span className="sp-name">{person.name}</span>
-            <span className="sp-org">
-              {person.connected_org ?? person.subtype ?? "—"}
-              {person.city ? ` · ${person.city}` : ""}
-            </span>
+            <span className="sp-org">{person.company_name ?? "—"}</span>
           </div>
-          <span className="sp-score" title="Priority score">
-            {person.score ?? "—"}
-          </span>
+          {person.scanned ? (
+            <span className="sp-score" title="Priority score">
+              {person.score ?? "—"}
+            </span>
+          ) : (
+            <span className="sp-tag" title="This person has not been scanned yet">
+              not scanned yet
+            </span>
+          )}
           <button
             className="sp-clear"
             onClick={() => onPick(null)}
@@ -226,7 +262,7 @@ function PersonPicker({
         <IconSearch size={15} />
         <input
           value={q}
-          placeholder="Pick a target from the queue…"
+          placeholder="Pick a person from the queue…"
           onFocus={() => setOpen(true)}
           onChange={(e) => {
             setQ(e.target.value);
@@ -237,7 +273,11 @@ function PersonPicker({
       {open && (
         <div className="sp-menu">
           {matches.length === 0 ? (
-            <div className="sp-empty">No matching people with a mail address.</div>
+            <div className="sp-empty">
+              {q
+                ? "No matching people in the queue."
+                : "No people with email in the queue yet."}
+            </div>
           ) : (
             matches.map((e) => (
               <button
@@ -250,11 +290,12 @@ function PersonPicker({
                 }}
               >
                 <span className="sp-opt-name">{e.name}</span>
-                <span className="sp-opt-meta">
-                  {e.connected_org ?? e.subtype ?? ""}
-                  {e.city ? ` · ${e.city}` : ""}
-                </span>
-                <span className="sp-opt-score">{e.score ?? "—"}</span>
+                <span className="sp-opt-meta">{e.company_name ?? "—"}</span>
+                {e.scanned ? (
+                  <span className="sp-opt-score">{e.score ?? "—"}</span>
+                ) : (
+                  <span className="sp-opt-tag">not scanned yet</span>
+                )}
               </button>
             ))
           )}
@@ -333,11 +374,24 @@ function parseDraft(text: string): { subject: string | null; body: string } {
   return { subject: null, body: text };
 }
 
+// Turn a raw stream/server error into a calm, English studio message. The
+// server speaks Turkish ("… bulunamadı"); never surface that verbatim.
+function friendlyDraftError(raw: string): string {
+  const s = (raw ?? "").trim();
+  if (!s) return "The draft couldn't be generated. Please try again.";
+  if (/bulunamad/i.test(s))
+    return "No usable email for this person — pick someone else from the queue.";
+  // Anything carrying Turkish characters is a raw server string; keep it calm.
+  if (/[çğıöşü]/i.test(s))
+    return "The draft couldn't be generated. Please try again.";
+  return s;
+}
+
 function DraftPanel({
   person,
   onVoiceMaybeChanged,
 }: {
-  person: EntityListItem | null;
+  person: QueuePerson | null;
   onVoiceMaybeChanged: () => void;
 }) {
   const [draft, setDraft] = useState("");
@@ -391,7 +445,7 @@ function DraftPanel({
       ctrl.signal,
       {
         onDelta: (t) => setDraft((prev) => prev + t),
-        onError: (m) => setError(m),
+        onError: (m) => setError(friendlyDraftError(m)),
         onDone: () => {
           setStreaming(false);
           abortRef.current = null;
