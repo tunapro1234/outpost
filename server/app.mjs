@@ -14,6 +14,7 @@ import { GatherRunner } from "./modules/gather/runner.mjs";
 import { GatherScheduler } from "./modules/gather/scheduler.mjs";
 import { mailRoutes } from "./modules/mail/routes.mjs";
 import { mailerRoutes } from "./modules/mailer/routes.mjs";
+import { mailAgentRoutes } from "./modules/mailer/agent-routes.mjs";
 import { FollowUpScheduler } from "./modules/mailer/scheduler.mjs";
 import {
   DEFAULT_MAIL_DATA,
@@ -85,7 +86,7 @@ export async function createApp({
   followupSchedule = schedule,
   followupIntervalMs,
   followUpRun,
-  gatherRunner = new GatherRunner(),
+  gatherRunner: suppliedGatherRunner,
   copilotRunner = runClaude,
   assistantExec,
   assistantFileSystem,
@@ -94,6 +95,13 @@ export async function createApp({
   assistantBriefTemplatePath,
   assistantSpawnWaitMs,
   assistantBridgeOptions,
+  mailAgentExec,
+  mailAgentFileSystem,
+  mailAgentSleep,
+  mailAgentClaudeBin,
+  mailAgentBriefTemplatePath,
+  mailAgentSpawnWaitMs,
+  mailAgentBridgeOptions,
   metricsNow,
   usersPath,
   htpasswdPath,
@@ -103,6 +111,10 @@ export async function createApp({
   logger = false,
 } = {}) {
   const app = Fastify({ logger });
+  const gatherRunner = suppliedGatherRunner ?? new GatherRunner({
+    writerOptions: { usersPath, defaultUser },
+    logger: app.log,
+  });
   const registry = vaultPath
     ? await WorkspaceRegistry.fromVault(vaultPath, { watch })
     : await WorkspaceRegistry.load({
@@ -213,6 +225,19 @@ export async function createApp({
     prefix: "/api/ws/:ws",
     resolveWorkspace: resolveScopedWorkspace,
     ingestor: mailIngestor,
+  });
+  await app.register(mailAgentRoutes, {
+    prefix: "/api/ws/:ws",
+    resolveWorkspace: resolveScopedWorkspace,
+    defaultUser,
+    usersPath,
+    exec: mailAgentExec,
+    fileSystem: mailAgentFileSystem,
+    sleep: mailAgentSleep,
+    claudeBin: mailAgentClaudeBin,
+    briefTemplatePath: mailAgentBriefTemplatePath,
+    spawnWaitMs: mailAgentSpawnWaitMs,
+    bridgeOptions: mailAgentBridgeOptions,
   });
   await app.register(mailerRoutes, {
     prefix: "/api/ws/:ws",

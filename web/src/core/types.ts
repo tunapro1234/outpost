@@ -182,6 +182,45 @@ export interface MailDraft {
   created_at: string;
   followup_stage: 0 | 1 | 2;
   status: "pending";
+  // SPEC-MAILCAL §2/§4 — who authored the draft and whether it predates the
+  // author's latest calibration (queued for an automatic rewrite). Optional so
+  // older servers that omit them degrade to "no author / not stale".
+  author?: string | null;
+  stale?: boolean;
+}
+
+// ---- mail calibration (SPEC-MAILCAL §2) ---------------------------------
+// The caller's personal "mail voice" file. `calibrated_at` is stamped on every
+// write (agent or PUT). Returns null on 404 so the tab shows an empty editor.
+export interface Calibration {
+  content: string;
+  calibrated_at: string | null;
+}
+
+// ---- workspace user stats (SPEC-MAILCAL §3, GET /users/stats) -----------
+export interface UserTokenStats {
+  in: number;
+  out: number;
+  // when true the totals are a chars/4 estimate — the UI prefixes them with "~".
+  estimated?: boolean;
+}
+
+export interface UserStat {
+  user: string;
+  name: string;
+  role: string;
+  drafts: number;
+  approved: number;
+  rejected: number;
+  tokens: UserTokenStats;
+}
+
+// ---- personal agents (SPEC-MAILCAL §5, GET /personal-agents) ------------
+export interface PersonalAgent {
+  kind: "assistant" | "mail";
+  session: string;
+  running: boolean;
+  lastActivity?: string | null;
 }
 
 // Structured reason attached to a draft rejection so the system can learn

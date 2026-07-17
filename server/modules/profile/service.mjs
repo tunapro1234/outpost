@@ -72,6 +72,12 @@ export class UserStore {
     return publicProfile(user);
   }
 
+  async list() {
+    const { document } = await this.read();
+    return document.users.filter((user) => user && typeof user.username === "string")
+      .map(publicProfile);
+  }
+
   async patch(username, changes) {
     const operation = this.writeQueue.then(async () => {
       const { document, persistent } = await this.read();

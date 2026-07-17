@@ -2,9 +2,11 @@ import { useMemo, useState } from "react";
 import type { EntityListItem, MailItem, ReachStats } from "@/core/types";
 import { STATUS_COLORS, STATUS_LABELS, TYPE_LABELS } from "@/core/theme";
 import { trNormalize } from "@/core/normalize";
+import { relativeTime } from "@/core/format";
 import DraftCard from "@/modules/mail/DraftCard";
 import { useMailDrafts } from "@/modules/mail/useMailDrafts";
 import ExclusionsPanel from "./ExclusionsPanel";
+import MailCalibration from "./MailCalibration";
 import { useExclusions } from "./useExclusions";
 
 interface Props {
@@ -14,8 +16,22 @@ interface Props {
   onOpenEntity: (id: string) => void;
 }
 
-type Tab = "sent" | "drafts" | "candidates" | "inbound" | "exclusions";
+type Tab =
+  | "drafts"
+  | "calibration"
+  | "sent"
+  | "inbound"
+  | "candidates"
+  | "exclusions";
 type CandSort = "score" | "name";
+
+// Deep-link support: the Agents page "Open chat" on the mail writer lands here
+// via /reach#calibration, so honour the hash as the initial tab.
+function initialTab(): Tab {
+  if (typeof window !== "undefined" && window.location.hash === "#calibration")
+    return "calibration";
+  return "drafts";
+}
 
 const CANDIDATE_SCORE_MIN = 15;
 
@@ -24,8 +40,25 @@ function hasMail(mail: string | null | undefined): boolean {
   return m !== "" && m !== "-" && m !== "yok";
 }
 
+// "drafted 3h ago · by tuna" — the small provenance line on a draft. Renders
+// nothing when there is no usable timestamp (older servers omit created_at).
+function DraftMeta({
+  draft,
+}: {
+  draft: { created_at?: string; author?: string | null };
+}) {
+  const rel = relativeTime(draft.created_at);
+  if (!rel && !draft.author) return null;
+  return (
+    <span className="md-row-when">
+      {rel ? `drafted ${rel}` : "drafted"}
+      {draft.author ? ` · by ${draft.author}` : ""}
+    </span>
+  );
+}
+
 export default function ReachView({ mails, stats, entities, onOpenEntity }: Props) {
-  const [tab, setTab] = useState<Tab>("sent");
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [q, setQ] = useState("");
   const [candSort, setCandSort] = useState<CandSort>("score");
   const [candAsc, setCandAsc] = useState(false);
@@ -93,13 +126,15 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
     );
   }, [draftList, q]);
 
-  const KPI = ({ label, value, tone }: { label: string; value: string; tone?: string }) => (
-    <div className="kpi">
-      <div className="kpi-v" style={tone ? { color: tone } : undefined}>
+  // Compact single-line KPI: a light summary strip, not a heavy card grid —
+  // the eye should land on the Drafts queue below, not up here.
+  const Stat = ({ label, value, tone }: { label: string; value: string; tone?: string }) => (
+    <span className="reach-stat">
+      <span className="reach-stat-v" style={tone ? { color: tone } : undefined}>
         {value}
-      </div>
-      <div className="kpi-k">{label}</div>
-    </div>
+      </span>
+      <span className="reach-stat-k">{label}</span>
+    </span>
   );
 
   const MailTable = ({ rows }: { rows: MailItem[] }) => (
@@ -141,13 +176,13 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
 
   return (
     <div className="view-pad reach">
-      {/* KPI strip */}
-      <div className="kpi-strip">
-        <KPI label="Total sent" value={String(kpis.sent)} />
-        <KPI label="Replied" value={String(kpis.replied)} tone="var(--ok)" />
-        <KPI label="Reply rate" value={`${kpis.replyRate}%`} />
-        <KPI
-          label="Pending follow-up"
+      {/* Compact KPI line */}
+      <div className="reach-kpis">
+        <Stat label="sent" value={String(kpis.sent)} />
+        <Stat label="replied" value={String(kpis.replied)} tone="var(--ok)" />
+        <Stat label="reply rate" value={`${kpis.replyRate}%`} />
+        <Stat
+          label="pending follow-up"
           value={String(kpis.pendingFollowUp)}
           tone="var(--warn)"
         />
@@ -155,10 +190,6 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
 
       <div className="reach-bar">
         <div className="tabs">
-          <button className={tab === "sent" ? "on" : ""} onClick={() => setTab("sent")}>
-            Sent
-            {sent.length > 0 && <span className="tab-badge">{sent.length}</span>}
-          </button>
           <button
             className={tab === "drafts" ? "on" : ""}
             onClick={() => setTab("drafts")}
@@ -167,6 +198,23 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
             {draftList && draftList.length > 0 && (
               <span className="tab-badge">{draftList.length}</span>
             )}
+          </button>
+          <button
+            className={tab === "calibration" ? "on" : ""}
+            onClick={() => setTab("calibration")}
+          >
+            Calibration
+          </button>
+          <button className={tab === "sent" ? "on" : ""} onClick={() => setTab("sent")}>
+            Sent
+            {sent.length > 0 && <span className="tab-badge">{sent.length}</span>}
+          </button>
+          <button
+            className={tab === "inbound" ? "on" : ""}
+            onClick={() => setTab("inbound")}
+          >
+            Inbound
+            {inbound.length > 0 && <span className="tab-badge">{inbound.length}</span>}
           </button>
           <button
             className={tab === "candidates" ? "on" : ""}
@@ -178,13 +226,6 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
             )}
           </button>
           <button
-            className={tab === "inbound" ? "on" : ""}
-            onClick={() => setTab("inbound")}
-          >
-            Inbound
-            {inbound.length > 0 && <span className="tab-badge">{inbound.length}</span>}
-          </button>
-          <button
             className={tab === "exclusions" ? "on" : ""}
             onClick={() => setTab("exclusions")}
           >
@@ -194,23 +235,27 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
             )}
           </button>
         </div>
-        <input
-          className="np-input reach-search"
-          placeholder={
-            tab === "candidates"
-              ? "Search candidates…"
-              : tab === "drafts"
-                ? "Search drafts…"
-                : tab === "exclusions"
-                  ? "Search excluded…"
-                  : "Search mail…"
-          }
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
+        {tab !== "calibration" && (
+          <input
+            className="np-input reach-search"
+            placeholder={
+              tab === "candidates"
+                ? "Search candidates…"
+                : tab === "drafts"
+                  ? "Search drafts…"
+                  : tab === "exclusions"
+                    ? "Search excluded…"
+                    : "Search mail…"
+            }
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        )}
       </div>
 
-      {tab === "exclusions" ? (
+      {tab === "calibration" ? (
+        <MailCalibration onCalibrationChanged={drafts.reload} />
+      ) : tab === "exclusions" ? (
         <ExclusionsPanel
           state={exclusions}
           q={q}
@@ -262,6 +307,15 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
                     <span className="md-row-caret">{open ? "▾" : "▸"}</span>
                     <span className="md-row-person">{d.person.name}</span>
                     <span className="md-row-company">{d.company.name}</span>
+                    <DraftMeta draft={d} />
+                    {d.stale && (
+                      <span
+                        className="md-stale"
+                        title="This draft predates your latest calibration — it will be re-written automatically."
+                      >
+                        outdated — queued for rewrite
+                      </span>
+                    )}
                     <span className="md-row-variants">
                       {d.variants.length} variant
                       {d.variants.length === 1 ? "" : "s"}

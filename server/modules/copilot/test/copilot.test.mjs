@@ -333,7 +333,7 @@ test("tmux köprüsü promptu yazar, literal komut ve Enter yollar, dosya ekleri
   }
   assert.equal(deltas.join(""), "Merhaba 👋");
   assert.deepEqual(calls, [
-    ["tmux", ["has-session", "-t", "fake-copilot"]],
+    ["tmux", ["has-session", "-t", "=fake-copilot"]],
     ["tmux", ["capture-pane", "-p", "-t", "fake-copilot"]],
     ["tmux", [
       "send-keys",
@@ -372,8 +372,8 @@ test("tmux köprüsü env yoksa workspace code oturumunu, code yoksa id fallback
     else process.env.OUTPOST_COPILOT_TMUX = previous;
   }
   assert.deepEqual(calls, [
-    ["has-session", "-t", "op-ws-fxt"],
-    ["has-session", "-t", "op-ws-fallback"],
+    ["has-session", "-t", "=op-ws-fxt"],
+    ["has-session", "-t", "=op-ws-fallback"],
   ]);
 });
 

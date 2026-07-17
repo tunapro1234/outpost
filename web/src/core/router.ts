@@ -12,6 +12,7 @@ export type ViewKey =
   | "network"
   | "reach"
   | "agents"
+  | "workspace"
   | "integrations"
   | "profile";
 
@@ -27,6 +28,7 @@ const PATH_TO_VIEW: Record<string, ViewKey> = {
   // legacy alias — the module used to live at /gather. Kept so old links and
   // bookmarks still resolve; navigate() below rewrites the URL to /agents.
   "/gather": "agents",
+  "/workspace": "workspace",
   "/integrations": "integrations",
   "/profile": "profile",
 };
@@ -36,6 +38,7 @@ const VIEW_TO_PATH: Record<ViewKey, string> = {
   network: "/network",
   reach: "/reach",
   agents: "/agents",
+  workspace: "/workspace",
   integrations: "/integrations",
   profile: "/profile",
 };

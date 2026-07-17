@@ -4,17 +4,18 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
+import { relativeTime, type ChatMessage } from "@/core/chat";
+import { useChatEngine } from "./useChatEngine";
 import {
-  makeChatStore,
-  streamChat,
-  type ChatMessage,
-  type ChatStore,
-} from "@/core/chat";
-import { IconClose, IconPlus, IconSend } from "@/core/icons";
+  IconClose,
+  IconHistory,
+  IconPlus,
+  IconSend,
+  IconTrash,
+} from "@/core/icons";
 import { renderMarkdown } from "@/core/markdown";
 
 export interface ChatDrawerProps {
@@ -35,6 +36,9 @@ export interface ChatDrawerProps {
   // Fired when a reply finishes streaming — the Assistant uses it to refetch
   // the dashboard, which the agent may have just rearranged.
   onReplyComplete?: (threadId?: string) => void;
+  // Reports the drawer's live width (initial + during resize) so the shell can
+  // squeeze the main content by the same amount.
+  onWidth?: (w: number) => void;
   onClose: () => void;
 }
 
@@ -49,149 +53,28 @@ export default function ChatDrawer({
   seed,
   onSeedConsumed,
   onReplyComplete,
+  onWidth,
   onClose,
 }: ChatDrawerProps) {
-  // A fresh store per namespace; memoized so the load functions stay stable.
-  const store: ChatStore = useMemo(() => makeChatStore(ns), [ns]);
+  const chat = useChatEngine({
+    endpoint,
+    ns,
+    title,
+    seed,
+    onSeedConsumed,
+    onReplyComplete,
+  });
 
-  const [messages, setMessages] = useState<ChatMessage[]>(store.loadMessages);
-  const [threadId, setThreadId] = useState<string | null>(store.loadThread);
-  const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
-  const [width, setWidth] = useState<number>(store.loadWidth);
+  const [width, setWidth] = useState<number>(chat.store.loadWidth);
 
-  const abortRef = useRef<AbortController | null>(null);
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const stickToBottom = useRef(true);
-
-  // Persist the message log (errors are stripped inside saveMessages).
-  useEffect(() => store.saveMessages(messages), [store, messages]);
-  useEffect(() => store.saveThread(threadId), [store, threadId]);
+  // Report width up so the shell can squeeze content in sync with resizing.
+  useEffect(() => onWidth?.(width), [width, onWidth]);
 
   // Focus the composer on open.
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  // Closing the drawer unmounts it; terminate any in-flight SSE fetch so its
-  // callbacks cannot keep updating a drawer that is no longer visible.
-  useEffect(
-    () => () => {
-      abortRef.current?.abort();
-      abortRef.current = null;
-    },
-    []
-  );
-
-  // Keep pinned to the newest content while the user hasn't scrolled up.
-  useLayoutEffect(() => {
-    if (stickToBottom.current && bodyRef.current) {
-      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
-    }
-  }, [messages]);
-
-  const onBodyScroll = useCallback(() => {
-    const el = bodyRef.current;
-    if (!el) return;
-    stickToBottom.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 60;
-  }, []);
-
-  const send = useCallback(
-    (text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed || streaming) return;
-
-      stickToBottom.current = true;
-      const controller = new AbortController();
-      abortRef.current = controller;
-      setStreaming(true);
-      setInput("");
-      // user bubble + an empty assistant bubble to stream into
-      setMessages((prev) => [
-        ...prev,
-        { role: "user", content: trimmed },
-        { role: "assistant", content: "" },
-      ]);
-
-      const appendToAssistant = (delta: string) =>
-        setMessages((prev) => {
-          const next = [...prev];
-          for (let i = next.length - 1; i >= 0; i--) {
-            if (next[i].role === "assistant") {
-              next[i] = { ...next[i], content: next[i].content + delta };
-              break;
-            }
-          }
-          return next;
-        });
-
-      streamChat(endpoint, trimmed, threadId, controller.signal, {
-        onDelta: appendToAssistant,
-        onError: (msg) =>
-          setMessages((prev) => [...prev, { role: "error", content: msg }]),
-        onDone: (tid) => {
-          if (tid) setThreadId(tid);
-          setStreaming(false);
-          abortRef.current = null;
-          // Drop a trailing empty assistant bubble (e.g. immediate error).
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last && last.role === "assistant" && !last.content)
-              return prev.slice(0, -1);
-            return prev;
-          });
-          onReplyComplete?.(tid);
-        },
-      }).catch((err) => {
-        setStreaming(false);
-        abortRef.current = null;
-        if ((err as Error)?.name === "AbortError") {
-          // User pressed Stop — keep whatever streamed, drop an empty bubble.
-          setMessages((prev) => {
-            const next = [...prev];
-            const last = next[next.length - 1];
-            if (last && last.role === "assistant" && !last.content)
-              return next.slice(0, -1);
-            return next;
-          });
-          return;
-        }
-        setMessages((prev) => [
-          ...prev,
-          { role: "error", content: `Connection to ${title.toLowerCase()} failed.` },
-        ]);
-      });
-    },
-    [streaming, threadId, endpoint, title, onReplyComplete]
-  );
-
-  // Auto-dispatch a seeded message (from the Overview prompt bar). Runs only on
-  // seed changes; the caller nulls it immediately after so it never re-fires.
-  const sendRef = useRef(send);
-  sendRef.current = send;
-  useEffect(() => {
-    if (seed && seed.trim()) {
-      sendRef.current(seed);
-      onSeedConsumed?.();
-    }
+    chat.inputRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seed]);
-
-  const stop = useCallback(() => {
-    abortRef.current?.abort();
   }, []);
-
-  const newChat = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setStreaming(false);
-    setMessages([]);
-    setThreadId(null);
-    store.clearConversation();
-    inputRef.current?.focus();
-  }, [store]);
 
   // ---- width resize (left edge handle) ----
   const startResize = useCallback(
@@ -207,17 +90,15 @@ export default function ChatDrawer({
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
         setWidth((w) => {
-          store.saveWidth(w);
+          chat.store.saveWidth(w);
           return w;
         });
       };
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [width, store]
+    [width, chat.store]
   );
-
-  const empty = messages.length === 0;
 
   return (
     <aside className="copilot-drawer" style={{ width }}>
@@ -234,10 +115,18 @@ export default function ChatDrawer({
         </span>
         <div className="cp-head-actions">
           <button
+            className={`cp-icon-btn${chat.historyOpen ? " on" : ""}`}
+            onClick={() => chat.setHistoryOpen((o) => !o)}
+            title="Chat history"
+            aria-pressed={chat.historyOpen}
+          >
+            <IconHistory size={15} />
+          </button>
+          <button
             className="cp-icon-btn"
-            onClick={newChat}
+            onClick={chat.newChat}
             title="New chat"
-            disabled={empty && !streaming}
+            disabled={chat.empty && !chat.streaming && !chat.historyOpen}
           >
             <IconPlus size={15} />
           </button>
@@ -251,16 +140,25 @@ export default function ChatDrawer({
         </div>
       </header>
 
-      <div className="cp-body" ref={bodyRef} onScroll={onBodyScroll}>
-        {empty
-          ? renderEmpty(send)
-          : messages.map((m, i) => (
+      {chat.historyOpen && (
+        <ChatHistory
+          history={chat.history}
+          activeId={chat.activeId}
+          onOpen={chat.openThread}
+          onDelete={chat.deleteThread}
+        />
+      )}
+
+      <div className="cp-body" ref={chat.bodyRef} onScroll={chat.onBodyScroll}>
+        {chat.empty
+          ? renderEmpty(chat.send)
+          : chat.messages.map((m, i) => (
               <MessageRow
                 key={i}
                 msg={m}
                 streaming={
-                  streaming &&
-                  i === messages.length - 1 &&
+                  chat.streaming &&
+                  i === chat.messages.length - 1 &&
                   m.role === "assistant"
                 }
               />
@@ -268,12 +166,12 @@ export default function ChatDrawer({
       </div>
 
       <Composer
-        ref={inputRef}
-        value={input}
-        onChange={setInput}
-        onSend={() => send(input)}
-        onStop={stop}
-        streaming={streaming}
+        ref={chat.inputRef}
+        value={chat.input}
+        onChange={chat.setInput}
+        onSend={() => chat.send(chat.input)}
+        onStop={chat.stop}
+        streaming={chat.streaming}
         placeholder={placeholder}
       />
     </aside>
@@ -281,8 +179,62 @@ export default function ChatDrawer({
 }
 
 // ---------------------------------------------------------------------------
+// Shared conversation-history dropdown — reused by every chat surface.
 
-function MessageRow({
+export function ChatHistory({
+  history,
+  activeId,
+  onOpen,
+  onDelete,
+}: {
+  history: { id: string; title: string; updatedAt: number }[];
+  activeId: string;
+  onOpen: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="cp-history">
+      <div className="cp-history-head">
+        <span className="cp-history-label">Chat history</span>
+      </div>
+      <div className="cp-history-list">
+        {history.length === 0 ? (
+          <div className="cp-history-empty">No past conversations yet.</div>
+        ) : (
+          history.map((t) => (
+            <div
+              key={t.id}
+              className={`cp-history-item${t.id === activeId ? " active" : ""}`}
+            >
+              <button
+                className="cp-history-open"
+                onClick={() => onOpen(t.id)}
+                title={t.title}
+              >
+                <span className="cp-history-title">{t.title}</span>
+                <span className="cp-history-time">
+                  {relativeTime(t.updatedAt)}
+                </span>
+              </button>
+              <button
+                className="cp-history-del"
+                onClick={() => onDelete(t.id)}
+                title="Delete conversation"
+                aria-label="Delete conversation"
+              >
+                <IconTrash size={14} />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export function MessageRow({
   msg,
   streaming,
 }: {
@@ -337,7 +289,7 @@ interface ComposerProps {
   placeholder: string;
 }
 
-const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
+export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
   function Composer(
     { value, onChange, onSend, onStop, streaming, placeholder },
     ref

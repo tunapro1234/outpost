@@ -1,6 +1,7 @@
 import type {
   Agent,
   AgentRun,
+  Calibration,
   Entity,
   EntityListItem,
   EntityMeta,
@@ -15,12 +16,14 @@ import type {
   MailQueueSummary,
   MailRejectPayload,
   MailRejectResult,
+  PersonalAgent,
   ReachStats,
   Metrics,
   Profile,
   Relation,
   StageItem,
   Status,
+  UserStat,
   WorkspaceInfo,
 } from "./types";
 import { trNormalize } from "./normalize";
@@ -341,6 +344,57 @@ export const api = {
       company_excluded: data?.company_excluded,
       person_closed: data?.person_closed,
     };
+  },
+
+  // ---- mail calibration (SPEC-MAILCAL §2) --------------------------------
+  // The caller's personal mail-voice file. Returns null on 404 / error so the
+  // Calibration tab renders an empty editor while the endpoint is still shipping.
+  async calibration(): Promise<Calibration | null> {
+    if (MOCK) return { content: "", calibrated_at: null };
+    try {
+      const res = await fetch(`${workspaceBase()}/calibration`);
+      if (!res.ok) return null;
+      return (await res.json()) as Calibration;
+    } catch {
+      return null;
+    }
+  },
+
+  // Persist the calibration file; the server stamps a fresh calibrated_at.
+  // Throws Error(message) on failure so the editor can surface it.
+  async saveCalibration(content: string): Promise<Calibration> {
+    return json<Calibration>(`${workspaceBase()}/calibration`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+  },
+
+  // ---- workspace user stats (SPEC-MAILCAL §3) ----------------------------
+  // Returns null on 404 / error so the Workspace page degrades gracefully.
+  async usersStats(): Promise<UserStat[] | null> {
+    if (MOCK) return null;
+    try {
+      const res = await fetch(`${workspaceBase()}/users/stats`);
+      if (!res.ok) return null;
+      return (await res.json()) as UserStat[];
+    } catch {
+      return null;
+    }
+  },
+
+  // ---- personal agents (SPEC-MAILCAL §5) ---------------------------------
+  // The caller's own agents (assistant + mail writer). Returns null on 404 /
+  // error so the Personal-agents section on the Agents page hides gracefully.
+  async personalAgents(): Promise<PersonalAgent[] | null> {
+    if (MOCK) return null;
+    try {
+      const res = await fetch(`${workspaceBase()}/personal-agents`);
+      if (!res.ok) return null;
+      return (await res.json()) as PersonalAgent[];
+    } catch {
+      return null;
+    }
   },
 
   // Overview metrics. Returns null on 404 / error (endpoint may still be

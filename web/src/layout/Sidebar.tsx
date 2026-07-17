@@ -6,6 +6,7 @@ export type NavKey =
   | "network"
   | "reach"
   | "agents"
+  | "workspace"
   | "integrations"
   | "profile";
 
@@ -58,6 +59,12 @@ const Icons: Record<NavKey, JSX.Element> = {
       <path d="M12 8V4M9 4h6M8.5 13v2M15.5 13v2" />
     </svg>
   ),
+  workspace: (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="7" width="18" height="13" rx="2" />
+      <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  ),
   integrations: (
     <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
       <path d="M10 3v4M14 3v4M6 7h12v5a6 6 0 0 1-12 0zM12 18v3" />
@@ -78,6 +85,7 @@ const TOP: { k: NavKey; label: string }[] = [
   { k: "agents", label: "Agents" },
 ];
 const BOTTOM: { k: NavKey; label: string }[] = [
+  { k: "workspace", label: "Workspace" },
   { k: "integrations", label: "Integrations" },
   { k: "profile", label: "Profile" },
 ];

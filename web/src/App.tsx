@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import Sidebar, { NavKey } from "@/layout/Sidebar";
 import TopBar from "@/layout/TopBar";
 import FilterBar from "@/modules/network/FilterBar";
@@ -10,6 +17,7 @@ import LegendOverlay from "@/modules/network/LegendOverlay";
 import ReachView from "@/modules/reach/ReachView";
 import EntityPage from "@/modules/entity/EntityPage";
 import GatherView from "@/modules/gather/GatherView";
+import WorkspaceView from "@/modules/workspace/WorkspaceView";
 import IntegrationsView from "@/modules/integrations/IntegrationsView";
 import ProfileView from "@/modules/profile/ProfileView";
 import OverviewView from "@/modules/overview/OverviewView";
@@ -51,6 +59,7 @@ const TITLES: Record<NavKey, string> = {
   network: "Network",
   reach: "Reach",
   agents: "Agents",
+  workspace: "Workspace",
   integrations: "Integrations",
   profile: "Profile",
 };
@@ -141,6 +150,8 @@ export default function App() {
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantSeed, setAssistantSeed] = useState<string | null>(null);
   const [assistantReplyKey, setAssistantReplyKey] = useState(0);
+  // Live drawer width, reported by the drawer, used to squeeze main content.
+  const [assistantWidth, setAssistantWidth] = useState(400);
 
   const openAssistant = useCallback(() => {
     setAssistantOpen(true);
@@ -491,11 +502,16 @@ export default function App() {
           seed={assistantSeed}
           onSeedConsumed={() => setAssistantSeed(null)}
           onReplyComplete={() => setAssistantReplyKey((k) => k + 1)}
+          onWidth={setAssistantWidth}
           onClose={() => setAssistantOpen(false)}
         />
       )}
     </>
   );
+
+  // Squeeze the shell by the drawer's width while it is open (see styles.css).
+  const appClass = `app${assistantOpen ? " rail-open" : ""}`;
+  const appStyle = { "--rail-w": `${assistantWidth}px` } as CSSProperties;
 
   if (!workspace) {
     return (
@@ -511,7 +527,7 @@ export default function App() {
   // ---- full entity page route ----
   if (route.name === "entity") {
     return (
-      <div className="app">
+      <div className={appClass} style={appStyle}>
         <Sidebar
           active={view}
           onNavigate={navigateHome}
@@ -546,7 +562,7 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className={appClass} style={appStyle}>
       <Sidebar
         active={view}
         onNavigate={navigateHome}
@@ -711,7 +727,15 @@ export default function App() {
               onOpenEntity={openFull}
             />
           )}
-          {view === "agents" && <GatherView />}
+          {view === "agents" && (
+            <GatherView
+              onOpenAssistant={openAssistant}
+              onOpenMailCalibration={() => navigate("/reach#calibration")}
+            />
+          )}
+          {view === "workspace" && (
+            <WorkspaceView workspace={workspace} workspaces={workspaces} />
+          )}
           {view === "integrations" && <IntegrationsView />}
           {view === "profile" && <ProfileView />}
 

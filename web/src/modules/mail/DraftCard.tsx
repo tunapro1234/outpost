@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { MailDraft, MailRejectKind, MailRejectPayload } from "@/core/types";
+import { relativeTime } from "@/core/format";
 import type { ApprovePayload } from "./useMailDrafts";
 
 interface Props {
@@ -56,6 +57,7 @@ export default function DraftCard({
   const subject = edited?.subject ?? variant.subject;
   const body = edited?.body ?? variant.body;
   const fu = followupLabel(draft.followup_stage);
+  const draftedRel = relativeTime(draft.created_at);
 
   const setField = (field: "subject" | "body", value: string) => {
     setEdits((cur) => ({
@@ -130,6 +132,25 @@ export default function DraftCard({
           </span>
         </div>
       </div>
+
+      {(draftedRel || draft.author || draft.stale) && (
+        <div className="md-provenance">
+          {(draftedRel || draft.author) && (
+            <span className="md-drafted">
+              {draftedRel ? `drafted ${draftedRel}` : "drafted"}
+              {draft.author ? ` · by ${draft.author}` : ""}
+            </span>
+          )}
+          {draft.stale && (
+            <span
+              className="md-stale"
+              title="This draft predates your latest calibration — it will be re-written automatically."
+            >
+              outdated — queued for rewrite
+            </span>
+          )}
+        </div>
+      )}
 
       {draft.reasons.length > 0 && (
         <ul className="md-reasons">

@@ -83,3 +83,15 @@ export const IconClose = ({ size = 16 }: IProps) => (
     <path d="M6 6l12 12M18 6 6 18" />
   </svg>
 );
+// History — a clock face, used to reveal the thread list.
+export const IconHistory = ({ size = 16 }: IProps) => (
+  <svg {...base(size)}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3.5 2" />
+  </svg>
+);
+export const IconTrash = ({ size = 16 }: IProps) => (
+  <svg {...base(size)}>
+    <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0-.7 12a1 1 0 0 1-1 .9H7.7a1 1 0 0 1-1-.9L6 7" />
+  </svg>
+);

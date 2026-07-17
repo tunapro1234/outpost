@@ -43,6 +43,12 @@ için `context-probot.md`, konu satırı için `subject-lines.md`.
 - Bilinçli yazım hatası (kanon izin verse de yeniden kullanılabilir kalıpta YASAK — marka riski;
   yalnızca Tuna'nın tekil onayıyla).
 - Ünlem, emoji, büyük harf bloğu, madde işaretli gövde, ek dosya.
+- Koşullu-pazarlıklı giriş: "Okulunuzda robotik ... yürütülüyorsa, sizinle konuşmak istedim"
+  tarzı cümleler YASAK (Tuna, 2026-07-17). Bu kalıp alıcının ne yaptığını bilmeden yazdığını
+  itiraf eder ve "istedim" geçmiş kipi pasif durur. Ya hedef bilgisini doğrula ve düz cümle kur
+  ("Merkezinizde robotik kursları veriyorsunuz; ...") ya da koşula hiç girmeden doğrudan
+  değer/soru cümlesiyle başla. "...ysa/...sa + konuşmak istedim" kombinasyonu hiçbir varyantta
+  görünmeyecek.
 
 ## CTA — iki geçerli biçim
 1. **Ziyaret/dinleme ricası (varsayılan, atölye/eğitmen/genç girişimci için):**

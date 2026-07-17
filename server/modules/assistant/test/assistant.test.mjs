@@ -141,7 +141,7 @@ test("assistant oturumu spawn eder, brief üretir ve dosya protokolünü SSE ola
   assert.doesNotMatch(brief, /\{\{user\}\}|\{\{ws\}\}|\{\{code\}\}/);
 
   assert.deepEqual(calls, [
-    ["tmux", ["has-session", "-t", session]],
+    ["tmux", ["has-session", "-t", `=${session}`]],
     ["tmux", [
       "new-session", "-d", "-s", session, "-c", directory,
       "IS_SANDBOX=1 /opt/claude bin/claude --dangerously-skip-permissions --model claude-sonnet-5",

@@ -5,12 +5,79 @@ import type {
   GatherKind,
   GatherOverview,
   OverviewAgent,
+  PersonalAgent,
   StageItem,
 } from "@/core/types";
 import { api } from "@/core/api";
 import AgentsStrip from "./AgentsStrip";
 import AgentSpeed from "./AgentSpeed";
 import PipelineFlow from "./PipelineFlow";
+
+interface GatherViewProps {
+  // "Open chat" targets for the caller's personal agents.
+  onOpenAssistant: () => void;
+  onOpenMailCalibration: () => void;
+}
+
+// ---- personal agents (SPEC-MAILCAL §5) ----------------------------------
+const PERSONAL_META: Record<
+  PersonalAgent["kind"],
+  { label: string; desc: string; cta: string }
+> = {
+  assistant: {
+    label: "Assistant",
+    desc: "Your personal assistant — answers from the vault and arranges your dashboard.",
+    cta: "Open chat",
+  },
+  mail: {
+    label: "Mail writer",
+    desc: "Writes your outreach in your voice. Calibrate its style in Reach.",
+    cta: "Open chat",
+  },
+};
+
+function PersonalAgents({
+  agents,
+  onOpenAssistant,
+  onOpenMailCalibration,
+}: {
+  agents: PersonalAgent[];
+  onOpenAssistant: () => void;
+  onOpenMailCalibration: () => void;
+}) {
+  return (
+    <div className="g-agent-grid">
+      {agents.map((a) => {
+        const meta = PERSONAL_META[a.kind];
+        const open = a.kind === "mail" ? onOpenMailCalibration : onOpenAssistant;
+        return (
+          <div key={a.kind} className="g-agent personal">
+            <div className="g-agent-top">
+              <span className={`g-dot ${a.running ? "running" : "off"}`} />
+              <span className="g-agent-name">{meta.label}</span>
+              <span className="g-agent-status">
+                {a.running ? "Online" : "Off"}
+              </span>
+            </div>
+            <p className="g-agent-desc">{meta.desc}</p>
+            <div className="g-agent-foot">
+              <span className="g-agent-stat g-personal-meta">
+                <span className="g-personal-session" title={a.session}>
+                  {a.session}
+                </span>
+                <span className="g-dot-sep">·</span>
+                <span>{a.lastActivity ? timeAgo(a.lastActivity) : "idle"}</span>
+              </span>
+              <button className="g-agent-run" onClick={open}>
+                {meta.cta}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 // ---- helpers -------------------------------------------------------------
 function timeAgo(iso: string | null): string {
@@ -212,10 +279,14 @@ function AgentCard({
   );
 }
 
-export default function GatherView() {
+export default function GatherView({
+  onOpenAssistant,
+  onOpenMailCalibration,
+}: GatherViewProps) {
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [stage, setStage] = useState<StageItem[] | null>(null);
   const [overview, setOverview] = useState<GatherOverview | null>(null);
+  const [personal, setPersonal] = useState<PersonalAgent[] | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<GatherKind>("discover-company");
@@ -243,6 +314,18 @@ export default function GatherView() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Personal agents (assistant + mail writer). Null on 404 → section hidden.
+  useEffect(() => {
+    let alive = true;
+    api
+      .personalAgents()
+      .then((p) => alive && setPersonal(p))
+      .catch(() => alive && setPersonal(null));
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // poll the live overview every 5s (SPEC-GATHER2 §3)
   useEffect(() => {
@@ -411,6 +494,8 @@ export default function GatherView() {
 
       {error && <div className="g-error">{error}</div>}
 
+      <div className="g-section-label">Workspace agents</div>
+
       {/* ---------- always-visible live agents strip ---------- */}
       <AgentsStrip
         agents={overview ? overview.agents : null}
@@ -534,6 +619,18 @@ export default function GatherView() {
           </div>
         )}
       </div>
+
+      {/* ---------- personal agents (SPEC-MAILCAL §5) ---------- */}
+      {personal && personal.length > 0 && (
+        <div className="g-personal">
+          <div className="g-section-label">Personal agents</div>
+          <PersonalAgents
+            agents={personal}
+            onOpenAssistant={onOpenAssistant}
+            onOpenMailCalibration={onOpenMailCalibration}
+          />
+        </div>
+      )}
 
       {/* ---------- agent detail panel ---------- */}
       {selected && (

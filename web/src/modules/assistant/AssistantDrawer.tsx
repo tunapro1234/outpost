@@ -5,6 +5,7 @@ interface Props {
   seed?: string | null;
   onSeedConsumed?: () => void;
   onReplyComplete?: (threadId?: string) => void;
+  onWidth?: (w: number) => void;
   onClose: () => void;
 }
 
@@ -15,6 +16,7 @@ export default function AssistantDrawer({
   seed,
   onSeedConsumed,
   onReplyComplete,
+  onWidth,
   onClose,
 }: Props) {
   return (
@@ -28,6 +30,7 @@ export default function AssistantDrawer({
       seed={seed}
       onSeedConsumed={onSeedConsumed}
       onReplyComplete={onReplyComplete}
+      onWidth={onWidth}
       onClose={onClose}
       renderEmpty={() => (
         <div className="cp-empty">

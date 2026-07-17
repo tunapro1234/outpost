@@ -3,6 +3,7 @@ import { resolveThreadId } from "../copilot/threads.mjs";
 import { UserStore } from "../profile/service.mjs";
 import { createAssistantTmuxBridge, prepareAssistant } from "./tmux-bridge.mjs";
 import { personalAgentSession } from "./service.mjs";
+import { appendUsage } from "../mailer/usage.mjs";
 
 const SAFE_USERNAME = /^[a-z0-9-]{1,24}$/;
 
@@ -110,6 +111,7 @@ export async function assistantRoutes(app, {
 
     const abortController = new AbortController();
     let clientClosed = false;
+    let output = "";
     reply.raw.once("close", () => {
       clientClosed = !reply.raw.writableEnded;
       if (clientClosed) abortController.abort();
@@ -126,8 +128,17 @@ export async function assistantRoutes(app, {
       if (!stream) throw new Error("Asistan tmux oturumu hazır değil veya meşgul");
       for await (const rawDelta of stream) {
         const delta = String(rawDelta ?? "");
+        output += delta;
         if (delta && !await sendEvent(reply, { delta })) break;
       }
+      await appendUsage(workspace, {
+        user,
+        agent: "assistant",
+        kind: "chat",
+        chars_in: message.length,
+        chars_out: output.length,
+      }, { fileSystem }).catch((error) =>
+        app.log.warn({ err: error }, "Assistant usage yazılamadı"));
     } catch (error) {
       if (!clientClosed) await sendEvent(reply, { error: publicError(error) });
     } finally {

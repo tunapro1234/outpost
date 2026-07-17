@@ -428,6 +428,8 @@ export class GatherRunner {
     now = () => new Date(),
     deepenPerson = runPersonDeepener,
     writeMail = runMailWriterCycle,
+    writerOptions = {},
+    logger = console,
   } = {}) {
     this.classify = classify;
     this.openBrowser = openBrowser;
@@ -436,6 +438,8 @@ export class GatherRunner {
     this.now = now;
     this.deepenPerson = deepenPerson;
     this.writeMail = writeMail;
+    this.writerOptions = writerOptions;
+    this.logger = logger;
     this.active = new Map();
     this.activities = new Map();
   }
@@ -510,7 +514,9 @@ export class GatherRunner {
         return run;
       }
       if (agent.task === "write-mail") {
-        const result = await this.writeMail({ workspace, agent, now: this.now });
+        const result = await this.writeMail({
+          workspace, agent, now: this.now, logger: this.logger, ...this.writerOptions,
+        });
         run.items_in = result.selected;
         run.items_out = result.drafted;
         run.staged = result.drafted;

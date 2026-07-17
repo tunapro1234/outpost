@@ -86,56 +86,152 @@ export async function streamChat(
 }
 
 // ---- per-workspace persistence, namespaced per assistant ----------------
+// Multi-thread local history. Each workspace+namespace holds a list of threads;
+// every thread carries its own backend thread id (for server-side continuity),
+// a title derived from its first user message, and the full message log.
+export interface ChatThread {
+  id: string; // local id — the history key
+  title: string; // derived from the first user message
+  updatedAt: number; // ms epoch — orders the list + drives relative time
+  backendThreadId: string | null; // server thread_id, for conversation continuity
+  messages: ChatMessage[];
+}
+
+export interface ChatState {
+  threads: ChatThread[];
+  activeId: string | null;
+}
+
 export interface ChatStore {
-  loadThread(): string | null;
-  saveThread(id: string | null): void;
-  loadMessages(): ChatMessage[];
-  saveMessages(msgs: ChatMessage[]): void;
-  clearConversation(): void;
+  load(): ChatState;
+  save(state: ChatState): void;
   loadWidth(): number;
   saveWidth(w: number): void;
 }
 
-// Namespace keys so Copilot and Assistant keep separate history/threads/width.
-// Keeping ns "copilot" preserves the existing owner conversation keys.
+const SCHEMA_VERSION = 2;
+const MAX_THREADS = 30;
+const TITLE_MAX = 40;
+
+function makeThreadId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// A fresh, empty thread. Titled "New chat" until its first user message lands.
+export function newThread(): ChatThread {
+  return {
+    id: makeThreadId(),
+    title: "New chat",
+    updatedAt: Date.now(),
+    backendThreadId: null,
+    messages: [],
+  };
+}
+
+// Title = first user message, collapsed to a single line and clipped to ~40ch.
+export function threadTitle(messages: ChatMessage[]): string {
+  const first = messages.find((m) => m.role === "user");
+  if (!first) return "New chat";
+  const t = first.content.trim().replace(/\s+/g, " ");
+  if (!t) return "New chat";
+  return t.length > TITLE_MAX ? t.slice(0, TITLE_MAX).trimEnd() + "…" : t;
+}
+
+// Compact "5m ago" / "2h ago" / "3d ago" — falls back to a short date past a week.
+export function relativeTime(ts: number): string {
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return new Date(ts).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+// Namespace keys so distinct assistants keep separate history/threads/width.
 export function makeChatStore(ns: string): ChatStore {
-  const threadKey = () => `outpost.${ns}.thread.${getWorkspace()}`;
-  const messagesKey = () => `outpost.${ns}.msgs.${getWorkspace()}`;
+  const stateKey = () => `outpost.${ns}.state.${getWorkspace()}`;
   const widthKey = `outpost.${ns}.width`;
+  // Legacy v1 keys (single conversation per workspace) — migrated on first load.
+  const legacyThreadKey = () => `outpost.${ns}.thread.${getWorkspace()}`;
+  const legacyMsgsKey = () => `outpost.${ns}.msgs.${getWorkspace()}`;
 
   return {
-    loadThread() {
-      return localStorage.getItem(threadKey());
-    },
-    saveThread(id) {
-      if (id) localStorage.setItem(threadKey(), id);
-      else localStorage.removeItem(threadKey());
-    },
-    loadMessages() {
+    load(): ChatState {
       try {
-        const raw = localStorage.getItem(messagesKey());
-        if (!raw) return [];
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? (parsed as ChatMessage[]) : [];
+        const raw = localStorage.getItem(stateKey());
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (
+            parsed &&
+            parsed.v === SCHEMA_VERSION &&
+            Array.isArray(parsed.threads)
+          ) {
+            const threads = (parsed.threads as ChatThread[]).filter(
+              (t) => t && Array.isArray(t.messages)
+            );
+            const activeId =
+              typeof parsed.activeId === "string" &&
+              threads.some((t) => t.id === parsed.activeId)
+                ? parsed.activeId
+                : threads[0]?.id ?? null;
+            return { threads, activeId };
+          }
+        }
       } catch {
-        return [];
+        /* fall through to migration / empty */
       }
-    },
-    saveMessages(msgs) {
+      // ---- migrate legacy single-thread data (v1) → one thread, no loss ----
       try {
-        // Never persist the error notes — they are transient session feedback.
+        const rawMsgs = localStorage.getItem(legacyMsgsKey());
+        const legacyMsgs = rawMsgs ? JSON.parse(rawMsgs) : null;
+        if (Array.isArray(legacyMsgs) && legacyMsgs.length > 0) {
+          const t = newThread();
+          t.messages = legacyMsgs as ChatMessage[];
+          t.title = threadTitle(t.messages);
+          t.backendThreadId = localStorage.getItem(legacyThreadKey());
+          return { threads: [t], activeId: t.id };
+        }
+      } catch {
+        /* ignore malformed legacy data */
+      }
+      return { threads: [], activeId: null };
+    },
+
+    save(state: ChatState) {
+      try {
+        const active = state.activeId;
+        // Drop stray empty threads (except the active one), strip transient
+        // error notes, order newest-first, and cap the history at MAX_THREADS.
+        const cleaned = state.threads
+          .filter((t) => t.messages.length > 0 || t.id === active)
+          .map((t) => ({
+            ...t,
+            messages: t.messages.filter((m) => m.role !== "error"),
+          }))
+          .sort((a, b) => b.updatedAt - a.updatedAt);
+        const kept = cleaned.slice(0, MAX_THREADS);
+        if (active && !kept.some((t) => t.id === active)) {
+          const act = cleaned.find((t) => t.id === active);
+          if (act) kept.push(act);
+        }
         localStorage.setItem(
-          messagesKey(),
-          JSON.stringify(msgs.filter((m) => m.role !== "error"))
+          stateKey(),
+          JSON.stringify({ v: SCHEMA_VERSION, activeId: active, threads: kept })
         );
       } catch {
         /* quota — ignore */
       }
     },
-    clearConversation() {
-      localStorage.removeItem(messagesKey());
-      localStorage.removeItem(threadKey());
-    },
+
     loadWidth() {
       const raw = Number(localStorage.getItem(widthKey));
       if (!raw || Number.isNaN(raw)) return 400;

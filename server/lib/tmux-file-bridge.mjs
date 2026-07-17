@@ -120,7 +120,7 @@ export function createTmuxFileBridge({
 
   async function sessionExists(context) {
     try {
-      await exec("tmux", ["has-session", "-t", session]);
+      await exec("tmux", ["has-session", "-t", `=${session}`]);
       return true;
     } catch {
       if (!onMissingSession) return false;

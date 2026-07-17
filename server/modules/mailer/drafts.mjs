@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { parseMarkdown, serializeMarkdown } from "../../lib/vault.mjs";
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
+import { isDraftStale, readCalibration } from "./calibration.mjs";
 
 function stageDirectory(workspace) {
   return path.join(workspace.directory, "stage");
@@ -60,6 +61,7 @@ function draftRecord(file, parsed) {
     reasons: Array.isArray(parsed.meta.reasons) ? parsed.meta.reasons : [],
     variants: parsed.meta.variants,
     created_at: parsed.meta.created_at,
+    author: typeof parsed.meta.author === "string" ? parsed.meta.author : null,
     followup_stage: parsed.meta.followup_stage ?? 0,
     status: "pending",
   };
@@ -79,7 +81,14 @@ export async function listMailDraftRecords(workspace) {
 }
 
 export async function listMailDrafts(workspace) {
-  const drafts = (await listMailDraftRecords(workspace)).map((draft) => {
+  const records = await listMailDraftRecords(workspace);
+  const calibrations = new Map(await Promise.all(
+    [...new Set(records.map((draft) => draft.author).filter(Boolean))].map(async (author) => [
+      author,
+      (await readCalibration(workspace, author)).calibrated_at,
+    ]),
+  ));
+  const drafts = records.map((draft) => {
     const person = workspace.index.entities.get(draft.person_id);
     const company = draft.company_id ? workspace.index.entities.get(draft.company_id) : null;
     return {
@@ -92,6 +101,8 @@ export async function listMailDrafts(workspace) {
       reasons: draft.reasons,
       variants: draft.variants,
       created_at: draft.created_at,
+      author: draft.author,
+      stale: isDraftStale(draft, calibrations.get(draft.author)),
       followup_stage: draft.followup_stage,
       status: "pending",
     };
@@ -111,6 +122,7 @@ export async function createMailDraftStage(workspace, {
   reasons,
   followupStage = 0,
   sourceAgent = "mail-writer",
+  author,
   now = () => new Date(),
 }) {
   if (!validVariants(variants)) throw new Error("Mail draft tam olarak 3 geçerli varyant içermeli");
@@ -125,6 +137,7 @@ export async function createMailDraftStage(workspace, {
     queue_score: score,
     reasons,
     created_at: createdAt,
+    ...(author ? { author } : {}),
     followup_stage: followupStage,
     status: "pending",
   };
@@ -136,6 +149,27 @@ export async function createMailDraftStage(workspace, {
     flag: "wx",
   });
   return { id, file: `${id}.md`, created_at: createdAt };
+}
+
+export async function rewriteMailDraftStage(workspace, draft, {
+  variants,
+  author = draft.author,
+  now = () => new Date(),
+} = {}) {
+  if (!validVariants(variants)) throw new Error("Mail draft tam olarak 3 geçerli varyant içermeli");
+  const filePath = path.join(stageDirectory(workspace), draft.file);
+  const parsed = parseMarkdown(await fs.readFile(filePath, "utf8"), draft.file);
+  if (parsed.meta.kind !== "mail-draft" || parsed.meta.status !== "pending") {
+    throw new Error("Bekleyen mail draft yeniden yazılamadı");
+  }
+  const createdAt = now().toISOString();
+  await fs.writeFile(filePath, serializeMarkdown(parsed.body, {
+    ...parsed.meta,
+    variants,
+    created_at: createdAt,
+    ...(author ? { author } : {}),
+  }), "utf8");
+  return { id: draft.id, file: draft.file, created_at: createdAt };
 }
 
 export async function readOutbox(workspace) {
@@ -328,6 +362,7 @@ export async function approveMailDraft(workspace, id, payload, { now = () => new
     tone: selected.tone,
     followup_stage: draft.followup_stage,
     created_at: draft.created_at,
+    ...(draft.author ? { author: draft.author } : {}),
     approved_at: approvedAt,
     approved: true,
     sent: false,
@@ -429,6 +464,7 @@ export async function rejectMailDraft(workspace, id, payload = {}, {
     company_id: rejected.company_id,
     kind: decision.kind,
     text: decision.text,
+    ...(rejected.author ? { author: rejected.author } : {}),
     ...(index > 0 ? { cascade: true } : {}),
   })));
 
