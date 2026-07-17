@@ -145,6 +145,7 @@ textarea {
 
 /* ---------- sidebar ---------- */
 .sidebar {
+  position: relative;
   flex: 0 0 auto;
   width: 208px;
   height: 100%;
@@ -154,16 +155,27 @@ textarea {
   flex-direction: column;
   padding: 12px 10px 10px;
   gap: 4px;
-  transition: width 0.16s ease;
+  transition: width 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-.sidebar.collapsed {
-  width: 60px;
+/* Fully hidden: the rail collapses to zero width (inline style) and its
+   content is clipped so nothing leaks past the left edge. A reveal handle
+   (.sidebar-reveal) takes over. */
+.sidebar.hidden {
+  padding-left: 0;
+  padding-right: 0;
+  border-right-color: transparent;
+  overflow: hidden;
+}
+/* No transition while dragging so the width tracks the cursor 1:1. */
+.sidebar.resizing {
+  transition: none;
 }
 .side-brand {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 6px 8px 14px;
+  min-width: 0;
 }
 .side-mark {
   width: 26px;
@@ -182,6 +194,9 @@ textarea {
   font-weight: 700;
   font-size: 15px;
   letter-spacing: 0.2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .side-group {
   display: flex;
@@ -201,10 +216,15 @@ textarea {
   font-size: 13.5px;
   font-weight: 500;
   text-align: left;
+  min-width: 0;
+  overflow: hidden;
 }
-.sidebar.collapsed .side-item {
-  justify-content: center;
-  padding: 0;
+.side-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .side-item:hover {
   background: var(--surface-2);
@@ -238,10 +258,7 @@ textarea {
   border-radius: 9px;
   background: var(--surface-2);
   text-align: left;
-}
-.sidebar.collapsed .side-ws {
-  justify-content: center;
-  padding: 8px 0;
+  min-width: 0;
 }
 .side-ws:hover {
   border-color: var(--text-faint);
@@ -257,17 +274,25 @@ textarea {
   display: flex;
   flex-direction: column;
   line-height: 1.25;
+  min-width: 0;
+  flex: 1;
 }
 .ws-k {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ws-v {
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .side-collapse {
   margin-top: 6px;
@@ -280,6 +305,69 @@ textarea {
 }
 .side-collapse:hover {
   color: var(--text);
+}
+
+/* Right-edge drag handle. Sits just over the border; a hairline appears on
+   hover / while dragging so the affordance reads without cluttering the rail. */
+.side-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -3px;
+  width: 7px;
+  cursor: col-resize;
+  z-index: 3;
+}
+.side-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.14s;
+}
+.side-resize:hover::after {
+  background: var(--focus);
+}
+.sidebar.resizing .side-resize::after {
+  background: var(--accent);
+}
+.sidebar.hidden .side-resize {
+  display: none;
+}
+
+/* Left-edge reveal handle — mirror of the assistant FAB (right edge), same
+   inverse-contrast language: light chip on dark theme, dark on light. */
+.sidebar-reveal {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 44;
+  display: flex;
+  align-items: center;
+  padding: 10px 9px 10px 7px;
+  border: none;
+  border-radius: 0 10px 10px 0;
+  background: var(--text);
+  color: var(--bg);
+  box-shadow: 12px 0 28px -18px rgba(0, 0, 0, 0.55), 0 0 0 2px var(--accent-halo);
+  transition: box-shadow 0.14s, padding 0.14s;
+}
+.sidebar-reveal:hover {
+  box-shadow: 12px 0 28px -16px rgba(0, 0, 0, 0.6), 0 0 0 3px var(--accent);
+  padding-left: 9px;
+}
+.sidebar-reveal-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bg);
 }
 .net-stage {
   position: absolute;
@@ -3974,12 +4062,6 @@ table.grid td.num {
 .ws-pop-name {
   flex: 1;
   font-weight: 500;
-}
-.sidebar.collapsed .ws-pop {
-  left: calc(100% + 8px);
-  right: auto;
-  bottom: 0;
-  width: 200px;
 }
 
 /* ---------- List: presets, grouping, saved views ---------- */

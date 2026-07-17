@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { WorkspaceInfo } from "@/core/types";
 
 export type NavKey =
@@ -13,8 +13,11 @@ export type NavKey =
 interface Props {
   active: NavKey;
   onNavigate: (k: NavKey) => void;
-  collapsed: boolean;
-  onToggleCollapse: () => void;
+  hidden: boolean;
+  onClose: () => void;
+  width: number;
+  resizing: boolean;
+  onResizeStart: (e: React.MouseEvent) => void;
   workspace: string;
   workspaces: WorkspaceInfo[];
   onWorkspaceChange: (id: string) => void;
@@ -83,8 +86,11 @@ const BOTTOM: { k: NavKey; label: string }[] = [
 export default function Sidebar({
   active,
   onNavigate,
-  collapsed,
-  onToggleCollapse,
+  hidden,
+  onClose,
+  width,
+  resizing,
+  onResizeStart,
   workspace,
   workspaces,
   onWorkspaceChange,
@@ -105,18 +111,25 @@ export default function Sidebar({
     <button
       className={`side-item ${active === k ? "on" : ""}`}
       onClick={() => onNavigate(k)}
-      title={collapsed ? label : undefined}
     >
       <span className="side-ico">{Icons[k]}</span>
-      {!collapsed && <span className="side-label">{label}</span>}
+      <span className="side-label">{label}</span>
     </button>
   );
 
+  // While hidden the rail collapses to zero width; keep it un-focusable so the
+  // clipped content can't be tabbed into behind the reveal handle.
+  const style: CSSProperties = { width: hidden ? 0 : width };
+
   return (
-    <nav className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+    <nav
+      className={`sidebar ${hidden ? "hidden" : ""} ${resizing ? "resizing" : ""}`}
+      style={style}
+      aria-hidden={hidden}
+    >
       <div className="side-brand">
         <span className="side-mark">O</span>
-        {!collapsed && <span className="side-word">Outpost</span>}
+        <span className="side-word">Outpost</span>
       </div>
 
       <div className="side-group">
@@ -166,22 +179,33 @@ export default function Sidebar({
         <button
           className={`side-ws ${wsOpen ? "open" : ""}`}
           onClick={() => setWsOpen((o) => !o)}
-          title={collapsed ? `Workspace · ${workspace}` : undefined}
         >
           <span className="ws-dot" />
-          {!collapsed && (
-            <span className="ws-meta">
-              <span className="ws-k">Workspace</span>
-              <span className="ws-v">{workspace}</span>
-            </span>
-          )}
-          {!collapsed && <span className="ws-caret">▾</span>}
+          <span className="ws-meta">
+            <span className="ws-k">Workspace</span>
+            <span className="ws-v">{workspace}</span>
+          </span>
+          <span className="ws-caret">▾</span>
         </button>
       </div>
 
-      <button className="side-collapse" onClick={onToggleCollapse}>
-        {collapsed ? "»" : "«"}
+      <button
+        className="side-collapse"
+        onClick={onClose}
+        title="Hide sidebar (⌘B)"
+        aria-label="Hide sidebar"
+      >
+        «
       </button>
+
+      {/* Right-edge drag handle: resize between min/max, highlights on hover. */}
+      <div
+        className="side-resize"
+        onMouseDown={onResizeStart}
+        title="Drag to resize"
+        role="separator"
+        aria-orientation="vertical"
+      />
     </nav>
   );
 }

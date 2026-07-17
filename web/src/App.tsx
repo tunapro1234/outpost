@@ -58,6 +58,9 @@ import {
 
 const EMPTY: GraphData = { nodes: [], edges: [] };
 const WORKSPACE_STORAGE_KEY = "outpost.workspace";
+const SIDEBAR_MIN = 180;
+const SIDEBAR_MAX = 360;
+const SIDEBAR_DEFAULT = 208;
 
 const TITLES: Record<NavKey, string> = {
   overview: "Overview",
@@ -77,9 +80,18 @@ function loadTheme(): ThemeName {
 export default function App() {
   const [theme, setTheme] = useState<ThemeName>(loadTheme);
   const [graphMode, setGraphMode] = useState<"graph" | "list">("graph");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+  // Sidebar: fully hide/show (persisted) plus a draggable width. "Collapsed"
+  // now means fully hidden — a reveal handle stays on the left edge.
+  const [sidebarHidden, setSidebarHidden] = useState(
     () => localStorage.getItem("outpost.sidebarCollapsed") === "1"
   );
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const raw = parseInt(localStorage.getItem("outpost.sidebarWidth") ?? "", 10);
+    return Number.isFinite(raw)
+      ? Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, raw))
+      : SIDEBAR_DEFAULT;
+  });
+  const [sidebarResizing, setSidebarResizing] = useState(false);
   const [physicsOpen, setPhysicsOpen] = useState(
     () => localStorage.getItem("outpost.physicsOpen") === "1"
   );
@@ -167,6 +179,37 @@ export default function App() {
     setAssistantOpen(true);
   }, []);
 
+  // Drag the sidebar's right edge. Transition is suppressed (via `resizing`)
+  // so content reflows live under the cursor; the final width is persisted by
+  // the effect above.
+  const startSidebarResize = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = sidebarWidth;
+      setSidebarResizing(true);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      const onMove = (ev: MouseEvent) => {
+        const w = Math.min(
+          SIDEBAR_MAX,
+          Math.max(SIDEBAR_MIN, startW + (ev.clientX - startX))
+        );
+        setSidebarWidth(w);
+      };
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        setSidebarResizing(false);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [sidebarWidth]
+  );
+
   const changeWorkspace = useCallback(
     (id: string) => {
       if (id === workspace) return true;
@@ -242,8 +285,11 @@ export default function App() {
     localStorage.setItem("outpost.theme", theme);
   }, [theme]);
   useEffect(() => {
-    localStorage.setItem("outpost.sidebarCollapsed", sidebarCollapsed ? "1" : "0");
-  }, [sidebarCollapsed]);
+    localStorage.setItem("outpost.sidebarCollapsed", sidebarHidden ? "1" : "0");
+  }, [sidebarHidden]);
+  useEffect(() => {
+    localStorage.setItem("outpost.sidebarWidth", String(sidebarWidth));
+  }, [sidebarWidth]);
   useEffect(() => {
     localStorage.setItem("outpost.physicsOpen", physicsOpen ? "1" : "0");
   }, [physicsOpen]);
@@ -367,6 +413,9 @@ export default function App() {
       if ((e.metaKey || e.ctrlKey) && (e.key === "j" || e.key === "J")) {
         e.preventDefault();
         setAssistantOpen((o) => !o);
+      } else if ((e.metaKey || e.ctrlKey) && (e.key === "b" || e.key === "B")) {
+        e.preventDefault();
+        setSidebarHidden((h) => !h);
       } else if (e.key === "/" && !typing) {
         e.preventDefault();
         searchRef.current?.focus();
@@ -485,6 +534,35 @@ export default function App() {
     navigate(viewPath(k));
   }, []);
 
+  // Sidebar + its left-edge reveal handle (mirrors the assistant FAB on the
+  // right). The handle only appears while the rail is hidden.
+  const renderSidebar = () => (
+    <>
+      <Sidebar
+        active={view}
+        onNavigate={navigateHome}
+        hidden={sidebarHidden}
+        onClose={() => setSidebarHidden(true)}
+        width={sidebarWidth}
+        resizing={sidebarResizing}
+        onResizeStart={startSidebarResize}
+        workspace={workspace!}
+        workspaces={workspaces}
+        onWorkspaceChange={changeWorkspace}
+      />
+      {sidebarHidden && (
+        <button
+          className="sidebar-reveal"
+          onClick={() => setSidebarHidden(false)}
+          title="Show sidebar (⌘B)"
+          aria-label="Show sidebar"
+        >
+          <span className="sidebar-reveal-label">Menu</span>
+        </button>
+      )}
+    </>
+  );
+
   // Assistant lives at layout level so it is reachable from every view. The
   // edge FAB is suppressed while another right rail (entity panel) owns that
   // edge — the drawer stays reachable via ⌘J and the FAB returns on Esc/close.
@@ -532,15 +610,7 @@ export default function App() {
   if (route.name === "entity") {
     return (
       <div className={appClass} style={appStyle}>
-        <Sidebar
-          active={view}
-          onNavigate={navigateHome}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
-          workspace={workspace}
-          workspaces={workspaces}
-          onWorkspaceChange={changeWorkspace}
-        />
+        {renderSidebar()}
         <div className="main" key={workspace}>
           <EntityPage
             id={route.id}
@@ -567,15 +637,7 @@ export default function App() {
 
   return (
     <div className={appClass} style={appStyle}>
-      <Sidebar
-        active={view}
-        onNavigate={navigateHome}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
-        workspace={workspace}
-        workspaces={workspaces}
-        onWorkspaceChange={changeWorkspace}
-      />
+      {renderSidebar()}
 
       <div className="main" key={workspace}>
         <TopBar
