@@ -23,3 +23,8 @@ Canlı vault: `/srv/outpost/data/vault` (repo dışı). İlk dolum: probot outre
 node server/importer.mjs /srv/probot/outreach/vault /srv/outpost/data/vault
 ```
 Kaynak vault salt-okunur; kanonik veri migrate gününe kadar probot'ta kalır (HANDOFF).
+
+## Dev ortamı (2026-07-17)
+- **outpost-dev.tunapro.xyz** → 127.0.0.1:3003 (`outpost-dev.service`), worktree `/srv/outpost/outpost-dev` (**dev** branch).
+- Veri: `/srv/outpost/workspaces-dev` (probot kopyası; workspace code `prb-dev`, agentlar kapalı, mail ingest yok). Prod verisinden tamamen ayrık.
+- Akış: özellik → `dev` branch'ine push → `git pull && npm install && (cd web && npm run build) && systemctl restart outpost-dev` → outpost-dev'de test → `main`'e merge → prod deploy. Stable = main.
