@@ -106,3 +106,12 @@ probotstudio.com · 0538 040 81 48
 - Kurum kanıtı VE kişisel hook YOKSA: o kişiye soru-tahmin maili YAZMA. Kısa, iddiasız genel
   tanıtım + düşük sürtünmeli özet teklifi kur ya da taslak üretmeyi reddet ("kanıt yok,
   araştırma gerekli" notu düş).
+
+## KONUM KISITI - Istanbul disina yuz yuze gorusme YOK (Tuna, 2026-07-17)
+- BAGLAM PAKETINDEKI "Konum" satirina MUTLAKA uy.
+- Konum Istanbul DISI ise: "ugrayip sizi dinleyebilir miyim", yuz yuze ziyaret/toplanti teklifi
+  KESINLIKLE YASAK. Yerine: kisa telefon ya da online gorusme ("size uygun bir vakitte 15 dakika
+  kisa bir telefon gorusmesi") ya da dusuk surtunmeli "kisa bir ozet ileteyim mi" teklifi kur.
+- Konum Istanbul ICI ise yuz yuze kisa ziyaret teklifi serbesttir.
+- Konum bilinmiyorsa guvenli tarafta kal: yuz yuze teklif etme, telefon/online/ozet kullan.
+- Sehir adini maile YAZMA, sadece CTA bicimini ona gore sec.

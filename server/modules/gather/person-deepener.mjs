@@ -82,8 +82,41 @@ function mergeFindings(current, result = {}) {
   };
 }
 
+
+// ad.soyad@domain pattern üreticisi (Türkçe karakter doğru): YAYIMLANMIŞ adres
+// bulunamazsa son-çare ADAY. Asla "doğrulanmış" sayılmaz (mail_source: pattern),
+// mailResearch kovasında kalır, onaysız gönderilmez.
+const TR_MAP = { "ç": "c", "ğ": "g", "ı": "i", "İ": "i", "i̇": "i", "ö": "o", "ş": "s", "ü": "u" };
+function asciiName(value) {
+  return String(value ?? "")
+    .toLocaleLowerCase("tr-TR")
+    .replace(/[çğıİi̇öşü]/g, (ch) => TR_MAP[ch] ?? ch)
+    .normalize("NFD").replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z]/g, "");
+}
+export function companyDomain(company) {
+  const site = company?.meta?.site;
+  if (typeof site !== "string" || !site.trim()) return null;
+  try {
+    const host = new URL(site.includes("://") ? site : `https://${site}`).hostname;
+    return host.replace(/^www\./, "") || null;
+  } catch {
+    return null;
+  }
+}
+export function patternMail(personName, company) {
+  const domain = companyDomain(company);
+  if (!domain) return null;
+  const parts = String(personName ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return null;
+  const local = `${asciiName(parts[0])}.${asciiName(parts.at(-1))}`;
+  if (!/^[a-z]+\.[a-z]+$/.test(local)) return null;
+  return `${local}@${domain}`;
+}
+
 export async function runDeepeningPolicy({
   person,
+  company = null,
   importance,
   signals,
   source,
@@ -93,6 +126,7 @@ export async function runDeepeningPolicy({
 }) {
   const VERIFIED_MAIL = new Set(["yayimlanmis", "verified", "manual", "resmi"]);
   let findings = {
+    __company: company,
     school: person.meta.school ?? null,
     mail: VERIFIED_MAIL.has(String(person.meta.mail_source ?? "").toLowerCase())
       ? (person.meta.mail ?? null)
@@ -129,7 +163,16 @@ export async function runDeepeningPolicy({
       activeBudget = budget * 2;
     }
   }
-  return { findings, completed, trace, spent, budget: activeBudget };
+  // Yayımlanmış adres bulunamadıysa ad.soyad@domain pattern adayını doldur
+  // (doğrulanmamış; sistem bunu published saymaz).
+  if (!hasText(findings.mail)) {
+    const guess = patternMail(person.meta.name, findings.__company);
+    if (guess) {
+      findings = { ...findings, mail: guess, mail_pattern: true };
+    }
+  }
+  const { __company, ...clean } = findings;
+  return { findings: clean, completed, trace, spent, budget: activeBudget };
 }
 
 function parseJson(output) {
@@ -267,7 +310,8 @@ function proposedFields(person, result) {
   if (nextHooks.some((hook) => !currentHooks.includes(hook))) fields.hooks = nextHooks;
   if (hasText(result.findings.mail) && result.findings.mail !== person.meta.mail) {
     fields.mail = result.findings.mail.trim();
-    fields.mail_source = "yayimlanmis";
+    // Pattern (ad.soyad@domain) tahminleri DOĞRULANMAMIŞ; yayımlanmış bulgular doğrulanmış.
+    fields.mail_source = result.findings.mail_pattern ? "pattern" : "yayimlanmis";
     if (hasText(result.findings.mail_source_url)) {
       fields.mail_source_url = result.findings.mail_source_url.trim();
     }
@@ -313,6 +357,7 @@ export async function runPersonDeepener({
     try {
       const result = await runDeepeningPolicy({
         person,
+        company,
         importance: companyImportance(company).value,
         signals,
         source,

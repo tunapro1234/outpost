@@ -86,10 +86,25 @@ function employerEvidence(company, index, limit = 4) {
       name: other.meta.name,
       label: cleanLabel(edge.label) ?? null,
       program: other.meta.program ?? null,
+      city: (["city", "il", "sehir"].map((k) => other.meta[k]).find((v) => typeof v === "string" && v.trim()) ?? null),
     });
     if (evidence.length >= limit) break;
   }
   return evidence;
+}
+
+
+// Konum: İstanbul dışıysa yüz yüze görüşme teklif edilmez (Tuna, 2026-07-17 —
+// "İstanbul dışındaysa ben gidemeyebilirim"). Kurumun (yoksa kişinin) şehri.
+function cityOf(meta) {
+  for (const key of ["city", "il", "sehir", "district", "ilce"]) {
+    const value = meta?.[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+function isIstanbul(city) {
+  return /istanbul/i.test((city ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, ""));
 }
 
 export function buildPersonBrief(person, index, signals) {
@@ -101,6 +116,7 @@ export function buildPersonBrief(person, index, signals) {
 
   const employerRelation = cleanLabel(edge?.label);
   const cleanedMail = meta.mail ? cleanMail(meta.mail) : null;
+  const evidence = employerEvidence(company, index);
 
   const known = [];
   if (company) {
@@ -135,10 +151,16 @@ export function buildPersonBrief(person, index, signals) {
     },
     employer: company
       ? { id: company.id, name: company.meta.name, type: company.meta.type,
-          relation: employerRelation, meaning }
+          relation: employerRelation, meaning,
+          city: cityOf(company.meta) }
       : null,
+    location: (() => {
+      const evidenceCity = evidence.find((item) => item.city)?.city ?? null;
+      const city = cityOf(company?.meta) ?? evidenceCity ?? cityOf(meta);
+      return { city, istanbul: isIstanbul(city), known: Boolean(city) };
+    })(),
     hooks,
-    evidence: employerEvidence(company, index),
+    evidence,
     score: { value: scored.score, reasons: scored.reasons },
     known,
     findings,
@@ -174,6 +196,14 @@ export function briefContextText(brief) {
     : (brief.evidence?.length
       ? "Hooks: kişiye özel hook yok, KURUM KANITLARINI kullan (yukarıda)"
       : "Hooks: doğrulanmış hook yok (hook uydurma; alıcıya kendi işini sorma)"));
+  if (brief.location?.known) {
+    lines.push(`Konum: ${brief.location.city}${brief.location.istanbul ? "" : " (İstanbul DIŞI)"}`);
+    lines.push(brief.location.istanbul
+      ? "CTA: İstanbul içi, yüz yüze kısa ziyaret/dinleme teklif edilebilir."
+      : "CTA KISITI: İstanbul dışı. YÜZ YÜZE ZİYARET/UĞRAMA TEKLİF ETME. Sadece kısa telefon/online görüşme ya da 'kısa bir özet ileteyim mi' teklifi kur.");
+  } else {
+    lines.push("Konum: bilinmiyor. Güvenli taraf: yüz yüze ziyaret teklif etme, telefon/online görüşme ya da özet teklifi kur.");
+  }
   lines.push(`Skor: ${brief.score.value}`);
   if (brief.score.reasons?.length) {
     lines.push(`Skor nedenleri:\n${brief.score.reasons.map((reason) => `- ${reason}`).join("\n")}`);
