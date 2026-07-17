@@ -165,21 +165,15 @@ export async function generateMailVariants(context, {
   }
 }
 
-// Tavan takvim gününe göre DEĞİL, insan onayı bekleyen toplam işe göre:
-// bekleyen taslak + gönderilmemiş outbox. (Takvim-günü versiyonu gece yarısı
-// sayacı sıfırlayıp tavanı deldiriyordu — 2026-07-17 00:15 vakası.)
-export function nightlyDraftCount({ drafts, outbox }) {
-  return drafts.length + outbox.filter((item) => item.sent !== true).length;
-}
-
 export async function selectWriterCandidates(workspace, { limit = 5, now = new Date() } = {}) {
   const [{ queue }, drafts, outbox] = await Promise.all([
     mailQueue(workspace),
     listMailDraftRecords(workspace),
     readOutbox(workspace),
   ]);
-  const remaining = Math.max(0, 15 - nightlyDraftCount({ drafts, outbox, now }));
-  const cycleLimit = Math.min(5, Number.isInteger(limit) && limit > 0 ? limit : 5, remaining);
+  // Toplam taslak tavanı YOK (Tuna, 2026-07-17); tempo cycle limitiyle sınırlı.
+  const remaining = Infinity;
+  const cycleLimit = Math.min(5, Number.isInteger(limit) && limit > 0 ? limit : 5);
   const inflightCompanies = new Set([
     ...drafts.map((item) => item.company_id).filter(Boolean),
     ...outbox.filter((item) => item.approved === true && item.sent === false)
@@ -220,7 +214,6 @@ export async function runMailWriterCycle({
     now: now(),
   });
   const result = { selected: selection.selected.length, drafted: 0, drafts: [], warnings: [] };
-  if (!selection.remaining) result.note = "Gecelik 15 taslak sınırına ulaşıldı";
   for (const item of selection.selected) {
     const person = workspace.index.entities.get(item.id);
     const company = item.company_id ? workspace.index.entities.get(item.company_id) : null;
