@@ -268,6 +268,16 @@ export default function OverviewView({
             ))}
           </div>
         )}
+        {drafts.notice && (
+          <div
+            className="control-toast md-notice"
+            role="status"
+            aria-live="polite"
+            onClick={drafts.dismissNotice}
+          >
+            {drafts.notice}
+          </div>
+        )}
       </section>
     );
 

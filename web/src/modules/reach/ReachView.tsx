@@ -258,8 +258,8 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
                           await drafts.approve(id, payload);
                           setOpenDraftId(null);
                         }}
-                        onReject={async (id, reason) => {
-                          await drafts.reject(id, reason);
+                        onReject={async (id, payload) => {
+                          await drafts.reject(id, payload);
                           setOpenDraftId(null);
                         }}
                         onOpenEntity={onOpenEntity}
@@ -377,6 +377,17 @@ export default function ReachView({ mails, stats, entities, onOpenEntity }: Prop
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {drafts.notice && (
+        <div
+          className="control-toast md-notice"
+          role="status"
+          aria-live="polite"
+          onClick={drafts.dismissNotice}
+        >
+          {drafts.notice}
         </div>
       )}
     </div>

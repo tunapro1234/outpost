@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
-import type { MailDraft } from "@/core/types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+  MailDraft,
+  MailRejectPayload,
+  MailRejectResult,
+} from "@/core/types";
 import { api } from "@/core/api";
 
 export interface ApprovePayload {
@@ -16,7 +20,13 @@ export interface UseMailDrafts {
   busyId: string | null;
   error: string | null;
   approve: (id: string, payload: ApprovePayload) => Promise<void>;
-  reject: (id: string, reason?: string) => Promise<void>;
+  reject: (
+    id: string,
+    payload?: MailRejectPayload
+  ) => Promise<MailRejectResult>;
+  /** Transient note surfaced after a cascading reject (e.g. company excluded). */
+  notice: string | null;
+  dismissNotice: () => void;
   reload: () => void;
 }
 
@@ -30,7 +40,33 @@ export function useMailDrafts(): UseMailDrafts {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  const noticeTimer = useRef<number | null>(null);
+
+  const showNotice = useCallback((msg: string) => {
+    if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
+    setNotice(msg);
+    noticeTimer.current = window.setTimeout(() => {
+      setNotice(null);
+      noticeTimer.current = null;
+    }, 6000);
+  }, []);
+
+  const dismissNotice = useCallback(() => {
+    if (noticeTimer.current !== null) {
+      window.clearTimeout(noticeTimer.current);
+      noticeTimer.current = null;
+    }
+    setNotice(null);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
+    },
+    []
+  );
 
   useEffect(() => {
     let alive = true;
@@ -74,12 +110,18 @@ export function useMailDrafts(): UseMailDrafts {
   );
 
   const reject = useCallback(
-    async (id: string, reason?: string) => {
+    async (id: string, payload?: MailRejectPayload) => {
       setBusyId(id);
       setError(null);
       try {
-        await api.rejectMailDraft(id, reason);
-        drop(id);
+        const res = await api.rejectMailDraft(id, payload);
+        // Drop every draft the server cascaded (falls back to [id]).
+        const ids = new Set(res.rejected.length ? res.rejected : [id]);
+        setDrafts((cur) => (cur ? cur.filter((d) => !ids.has(d.id)) : cur));
+        if (res.company_excluded) {
+          showNotice(`${res.company_excluded.name} excluded from outreach`);
+        }
+        return res;
       } catch (e) {
         setError((e as Error)?.message ?? "Reject failed");
         throw e;
@@ -87,10 +129,20 @@ export function useMailDrafts(): UseMailDrafts {
         setBusyId(null);
       }
     },
-    [drop]
+    [showNotice]
   );
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 
-  return { drafts, loading, busyId, error, approve, reject, reload };
+  return {
+    drafts,
+    loading,
+    busyId,
+    error,
+    approve,
+    reject,
+    notice,
+    dismissNotice,
+    reload,
+  };
 }

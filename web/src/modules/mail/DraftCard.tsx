@@ -1,14 +1,23 @@
-import { useState } from "react";
-import type { MailDraft } from "@/core/types";
+import { useEffect, useState } from "react";
+import type { MailDraft, MailRejectKind, MailRejectPayload } from "@/core/types";
 import type { ApprovePayload } from "./useMailDrafts";
 
 interface Props {
   draft: MailDraft;
   busy?: boolean;
   onApprove: (id: string, payload: ApprovePayload) => Promise<void>;
-  onReject: (id: string, reason?: string) => Promise<void>;
+  onReject: (id: string, payload?: MailRejectPayload) => Promise<unknown>;
   onOpenEntity?: (id: string) => void;
 }
+
+// Quick reasons offered when rejecting a draft. The system learns from these,
+// and "exclude-company" cascades to the company's other pending drafts.
+const REJECT_CHIPS: { kind: MailRejectKind; label: string }[] = [
+  { kind: "exclude-company", label: "Don't contact this org" },
+  { kind: "know-person", label: "I know this person" },
+  { kind: "wrong-person", label: "Wrong person" },
+  { kind: "bad-content", label: "Draft isn't good" },
+];
 
 function followupLabel(stage: 0 | 1 | 2): string | null {
   if (stage === 1) return "Follow-up 1";
@@ -31,6 +40,10 @@ export default function DraftCard({
 }: Props) {
   const [sel, setSel] = useState(0);
   const [editing, setEditing] = useState(false);
+  // Reject reason panel: opens inline below the actions when Reject is clicked.
+  const [rejecting, setRejecting] = useState(false);
+  const [rejKind, setRejKind] = useState<MailRejectKind | null>(null);
+  const [rejText, setRejText] = useState("");
   // Per-variant edits, keyed by index. Absent = untouched (send original).
   const [edits, setEdits] = useState<
     Record<number, { subject: string; body: string }>
@@ -64,6 +77,34 @@ export default function DraftCard({
     }
     void onApprove(draft.id, payload);
   };
+
+  const closeReject = () => {
+    setRejecting(false);
+    setRejKind(null);
+    setRejText("");
+  };
+
+  const confirmReject = () => {
+    const payload: MailRejectPayload = {};
+    if (rejKind) payload.kind = rejKind;
+    const text = rejText.trim();
+    if (text) payload.text = text;
+    // Fire and forget — the caller drops the card (and any cascade) on success.
+    void onReject(
+      draft.id,
+      payload.kind || payload.text ? payload : undefined
+    );
+  };
+
+  // Escape cancels the reject panel without rejecting.
+  useEffect(() => {
+    if (!rejecting) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeReject();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [rejecting]);
 
   return (
     <div className="md-card">
@@ -174,11 +215,70 @@ export default function DraftCard({
         <button
           className="btn ghost"
           disabled={busy}
-          onClick={() => void onReject(draft.id)}
+          aria-expanded={rejecting}
+          onClick={() => (rejecting ? closeReject() : setRejecting(true))}
         >
           Reject
         </button>
       </div>
+
+      {rejecting && (
+        <div className="md-reject" role="group" aria-label="Reject reason">
+          <div className="md-reject-head">
+            Why are you rejecting this draft?
+            <span className="md-reject-opt">optional</span>
+          </div>
+          <div className="md-reject-chips">
+            {REJECT_CHIPS.map((c) => (
+              <button
+                key={c.kind}
+                type="button"
+                className={rejKind === c.kind ? "md-rchip on" : "md-rchip"}
+                aria-pressed={rejKind === c.kind}
+                onClick={() =>
+                  setRejKind((k) => (k === c.kind ? null : c.kind))
+                }
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+
+          {rejKind === "exclude-company" && (
+            <div className="md-reject-warn">
+              ⚠ {draft.company.name} will be excluded from all future outreach;
+              other pending drafts from it will also be rejected.
+            </div>
+          )}
+
+          <textarea
+            className="md-input md-reject-note"
+            rows={2}
+            value={rejText}
+            placeholder="Optional note — the system learns from this"
+            onChange={(e) => setRejText(e.target.value)}
+          />
+
+          <div className="md-reject-actions">
+            <button
+              type="button"
+              className="btn ghost"
+              disabled={busy}
+              onClick={closeReject}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn danger"
+              disabled={busy}
+              onClick={confirmReject}
+            >
+              {busy ? "Working…" : "Confirm reject"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

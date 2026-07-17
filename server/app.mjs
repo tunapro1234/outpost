@@ -216,6 +216,7 @@ export async function createApp({
   await app.register(mailerRoutes, {
     prefix: "/api/ws/:ws",
     resolveWorkspace: resolveScopedWorkspace,
+    defaultUser,
   });
   await mountApi(app, "/api", defaultResolver(registry), {
     legacy: true,

@@ -12,6 +12,8 @@ import type {
   MailDraft,
   MailItem,
   MailQueueSummary,
+  MailRejectPayload,
+  MailRejectResult,
   ReachStats,
   Metrics,
   Profile,
@@ -289,18 +291,55 @@ export const api = {
     );
   },
 
+  // Reject a draft with an optional structured reason. The server may cascade
+  // (e.g. exclude-company also rejects the company's other pending drafts) and
+  // reports every removed id plus any side effect. Degrades gracefully: on an
+  // old server that returns { ok: true } with no cascade info we fall back to
+  // rejecting just this draft, so plain reject keeps working.
   async rejectMailDraft(
     id: string,
-    reason?: string
-  ): Promise<{ ok: boolean }> {
-    return json<{ ok: boolean }>(
+    payload?: MailRejectPayload
+  ): Promise<MailRejectResult> {
+    const body: Record<string, unknown> = {};
+    if (payload?.kind) body.kind = payload.kind;
+    if (payload?.text) body.text = payload.text;
+    const res = await fetch(
       `${workspaceBase()}/maildrafts/${encodeURIComponent(id)}/reject`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(reason ? { reason } : {}),
+        body: JSON.stringify(body),
       }
     );
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try {
+        const b = await res.json();
+        if (b?.error) msg = b.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    let data: {
+      rejected?: unknown;
+      company_excluded?: { id: string; name: string };
+      person_closed?: { id: string; name: string };
+    } = {};
+    try {
+      data = await res.json();
+    } catch {
+      /* 204 / empty body — treat as a bare success */
+    }
+    const rejected =
+      Array.isArray(data?.rejected) && data.rejected.length > 0
+        ? (data.rejected as string[])
+        : [id];
+    return {
+      rejected,
+      company_excluded: data?.company_excluded,
+      person_closed: data?.person_closed,
+    };
   },
 
   // Overview metrics. Returns null on 404 / error (endpoint may still be

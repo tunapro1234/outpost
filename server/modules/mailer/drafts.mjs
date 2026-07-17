@@ -11,6 +11,10 @@ function outboxPath(workspace) {
   return workspace.mailsOutboxPath ?? path.join(workspace.directory, "mails", "outbox.jsonl");
 }
 
+function feedbackPath(workspace) {
+  return path.join(workspace.directory, "mails", "feedback.jsonl");
+}
+
 function safeId(id) {
   if (typeof id !== "string" || !/^[a-z0-9][a-z0-9_.-]*$/i.test(id)) {
     const error = new Error("Geçersiz mail draft id");
@@ -145,8 +149,8 @@ export async function readOutbox(workspace) {
   });
 }
 
-async function appendOutbox(workspace, record) {
-  const filePath = outboxPath(workspace);
+async function appendJsonLines(filePath, records) {
+  if (!records.length) return;
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   let prefix = "";
   try {
@@ -155,7 +159,12 @@ async function appendOutbox(workspace, record) {
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
-  await fs.appendFile(filePath, `${prefix}${JSON.stringify(record)}\n`, "utf8");
+  const lines = records.map((record) => JSON.stringify(record)).join("\n");
+  await fs.appendFile(filePath, `${prefix}${lines}\n`, "utf8");
+}
+
+async function appendOutbox(workspace, record) {
+  await appendJsonLines(outboxPath(workspace), [record]);
 }
 
 async function archiveDraft(workspace, file) {
@@ -241,15 +250,107 @@ export async function approveMailDraft(workspace, id, payload, { now = () => new
   return { ok: true, id, status: "approved", outbox: record };
 }
 
-export async function rejectMailDraft(workspace, id, payload = {}) {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
-    (payload.reason !== undefined && typeof payload.reason !== "string")) {
-    const error = new Error("reason metin olmalı");
+const REJECT_KINDS = new Set([
+  "exclude-company",
+  "know-person",
+  "wrong-person",
+  "bad-content",
+  "other",
+]);
+
+function rejectDecision(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    const error = new Error("JSON gövdesi nesne olmalı");
     error.statusCode = 400;
     throw error;
   }
+  if (payload.kind !== undefined && !REJECT_KINDS.has(payload.kind)) {
+    const error = new Error("kind geçerli bir reject türü olmalı");
+    error.statusCode = 400;
+    throw error;
+  }
+  for (const field of ["text", "reason"]) {
+    if (payload[field] !== undefined && typeof payload[field] !== "string") {
+      const error = new Error(`${field} metin olmalı`);
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+  return {
+    kind: payload.kind ?? "other",
+    text: (payload.text ?? payload.reason ?? "").trim(),
+  };
+}
+
+function decisionNote(user, timestamp, text) {
+  return `${user} ${timestamp.slice(0, 10)}: ${text}`.trimEnd();
+}
+
+function entitySummary(entity, id) {
+  return { id, name: entity?.meta.name ?? id };
+}
+
+export async function rejectMailDraft(workspace, id, payload = {}, {
+  now = () => new Date(),
+  user = "unknown",
+} = {}) {
+  const decision = rejectDecision(payload);
   const draft = await findDraft(workspace, id);
-  await updateEntityMeta(workspace, draft.person_id, { mail_state: "none" });
-  await archiveDraft(workspace, draft.file);
-  return { ok: true, id, status: "rejected" };
+  const rejectedAt = now().toISOString();
+  const note = decisionNote(user, rejectedAt, decision.text);
+  const person = workspace.index.entities.get(draft.person_id);
+  const company = draft.company_id ? workspace.index.entities.get(draft.company_id) : null;
+  let drafts = [draft];
+
+  if (decision.kind === "exclude-company") {
+    if (!draft.company_id || !company) {
+      const error = new Error("Taslağa bağlı şirket entity bulunamadı");
+      error.statusCode = 400;
+      throw error;
+    }
+    drafts = [
+      draft,
+      ...(await listMailDraftRecords(workspace)).filter((candidate) =>
+        candidate.id !== draft.id && candidate.company_id === draft.company_id),
+    ];
+    await updateEntityMeta(workspace, company, {
+      outreach: "excluded",
+      outreach_note: note,
+    });
+  }
+
+  if (decision.kind === "know-person") {
+    await updateEntityMeta(workspace, person, { mail_state: "closed", mail_note: note });
+  } else if (decision.kind === "wrong-person") {
+    await updateEntityMeta(workspace, person, { mail_state: "closed" });
+  } else {
+    for (const personId of new Set(drafts.map((candidate) => candidate.person_id))) {
+      await updateEntityMeta(workspace, personId, { mail_state: "none" });
+    }
+  }
+
+  for (const rejected of drafts) await archiveDraft(workspace, rejected.file);
+  await appendJsonLines(feedbackPath(workspace), drafts.map((rejected, index) => ({
+    ts: rejectedAt,
+    user,
+    draft_id: rejected.id,
+    person_id: rejected.person_id,
+    company_id: rejected.company_id,
+    kind: decision.kind,
+    text: decision.text,
+    ...(index > 0 ? { cascade: true } : {}),
+  })));
+
+  return {
+    ok: true,
+    id,
+    status: "rejected",
+    rejected: drafts.map((rejected) => rejected.id),
+    ...(decision.kind === "exclude-company"
+      ? { company_excluded: entitySummary(company, draft.company_id) }
+      : {}),
+    ...(["know-person", "wrong-person"].includes(decision.kind)
+      ? { person_closed: entitySummary(person, draft.person_id) }
+      : {}),
+  };
 }

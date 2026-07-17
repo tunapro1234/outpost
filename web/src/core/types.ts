@@ -184,6 +184,31 @@ export interface MailDraft {
   status: "pending";
 }
 
+// Structured reason attached to a draft rejection so the system can learn
+// (exclude a company, close a person, etc.). All optional — an empty reject
+// is still a plain reject.
+export type MailRejectKind =
+  | "exclude-company"
+  | "know-person"
+  | "wrong-person"
+  | "bad-content"
+  | "other";
+
+export interface MailRejectPayload {
+  kind?: MailRejectKind;
+  text?: string;
+}
+
+// Server may cascade a rejection (exclude a company => reject its other pending
+// drafts). `rejected` lists every draft id that was removed. company_excluded /
+// person_closed are present only when that side effect happened. Old servers
+// may omit these fields entirely — the client falls back to the single id.
+export interface MailRejectResult {
+  rejected: string[];
+  company_excluded?: { id: string; name: string };
+  person_closed?: { id: string; name: string };
+}
+
 // ---- overview metrics (server GET /api/ws/:ws/metrics) ------------------
 export interface MetricsDailyPoint {
   date: string; // YYYY-MM-DD

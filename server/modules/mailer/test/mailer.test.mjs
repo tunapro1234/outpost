@@ -44,6 +44,16 @@ async function copiedApp(t) {
   return { app, workspace: app.workspaceRegistry.get("fixture"), root };
 }
 
+async function readFeedback(workspace) {
+  try {
+    const source = await fs.readFile(path.join(workspace.directory, "mails/feedback.jsonl"), "utf8");
+    return source.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+}
+
 test("authority yoksa role/rol metninden belirtilen yetki seviyesini çıkarır", () => {
   assert.deepEqual(inferAuthority({ role: "Co-Founder & CEO" }), {
     authority: "founder", inferred: true,
@@ -256,12 +266,179 @@ test("maildraft API approve outbox-ready kaydı yazar; reject taslağı kapatıp
   const rejected = await app.inject({
     method: "POST",
     url: `/api/ws/fixture/maildrafts/${rejectedDraft.id}/reject`,
+    headers: { "x-remote-user": "tuna" },
     payload: { reason: "uygun değil" },
   });
   assert.equal(rejected.statusCode, 200);
+  assert.deepEqual(rejected.json(), {
+    ok: true,
+    id: rejectedDraft.id,
+    status: "rejected",
+    rejected: [rejectedDraft.id],
+  });
   assert.equal(workspace.index.entities.get("direktor").meta.mail_state, "none");
   assert.equal((await readOutbox(workspace)).length, 1);
   assert.equal((await listMailDraftRecords(workspace)).length, 0);
+  const [feedback] = await readFeedback(workspace);
+  assert.deepEqual(feedback, {
+    ts: feedback.ts,
+    user: "tuna",
+    draft_id: rejectedDraft.id,
+    person_id: "direktor",
+    company_id: "skorlu",
+    kind: "other",
+    text: "uygun değil",
+  });
+  assert.match(feedback.ts, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+test("exclude-company kurumu vault'ta dışlar, aynı kurum taslaklarını cascade reddeder ve loglar", async (t) => {
+  const { app, workspace } = await copiedApp(t);
+  const company = workspace.index.entities.get("oncelikli");
+  const first = await createMailDraftStage(workspace, {
+    person: workspace.index.entities.get("kurucu"), company,
+    variants: variants("Kurucu"), score: 87.2, reasons: [],
+    now: () => new Date("2026-07-17T08:00:00Z"),
+  });
+  const second = await createMailDraftStage(workspace, {
+    person: workspace.index.entities.get("taranmamis"), company,
+    variants: variants("İkinci"), score: 60, reasons: [],
+    now: () => new Date("2026-07-17T08:01:00Z"),
+  });
+  const untouched = await createMailDraftStage(workspace, {
+    person: workspace.index.entities.get("direktor"),
+    company: workspace.index.entities.get("skorlu"),
+    variants: variants("Başka kurum"), score: 68, reasons: [],
+    now: () => new Date("2026-07-17T08:02:00Z"),
+  });
+
+  const response = await app.inject({
+    method: "POST",
+    url: `/api/ws/fixture/maildrafts/${first.id}/reject`,
+    headers: { "x-remote-user": "tuna" },
+    payload: { kind: "exclude-company", text: "tanıdık; bu kuruma yazılmayacak" },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), {
+    ok: true,
+    id: first.id,
+    status: "rejected",
+    rejected: [first.id, second.id],
+    company_excluded: { id: "oncelikli", name: "Öncelikli Şirket" },
+  });
+  const excluded = workspace.index.entities.get("oncelikli");
+  assert.equal(excluded.meta.outreach, "excluded");
+  assert.match(excluded.meta.outreach_note,
+    /^tuna \d{4}-\d{2}-\d{2}: tanıdık; bu kuruma yazılmayacak$/);
+  assert.equal(workspace.index.entities.get("kurucu").meta.mail_state, "none");
+  assert.equal(workspace.index.entities.get("taranmamis").meta.mail_state, "none");
+  assert.deepEqual((await listMailDraftRecords(workspace)).map(({ id }) => id), [untouched.id]);
+
+  const feedback = await readFeedback(workspace);
+  assert.equal(feedback.length, 2);
+  assert.deepEqual(feedback.map(({ draft_id, person_id, kind, text, cascade }) => ({
+    draft_id, person_id, kind, text, cascade,
+  })), [
+    {
+      draft_id: first.id,
+      person_id: "kurucu",
+      kind: "exclude-company",
+      text: "tanıdık; bu kuruma yazılmayacak",
+      cascade: undefined,
+    },
+    {
+      draft_id: second.id,
+      person_id: "taranmamis",
+      kind: "exclude-company",
+      text: "tanıdık; bu kuruma yazılmayacak",
+      cascade: true,
+    },
+  ]);
+  assert.ok(feedback.every((entry) =>
+    entry.user === "tuna" && entry.company_id === "oncelikli" && entry.ts === feedback[0].ts));
+
+  const queue = (await app.inject({ url: "/api/ws/fixture/mailqueue" })).json();
+  assert.ok(![...queue.queue, ...queue.awaitingScan]
+    .some(({ company_id }) => company_id === "oncelikli"));
+});
+
+test("know-person kişiyi mail_note ile kapatır ve etki özetini döndürür", async (t) => {
+  const { app, workspace } = await copiedApp(t);
+  const draft = await createMailDraftStage(workspace, {
+    person: workspace.index.entities.get("direktor"),
+    company: workspace.index.entities.get("skorlu"),
+    variants: variants(), score: 68, reasons: [],
+    now: () => new Date("2026-07-17T09:00:00Z"),
+  });
+  const response = await app.inject({
+    method: "POST",
+    url: `/api/ws/fixture/maildrafts/${draft.id}/reject`,
+    headers: { "x-remote-user": "ada" },
+    payload: { kind: "know-person", text: "yakından tanıyorum" },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json().person_closed, { id: "direktor", name: "Direktör Aday" });
+  const person = workspace.index.entities.get("direktor");
+  assert.equal(person.meta.mail_state, "closed");
+  const [feedback] = await readFeedback(workspace);
+  assert.equal(person.meta.mail_note, `ada ${feedback.ts.slice(0, 10)}: yakından tanıyorum`);
+  assert.deepEqual({ kind: feedback.kind, text: feedback.text, user: feedback.user }, {
+    kind: "know-person", text: "yakından tanıyorum", user: "ada",
+  });
+  assert.equal(workspace.index.entities.get("skorlu").meta.outreach, undefined);
+});
+
+test("wrong-person kişiyi not eklemeden kapatır, kurumu serbest bırakır", async (t) => {
+  const { app, workspace } = await copiedApp(t);
+  const draft = await createMailDraftStage(workspace, {
+    person: workspace.index.entities.get("kurucu"),
+    company: workspace.index.entities.get("oncelikli"),
+    variants: variants(), score: 87.2, reasons: [],
+    now: () => new Date("2026-07-17T10:00:00Z"),
+  });
+  const response = await app.inject({
+    method: "POST",
+    url: `/api/ws/fixture/maildrafts/${draft.id}/reject`,
+    headers: { "x-remote-user": "tuna" },
+    payload: { kind: "wrong-person", text: "yetkili kişi değil" },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json().person_closed, { id: "kurucu", name: "Kurucu Aday" });
+  const person = workspace.index.entities.get("kurucu");
+  assert.equal(person.meta.mail_state, "closed");
+  assert.equal(person.meta.mail_note, undefined);
+  assert.equal(workspace.index.entities.get("oncelikli").meta.outreach, undefined);
+  const [feedback] = await readFeedback(workspace);
+  assert.equal(feedback.kind, "wrong-person");
+});
+
+test("bad-content yalnız taslağı reddeder ve kişiyi yeniden yazılabilir durumda tutar", async (t) => {
+  const { app, workspace } = await copiedApp(t);
+  const draft = await createMailDraftStage(workspace, {
+    person: workspace.index.entities.get("direktor"),
+    company: workspace.index.entities.get("skorlu"),
+    variants: variants(), score: 68, reasons: [],
+    now: () => new Date("2026-07-17T11:00:00Z"),
+  });
+  const response = await app.inject({
+    method: "POST",
+    url: `/api/ws/fixture/maildrafts/${draft.id}/reject`,
+    headers: { "x-remote-user": "tuna" },
+    payload: { kind: "bad-content", text: "hook zayıf" },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().company_excluded, undefined);
+  assert.equal(response.json().person_closed, undefined);
+  assert.equal(workspace.index.entities.get("direktor").meta.mail_state, "none");
+  assert.equal(workspace.index.entities.get("direktor").meta.mail_note, undefined);
+  assert.equal(workspace.index.entities.get("skorlu").meta.outreach, undefined);
+  const [feedback] = await readFeedback(workspace);
+  assert.equal(feedback.kind, "bad-content");
+  assert.equal(feedback.text, "hook zayıf");
 });
 
 test("follow-up motoru 4/5 günlük eşikleri uygular, iki takipten sonra kapatır ve boş trafikte no-op olur", async (t) => {
