@@ -31,6 +31,17 @@ function id(n: string | GraphNode): string {
 const CANVAS_DARK = "#0e0e10";
 const CANVAS_LIGHT = "#f6f6f7";
 
+// deterministik hash → [0,1): link mesafesi/collide yarıçapı jitter'ı için
+// (Math.random olmaz: her render'da layout değişirdi)
+function hash01(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 8) & 0xffff) / 0x10000;
+}
+
 export default function GraphView({
   data,
   theme,
@@ -144,13 +155,17 @@ export default function GraphView({
   );
 
   // ---- physics application ----
-  // 2026-07-17 reformu (headless ölçümle seçildi, docs: bağlı çiftler 96px
-  // hedefe karşı medyan 322px açılıyordu):
-  //  - charge derece-ölçekli: hub'lar güçlü iter, yapraklar hafif (sabit -300
-  //    tüm grafı şişiriyordu)
-  //  - link.strength: d3 varsayılanı 1/minDegree hub kenarlarında çekimi yok
-  //    ediyordu → tabanlı sqrt ölçeği
-  //  - yaprak kenarları kısa, omurga kenarları uzun mesafe
+  // 2026-07-17 reform v2 "organik" (headless ölçüm + screenshot döngüsüyle
+  // seçildi; diag: hub etrafındaki boş halka ≈ linkDistance + |hubCharge|/
+  // linkStrength dengesinden geliyordu, eşit mesafeler + sert collide da
+  // petek kafes yapıyordu):
+  //  - charge log-ölçekli ve düşük: hub'lar yaprak halkasını dışarı itmesin
+  //    (sqrt ölçeği deg-600 hub'da -324'e çıkıp ~100px boş halka açıyordu)
+  //  - link mesafesi sürekli (log) + id-hash jitter'lı: eşit yarıçaplı halka
+  //    yerine dolu, organik bulut
+  //  - yaprak kenarlarında strength > 1: yapraklar hub'a yapışık kalır
+  //  - collide yarıçapı jitter'lı + yumuşak (strength 0.35, tek iterasyon):
+  //    altıgen kristal kafesi kırar
   //  - küçük bileşenler daha güçlü yerçekimiyle içeri alınır
   const applyForces = useCallback(() => {
     const fg = fgRef.current;
@@ -160,9 +175,10 @@ export default function GraphView({
     if (charge) {
       charge.strength((n: GraphNode) => {
         const d = degreeById.get(n.id) ?? 0;
-        return -chargeScale * (30 + 12 * Math.sqrt(d + 1));
+        return -chargeScale * (12 + 4.5 * Math.log2(d + 2));
       });
-      charge.distanceMax(Infinity);
+      charge.distanceMin(8);
+      charge.distanceMax(700);
     }
     const linkDegree = (endpoint: unknown) =>
       degreeById.get(typeof endpoint === "string" ? endpoint : (endpoint as GraphNode).id) ?? 0;
@@ -171,11 +187,21 @@ export default function GraphView({
     const distScale = physics.linkDistance / 96;
     const link = fg.d3Force("link");
     if (link) {
-      link.distance((l: Link) => (linkMinDegree(l) <= 2 ? 60 : 120) * distScale);
-      // Obsidian "Link force" slider'ı: 0-1 çarpan; taban eğri hub kenarlarında
-      // çekimi öldüren d3 varsayılanının (1/minDeg) yerine sqrt ölçeği
-      link.strength((l: Link) =>
-        physics.linkForce * Math.max(0.35, 1 / Math.sqrt(linkMinDegree(l))));
+      link.distance((l: Link) => {
+        const base = 26 + 15 * Math.log2(linkMinDegree(l) + 1);
+        const j = hash01(`${id(l.source)}→${id(l.target)}`);
+        return base * (0.45 + 1.1 * j) * distScale;
+      });
+      // Obsidian "Link force" slider'ı: 0-1 çarpan. Yaprak kenarları taban
+      // 1.5 ile hub'a yapışır; omurga kenarlarında sqrt ölçeği (d3
+      // varsayılanı 1/minDeg hub kenarlarında çekimi öldürüyordu)
+      link.strength((l: Link) => {
+        const mind = linkMinDegree(l);
+        return (
+          physics.linkForce *
+          (mind <= 2 ? 1.5 : Math.max(0.4, 1 / Math.sqrt(mind)))
+        );
+      });
     }
     const gravScale = physics.gravity / 0.05;
     const gravity = (n: GraphNode) =>
@@ -186,8 +212,14 @@ export default function GraphView({
     if (fy) fy.strength(gravity);
     const collide = fg.d3Force("collide");
     if (collide) {
-      collide.radius((n: GraphNode) => radiusFor(n) * 1.3 * physics.collide + 2);
-      collide.iterations(2);
+      collide.radius(
+        (n: GraphNode) =>
+          (radiusFor(n) * 0.9 + 1) *
+          (0.7 + 0.6 * hash01(n.id + "c")) *
+          physics.collide
+      );
+      collide.iterations(1);
+      collide.strength(0.35);
     }
   }, [physics, radiusFor, degreeById, compSizeById]);
 
