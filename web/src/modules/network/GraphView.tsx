@@ -155,18 +155,21 @@ export default function GraphView({
   );
 
   // ---- physics application ----
-  // 2026-07-17 reform v2 "organik" (headless ölçüm + screenshot döngüsüyle
-  // seçildi; diag: hub etrafındaki boş halka ≈ linkDistance + |hubCharge|/
-  // linkStrength dengesinden geliyordu, eşit mesafeler + sert collide da
-  // petek kafes yapıyordu):
-  //  - charge log-ölçekli ve düşük: hub'lar yaprak halkasını dışarı itmesin
-  //    (sqrt ölçeği deg-600 hub'da -324'e çıkıp ~100px boş halka açıyordu)
-  //  - link mesafesi sürekli (log) + id-hash jitter'lı: eşit yarıçaplı halka
-  //    yerine dolu, organik bulut
-  //  - yaprak kenarlarında strength > 1: yapraklar hub'a yapışık kalır
-  //  - collide yarıçapı jitter'lı + yumuşak (strength 0.35, tek iterasyon):
-  //    altıgen kristal kafesi kırar
-  //  - küçük bileşenler daha güçlü yerçekimiyle içeri alınır
+  // 2026-07-17 reform v3 "top kırma" (Obsidian araştırması + headless deney
+  // döngüsüyle; v2 hub-halkası/petek kazanımları korunur). Obsidian bulguları:
+  // linkler elastik ("we allow it to extend" — Licat), collision kuvveti yok
+  // gibi, anti-top ana kolu merkez kuvvetinin ÇOK düşük olması. Dev bileşenin
+  // yuvarlak disk olmasının sebebi bizde üç kuvvetin toplamıydı:
+  //  - merkez gravity 0.06 çok güçlüydü → 0.008 (küçük bileşenler 0.10):
+  //    dallar merkeze katlanmak yerine dışarı uzar
+  //  - yaprak link strength 1.5 çok sertti → 1.0, omurga tabanı 0.4 → 0.2:
+  //    gövde esner, kümeler arası boyun/köprüler açılır (elastik linkler)
+  //  - charge.distanceMax(700) kalktı + itme büyüdü (18+6·log2): global itme
+  //    dalları birbirinden ayırır ("fairly high repulsion" reçetesi)
+  //  - collide 0.35 → 0.15: doku için hafif iz; Obsidian'da üst üste binme
+  //    serbest, sert collide diskleşmeyi geri getiriyor
+  // Headless metrik (dev bileşen): elongation 1.41→1.99, hull-circularity
+  // 0.96→0.82 (1 = mükemmel daire).
   const applyForces = useCallback(() => {
     const fg = fgRef.current;
     if (!fg) return;
@@ -175,10 +178,10 @@ export default function GraphView({
     if (charge) {
       charge.strength((n: GraphNode) => {
         const d = degreeById.get(n.id) ?? 0;
-        return -chargeScale * (12 + 4.5 * Math.log2(d + 2));
+        return -chargeScale * (18 + 6 * Math.log2(d + 2));
       });
       charge.distanceMin(8);
-      charge.distanceMax(700);
+      charge.distanceMax(Infinity);
     }
     const linkDegree = (endpoint: unknown) =>
       degreeById.get(typeof endpoint === "string" ? endpoint : (endpoint as GraphNode).id) ?? 0;
@@ -192,20 +195,21 @@ export default function GraphView({
         const j = hash01(`${id(l.source)}→${id(l.target)}`);
         return base * (0.45 + 1.1 * j) * distScale;
       });
-      // Obsidian "Link force" slider'ı: 0-1 çarpan. Yaprak kenarları taban
-      // 1.5 ile hub'a yapışır; omurga kenarlarında sqrt ölçeği (d3
-      // varsayılanı 1/minDeg hub kenarlarında çekimi öldürüyordu)
+      // Obsidian "Link force" slider'ı: 0-1 çarpan. Yaprak kenarları 1.0 ile
+      // hub'a bağlı kalır ama elastik; omurga kenarlarında sqrt ölçeği,
+      // taban 0.2 (sert yay = yuvarlak top; d3 varsayılanı 1/minDeg de hub
+      // kenarlarında çekimi tamamen öldürüyordu)
       link.strength((l: Link) => {
         const mind = linkMinDegree(l);
         return (
           physics.linkForce *
-          (mind <= 2 ? 1.5 : Math.max(0.4, 1 / Math.sqrt(mind)))
+          (mind <= 2 ? 1.0 : Math.max(0.2, 1 / Math.sqrt(mind)))
         );
       });
     }
     const gravScale = physics.gravity / 0.05;
     const gravity = (n: GraphNode) =>
-      ((compSizeById.get(n.id) ?? 1) < 20 ? 0.16 : 0.06) * gravScale;
+      ((compSizeById.get(n.id) ?? 1) < 20 ? 0.1 : 0.008) * gravScale;
     const fx = fg.d3Force("x");
     const fy = fg.d3Force("y");
     if (fx) fx.strength(gravity);
@@ -219,7 +223,7 @@ export default function GraphView({
           physics.collide
       );
       collide.iterations(1);
-      collide.strength(0.35);
+      collide.strength(0.15);
     }
   }, [physics, radiusFor, degreeById, compSizeById]);
 
