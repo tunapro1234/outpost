@@ -15,21 +15,25 @@ burada aynı yeri gösteriyor: kısa, sakin, alıcının dünyasına referans.
 
 ## Kanonik kalıp (varsayılan)
 ```
-Probot — [Kurum] için 15 dakika
+[Kurum] için kısa soru
 ```
-Örnek: `Probot — İz Atölye için 15 dakika`
+Örnek: `İz Atölye için kısa soru`
+
+⛔ **TİRE/EM-DASH YASAĞI (Tuna, 2026-07-17):** Konu satırında ve gövdede em-dash (—),
+en-dash (–) ve süslü tire kullanımı KESİNLİKLE YASAK. "Probot — X için..." veya
+"Ahmet Bey — kısa soru" kalıpları ÖLÜDÜR. Ayırma gerekiyorsa virgül, iki nokta ya da
+düz cümle kur. Bu kural tüm eski kalıpları ezer.
 
 ## Alternatif kalıplar (açı/varyanta göre — bkz variants.md)
 | Kalıp | Örnek | Ne zaman |
 |---|---|---|
-| `Probot — [Kurum] için 15 dakika` | `Probot — Esenler Bilim Merkezi için 15 dakika` | Genel keşif, güvenli varsayılan |
 | `[Kurum] için kısa soru` | `İz Atölye için kısa soru` | Merak/soru açısı öne çıkıyorsa |
 | `[Kurum] deneyiminiz` | `Robotik atölyesi deneyiminiz` | Kurucu/eğitmenin deneyimini soruyorsan |
 | `[Kurum] robotik atölyesi` | `Kadıköy Belediyesi robotik atölyesi` | Genel kurumsal adres / yönlendirme maili |
-| `[Ad] Bey/Hanım — kısa bir soru` | `Rıdvan Bey — kısa bir soru` | Kişiye özel, sıcak, teknik/genç girişimci |
+| `[Ad] Bey/Hanım, kısa bir soru` | `Rıdvan Bey, kısa bir soru` | Kişiye özel, sıcak, teknik/genç girişimci |
 
 ## İyi örnekler
-- `Probot — İnokids için 15 dakika`  (kurum adı + net çerçeve, kısa, satışsız)
+- `İnokids için kısa soru`  (kurum adı + net çerçeve, kısa, satışsız)
 - `Esenler Bilim Merkezi için kısa soru`  (merak açısı, baskısız)
 - `Robotik atölyeniz — kısa bir soru`  (alıcının dünyasına dokunuyor)
 

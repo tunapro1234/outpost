@@ -10,20 +10,26 @@ import { useSyncExternalStore } from "react";
 export type ViewKey =
   | "overview"
   | "network"
-  | "reach"
+  | "mail"
   | "agents"
   | "workspace"
   | "integrations"
   | "profile";
 
 export type Route =
-  | { name: "view"; key: ViewKey }
+  // `sub` carries an in-view sub-route (e.g. the Mail Calibration studio at
+  // /mail/calibration) so the shell can render a full-page sub-view without a
+  // separate top-level route.
+  | { name: "view"; key: ViewKey; sub: string | null }
   | { name: "entity"; id: string };
 
 const PATH_TO_VIEW: Record<string, ViewKey> = {
   "/": "overview",
   "/network": "network",
-  "/reach": "reach",
+  "/mail": "mail",
+  // legacy alias — the module used to be called Reach. Kept so old links and
+  // bookmarks still resolve; navigate() below rewrites the URL to /mail.
+  "/reach": "mail",
   "/agents": "agents",
   // legacy alias — the module used to live at /gather. Kept so old links and
   // bookmarks still resolve; navigate() below rewrites the URL to /agents.
@@ -36,38 +42,52 @@ const PATH_TO_VIEW: Record<string, ViewKey> = {
 const VIEW_TO_PATH: Record<ViewKey, string> = {
   overview: "/",
   network: "/network",
-  reach: "/reach",
+  mail: "/mail",
   agents: "/agents",
   workspace: "/workspace",
   integrations: "/integrations",
   profile: "/profile",
 };
 
-// Rewrite the legacy /gather URL to /agents on first load so bookmarks and
-// shared links land on the canonical path without a broken page.
-if (typeof window !== "undefined" && window.location.pathname === "/gather") {
-  window.history.replaceState(
-    null,
-    "",
-    "/agents" + window.location.search + window.location.hash
-  );
+// Rewrite legacy URLs to their canonical paths on first load so bookmarks and
+// shared links land on a working page. /gather → /agents, /reach* → /mail*.
+if (typeof window !== "undefined") {
+  const p = window.location.pathname;
+  let rewritten: string | null = null;
+  if (p === "/gather") rewritten = "/agents";
+  else if (p === "/reach/calibration") rewritten = "/mail/calibration";
+  else if (p === "/reach") rewritten = "/mail";
+  if (rewritten) {
+    window.history.replaceState(
+      null,
+      "",
+      rewritten + window.location.search + window.location.hash
+    );
+  }
 }
 
 export function viewPath(key: ViewKey): string {
   return VIEW_TO_PATH[key];
 }
 
+// The Mail Calibration studio lives at a stable deep-linkable sub-path.
+export const MAIL_CALIBRATION_PATH = "/mail/calibration";
+
 function parse(): Route {
-  const m = window.location.pathname.match(/^\/e\/(.+)$/);
+  const path = window.location.pathname;
+  const m = path.match(/^\/e\/(.+)$/);
   if (m) return { name: "entity", id: decodeURIComponent(m[1]) };
-  const key = PATH_TO_VIEW[window.location.pathname] ?? "overview";
-  return { name: "view", key };
+  if (path === "/mail/calibration")
+    return { name: "view", key: "mail", sub: "calibration" };
+  const key = PATH_TO_VIEW[path] ?? "overview";
+  return { name: "view", key, sub: null };
 }
 
 function sameRoute(a: Route, b: Route): boolean {
   if (a.name !== b.name) return false;
   if (a.name === "entity" && b.name === "entity") return a.id === b.id;
-  if (a.name === "view" && b.name === "view") return a.key === b.key;
+  if (a.name === "view" && b.name === "view")
+    return a.key === b.key && a.sub === b.sub;
   return true;
 }
 

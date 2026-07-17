@@ -62,7 +62,7 @@ Her ikisinden hemen önce TEK merak sorusu bulunsun. Kolay hayır: "Uygun değil
 "Denk gelmezse tek satır yeter."
 
 ## İyi örnek (atölye eğitmeni, ~70 kelime)
-**Konu:** `Probot — İz Atölye için 15 dakika`
+**Konu:** `İz Atölye için kısa soru`
 ```
 Merhaba Adem Bey,
 

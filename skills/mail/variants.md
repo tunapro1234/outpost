@@ -33,7 +33,7 @@ yarar" gibi boş gerekçe değil.
 
 ## İyi örnek — 3 ayrışan varyant (hedef: kendi kitini geliştirmiş atölye kurucusu)
 **Varyant A**
-- subject: `Rıdvan Bey — kısa bir soru`
+- subject: `Rıdvan Bey, kısa bir soru`
 - angle: kurucunun kendi sistem/müfredat deneyimi
 - tone: teknik kişi, eş düzey sıcak
 - why: Rıdvan kendi donanımını + müfredatını geliştirmiş; sahayı kurmuş biri olarak en değerli
@@ -41,7 +41,7 @@ yarar" gibi boş gerekçe değil.
 - body: "…bir sistemi sahada kurmuş biri olarak sizi en çok zorlayan karar neydi?" + 15 dk ziyaret.
 
 **Varyant B**
-- subject: `Rıdvan Bey — yedek parça sorusu`  (aynı hedef; başka kurumun adı KONMAZ)
+- subject: `Yedek parça sorusu`  (aynı hedef; başka kurumun adı KONMAZ)
 - angle: yedek parça / tedarik sürtünmesi
 - tone: teknik kişi, doğrudan
 - why: aynı kişi ama farklı acı — ithal set tedariki her atölyenin ortak derdi; ProBot'un en
@@ -50,7 +50,7 @@ yarar" gibi boş gerekçe değil.
   (daha düşük sürtünmeli CTA).
 
 **Varyant C**
-- subject: `Robotik atölyeniz — kısa bir soru`
+- subject: `Robotik atölyeniz hakkında kısa soru`
 - angle: çocukların sınıfta takıldığı nokta
 - tone: eğitimci, misyona dönük
 - why: kurucu aynı zamanda eğitmen; çocuk deneyimi açısı ticari baskıyı en aza indirir, "öğrenmek

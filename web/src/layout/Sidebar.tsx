@@ -4,7 +4,7 @@ import type { WorkspaceInfo } from "@/core/types";
 export type NavKey =
   | "overview"
   | "network"
-  | "reach"
+  | "mail"
   | "agents"
   | "workspace"
   | "integrations"
@@ -52,7 +52,12 @@ const Icons: Record<NavKey, JSX.Element> = {
       <path d="M7.7 8.4 10.6 15M16.6 7.7 13.3 15.4M8 7l7.8-.6" />
     </svg>
   ),
-  reach: <S d="M22 3 11 14M22 3l-7 18-4-8-8-4 19-6z" />,
+  mail: (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="5" width="18" height="14" rx="2.4" />
+      <path d="m3.5 7 8.5 6 8.5-6" />
+    </svg>
+  ),
   agents: (
     <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
       <rect x="4" y="8" width="16" height="11" rx="2.5" />
@@ -81,7 +86,7 @@ const Icons: Record<NavKey, JSX.Element> = {
 const TOP: { k: NavKey; label: string }[] = [
   { k: "overview", label: "Overview" },
   { k: "network", label: "Network" },
-  { k: "reach", label: "Reach" },
+  { k: "mail", label: "Mail" },
   { k: "agents", label: "Agents" },
 ];
 const BOTTOM: { k: NavKey; label: string }[] = [

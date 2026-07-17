@@ -59,6 +59,10 @@ export async function writeCalibration(workspace, user, content, {
   return { content: parsed.body, calibrated_at: calibratedAt };
 }
 
+export async function stampCalibration(workspace, user, options = {}) {
+  return writeCalibration(workspace, user, await readCalibrationSource(workspace, user), options);
+}
+
 export function isDraftStale(draft, calibratedAt) {
   if (!draft?.created_at || !draft?.author || !calibratedAt) return false;
   const created = Date.parse(draft.created_at);

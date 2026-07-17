@@ -49,7 +49,13 @@ import {
 } from "@/core/filters";
 import type { Physics } from "@/core/physics";
 import { loadPhysics, savePhysics } from "@/core/physics";
-import { useRoute, navigate, entityPath, viewPath } from "@/core/router";
+import {
+  useRoute,
+  navigate,
+  entityPath,
+  viewPath,
+  MAIL_CALIBRATION_PATH,
+} from "@/core/router";
 
 const EMPTY: GraphData = { nodes: [], edges: [] };
 const WORKSPACE_STORAGE_KEY = "outpost.workspace";
@@ -57,7 +63,7 @@ const WORKSPACE_STORAGE_KEY = "outpost.workspace";
 const TITLES: Record<NavKey, string> = {
   overview: "Overview",
   network: "Network",
-  reach: "Reach",
+  mail: "Mail",
   agents: "Agents",
   workspace: "Workspace",
   integrations: "Integrations",

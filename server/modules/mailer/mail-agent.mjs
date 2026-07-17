@@ -46,6 +46,7 @@ export async function ensureMailAgentBrief(workspace, user, {
 export async function spawnMailAgentSession({
   workspace,
   session,
+  model = "claude-opus-4-8",
   exec = personalAgentExec,
   sleep = personalAgentSleep,
   spawnWaitMs,
@@ -54,7 +55,7 @@ export async function spawnMailAgentSession({
   return spawnPersonalAgentSession({
     workspace,
     session,
-    model: "claude-opus-4-8",
+    model,
     protocol: "mail",
     label: "Mail agent",
     exec,
@@ -67,6 +68,7 @@ export async function spawnMailAgentSession({
 export function createMailAgentBridge({
   user,
   session,
+  model = "claude-opus-4-8",
   exec = personalAgentExec,
   fileSystem,
   sleep = personalAgentSleep,
@@ -97,7 +99,7 @@ export function createMailAgentBridge({
       `[mail ${id}] İstek: mailagent/${user}/inbox/${id}.md oku; cevabı mailagent/${user}/outbox/${id}.md dosyasına yaz; bitince mailagent/${user}/outbox/${id}.done oluştur.`,
     onMissingSession: async ({ workspace }) => {
       await spawnMailAgentSession({
-        workspace, session, exec, sleep, spawnWaitMs, claudeBin,
+        workspace, session, model, exec, sleep, spawnWaitMs, claudeBin,
       });
     },
   });
