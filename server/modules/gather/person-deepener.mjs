@@ -184,7 +184,7 @@ export async function codexPersonSearch({
     child.stdin.on("error", () => {});
     const stepInstructions = {
       school: "Önce yalnız okul/eğitim geçmişini doğrula; ucuz ve doğrudan web aramaları kullan.",
-      mail: "Kişinin YAYIMLANMIŞ e-posta adresini ara: kurum sitesinin iletişim/kadro/künye sayfaları, resmi PDF ve duyurular. YALNIZ yayımlanmış kanıt kabul edilir, KALIP TAHMİNİ ÜRETME (ad.soyad@ tahmini yasak). Bulursan kaynak URL'yi mail_source_url alanına yaz; bulamazsan mail=null bırak.",
+      mail: "Kişinin YAYIMLANMIŞ e-posta adresini ara: kurum sitesinin iletişim/kadro/künye sayfaları, resmi PDF ve duyurular. YALNIZ yayımlanmış kanıt kabul edilir, KALIP TAHMİNİ ÜRETME (ad.soyad@ tahmini yasak). Kişiye özel adres yoksa kurumun YAYIMLANMIŞ genel iletişim adresini (info@, hello@ gibi) öner ve summary alanına 'kurumsal adres' notu düş. Her durumda kaynak URL'yi mail_source_url alanına yaz; hiçbir yayımlanmış adres yoksa mail=null bırak.",
       authority: "Güncel rolü ve karar yetkisini şirket/takım sayfası dahil birincil kaynaklarla doğrula.",
       hooks: "Yazılabilir hook ara: güncel haber, konuşma, proje, robotik/FRC geçmişi veya doğrulanabilir ortak bağlantı.",
     };
