@@ -110,7 +110,7 @@ playwright sürümü **1.61.1'e sabit** (sunucuyla uyum), `PLAYWRIGHT_SKIP_BROWS
 
 - `outpost.service` (systemd): `node server/index.mjs`, WorkingDirectory repo, env
   `OUTPOST_VAULT=/srv/outpost/data/vault OUTPOST_PORT=3002`, Restart=always.
-- `nginx-outpost.conf`: outpost.trasumanar.ai → proxy 127.0.0.1:3002; basic auth
+- `nginx-outpost.conf`: outpost.tunapro.xyz → proxy 127.0.0.1:3002; basic auth
   (`auth_basic_user_file /etc/nginx/.htpasswd-outpost`) — veri kişisel iletişim içeriyor (KVKK),
   public bırakılamaz. certbot SSL.
 - `DEPLOY.md`: adımlar (DNS → certbot → vhost → systemd). ports.md kaydı: 3002.

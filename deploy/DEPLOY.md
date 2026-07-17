@@ -1,4 +1,4 @@
-# Outpost Deploy (outpost.trasumanar.ai)
+# Outpost Deploy (outpost.tunapro.xyz)
 
 Durum (2026-07-16, outpost-main): DNS + SSL + nginx HAZIR, systemd unit bu dizinde.
 
@@ -6,8 +6,8 @@ Durum (2026-07-16, outpost-main): DNS + SSL + nginx HAZIR, systemd unit bu dizin
 1. **DNS**: gerek yoktu — `*.trasumanar.ai` wildcard A kaydı zaten sunucuya işaret ediyor.
 2. **Basic auth**: `/etc/nginx/.htpasswd-outpost` (kullanıcı `tuna`; parola `/srv/outpost/.web-auth.txt`,
    chmod 600, repo dışı). Veri kişisel iletişim içerdiği için (KVKK) site auth'suz açılmaz.
-3. **nginx**: `/etc/nginx/sites-available/outpost.trasumanar.ai.conf` (enabled) → proxy 127.0.0.1:3002.
-4. **SSL**: certbot (`certbot --nginx -d outpost.trasumanar.ai`), otomatik yenilenir.
+3. **nginx**: `/etc/nginx/sites-available/outpost.tunapro.xyz.conf` (enabled) → proxy 127.0.0.1:3002.
+4. **SSL**: certbot (`certbot --nginx -d outpost.tunapro.xyz`), otomatik yenilenir.
 5. **Port**: 3002, `/srv/docs/ports.md`'ye kayıtlı.
 
 ## Servis kurulumu (server/ implement edilince)
