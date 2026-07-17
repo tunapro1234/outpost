@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import { normalizeSearch } from "../../lib/slug.mjs";
 import { hasMail } from "../reach/service.mjs";
+import { readMailSettings } from "./settings.mjs";
 
 const MODULE_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SIGNALS_PATH = path.join(MODULE_DIRECTORY, "signals.yaml");
@@ -372,14 +373,30 @@ function baseItem(person, scored) {
   };
 }
 
+const VERIFIED_MAIL_SOURCES = new Set(["yayimlanmis", "verified", "manual", "resmi"]);
+
+function mailVerified(meta) {
+  return hasMailValue(meta) &&
+    VERIFIED_MAIL_SOURCES.has(String(meta.mail_source ?? "").toLowerCase());
+}
+
+function hasMailValue(meta) {
+  const value = meta?.mail ?? (Array.isArray(meta?.mails) ? meta.mails[0] : null);
+  return typeof value === "string" && value.trim() && value.trim() !== "-";
+}
+
 export async function mailQueue(workspace) {
   const signals = await loadSignals(workspace);
+  const settings = await readMailSettings(workspace);
+  const approvalThreshold = settings.approval_threshold;
   const queue = [];
   const awaitingScan = [];
   const referral = [];
+  const belowThreshold = [];
+  const mailResearch = [];
   const fitThreshold = finiteScore(signals.fit_threshold, 40);
   for (const person of workspace.index.entities.values()) {
-    if (person.meta.type !== "person" || !hasMail(person)) continue;
+    if (person.meta.type !== "person") continue;
     const { scanState, mailState } = candidateState(person);
     if (!QUEUE_MAIL_STATES.has(mailState)) continue;
     const scored = scorePerson(person, workspace.index, signals);
@@ -387,26 +404,48 @@ export async function mailQueue(workspace) {
     // kuyruğa/tarama listesine giremez.
     if (scored.company?.meta?.outreach === "excluded") continue;
     if (!scored.company || scored.fit < fitThreshold) {
+      if (!hasMail(person)) continue;
       referral.push({
         ...baseItem(person, scored),
         reason: scored.company ? "low-fit org" : "no verified employer",
       });
       continue;
     }
-    if (scanState === "scanned") {
-      queue.push({
-        ...baseItem(person, scored),
-        score: scored.score,
-        reasons: scored.reasons,
-        mail_state: mailState,
-        scan_state: scanState,
-      });
-    } else if (scanState === "unscanned" || scanState === "partial") {
+    if (scanState === "unscanned" || scanState === "partial") {
       awaitingScan.push({
         ...baseItem(person, scored),
         companyImportance: scored.companyImportance,
       });
+      continue;
     }
+    // Taranmış kişi: eşik-bazlı onay (Tuna 2026-07-17 — tam manuel onay yerine).
+    if (scored.score < approvalThreshold) {
+      belowThreshold.push({
+        ...baseItem(person, scored),
+        score: scored.score,
+      });
+      continue;
+    }
+    // Onaylı: doğrulanmış mail yoksa (hiç yok ya da kalıp tahmini) araştırma kovası.
+    if (!mailVerified(person.meta)) {
+      mailResearch.push({
+        ...baseItem(person, scored),
+        score: scored.score,
+        mail: hasMailValue(person.meta) ? (person.meta.mail ?? person.meta.mails?.[0]) : null,
+        mail_source: person.meta.mail_source ?? null,
+      });
+      if (!hasMail(person)) continue;
+      // Kalıp-tahmini maili olanlar araştırma beklerken kuyruğa da girer
+      // (taslak yazılabilir; gönderim zaten insan onaylı).
+    }
+    if (!hasMail(person)) continue;
+    queue.push({
+      ...baseItem(person, scored),
+      score: scored.score,
+      reasons: scored.reasons,
+      mail_state: mailState,
+      scan_state: scanState,
+    });
   }
 
   queue.sort((left, right) => right.score - left.score ||
@@ -415,7 +454,12 @@ export async function mailQueue(workspace) {
     left.name.localeCompare(right.name, "tr", { sensitivity: "base" }));
   referral.sort((left, right) => left.reason.localeCompare(right.reason) ||
     left.name.localeCompare(right.name, "tr", { sensitivity: "base" }));
+  mailResearch.sort((left, right) => right.score - left.score);
+  belowThreshold.sort((left, right) => right.score - left.score);
   return {
+    approval_threshold: approvalThreshold,
+    mailResearch,
+    belowThreshold,
     queue,
     awaitingScan,
     referral,
@@ -423,6 +467,8 @@ export async function mailQueue(workspace) {
       queue: queue.length,
       awaitingScan: awaitingScan.length,
       referral: referral.length,
+      belowThreshold: belowThreshold.length,
+      mailResearch: mailResearch.length,
     },
   };
 }

@@ -120,7 +120,7 @@ test("alumni/context kenarlarını employer saymaz; fit subtype'ı tipe tercih e
     { id: "mentor", reason: "low-fit org" },
     { id: "mezun", reason: "no verified employer" },
   ]);
-  assert.deepEqual(result.counts, { queue: 0, awaitingScan: 0, referral: 2 });
+  assert.deepEqual(result.counts, { queue: 0, awaitingScan: 0, referral: 2, belowThreshold: 0, mailResearch: 0 });
 });
 
 test("şirketi frontmatter yerine wikilink kenarından çözer ve en önemli komşuyu seçer", async (t) => {
@@ -183,7 +183,7 @@ test("GET mailqueue skor bileşenlerini açıklar, uygunluğu süzer ve awaiting
   const response = await app.inject({ url: "/api/ws/fixture/mailqueue" });
   assert.equal(response.statusCode, 200);
   const result = response.json();
-  assert.deepEqual(result.counts, { queue: 3, awaitingScan: 1, referral: 2 });
+  assert.deepEqual(result.counts, { queue: 3, awaitingScan: 1, referral: 2, belowThreshold: 0, mailResearch: 4 });
   assert.deepEqual(result.queue.map(({ id, score }) => ({ id, score })), [
     { id: "kurucu", score: 81.62 },
     { id: "kapali", score: 78.05 },
