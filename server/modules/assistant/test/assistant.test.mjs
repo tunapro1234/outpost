@@ -114,19 +114,26 @@ test("assistant oturumu spawn eder, brief üretir ve dosya protokolünü SSE ola
     ["tmux", ["has-session", "-t", "outpost-user-ada"]],
     ["tmux", [
       "new-session", "-d", "-s", "outpost-user-ada", "-c", directory,
-      "/opt/claude bin/claude --dangerously-skip-permissions --model claude-sonnet-5",
+      "IS_SANDBOX=1 /opt/claude bin/claude --dangerously-skip-permissions --model claude-sonnet-5",
     ]],
+    // TUI hazır-bekleme kontrolü
+    ["tmux", ["capture-pane", "-t", "outpost-user-ada", "-p"]],
     ["tmux", [
       "send-keys", "-t", "outpost-user-ada", "-l",
       "talimat dosyanı oku; protokol: [assist <id>] mesajları",
     ]],
     ["tmux", ["send-keys", "-t", "outpost-user-ada", "Enter"]],
+    // brief Enter-tekrar kontrolü (pane temiz → tek bakış)
+    ["tmux", ["capture-pane", "-t", "outpost-user-ada", "-p"]],
+    // köprünün meşguliyet kontrolü
     ["tmux", ["capture-pane", "-p", "-t", "outpost-user-ada"]],
     ["tmux", [
       "send-keys", "-t", "outpost-user-ada", "-l",
       `[assist ${id}] Soru: assistant/ada/inbox/${id}.md oku; cevabı assistant/ada/outbox/${id}.md dosyasına markdown olarak yaz; bitince assistant/ada/outbox/${id}.done oluştur.`,
     ]],
     ["tmux", ["send-keys", "-t", "outpost-user-ada", "Enter"]],
+    // köprü Enter-tekrar kontrolü
+    ["tmux", ["capture-pane", "-p", "-t", "outpost-user-ada"]],
   ]);
   await assert.rejects(
     fs.access(path.join(directory, "assistant", "ada", "inbox", `${id}.md`)),
