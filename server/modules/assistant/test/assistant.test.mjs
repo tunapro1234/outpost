@@ -82,7 +82,7 @@ test("assistant oturumu spawn eder, brief üretir ve dosya protokolünü SSE ola
     assistantExec: exec,
     assistantSleep: sleep,
     assistantClaudeBin: "/opt/claude bin/claude",
-    assistantSpawnWaitMs: 7,
+    assistantSpawnWaitMs: 10, // pollMs=2 olsun ki bridge'in sleep(1) tetiğiyle çakışmasın
     assistantBridgeOptions: { idFactory: () => id, outboxPollMs: 1 },
   });
   t.after(() => app.close());
