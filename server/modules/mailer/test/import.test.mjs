@@ -23,7 +23,7 @@ async function seed(t) {
 
 test("importMails: insan-yazımı mail → sent kayıt + kişi/şirket eşleşmesi", async (t) => {
   const workspace = await seed(t);
-  const result = importMails(workspace, [
+  const result = await importMails(workspace, [
     { to: "ali@acme.com", subject: "Eski teklif", body: "Merhaba Ali", date: "2026-05-01T09:00:00Z", company: "Acme A.Ş." },
     { to: "yok@bilinmeyen.com", subject: "Yabancı", body: "x", date: "2026-05-02T09:00:00Z" },
   ]);
@@ -46,18 +46,33 @@ test("importMails: insan-yazımı mail → sent kayıt + kişi/şirket eşleşme
 test("import idempotent: aynı mail iki kez → tek send", async (t) => {
   const workspace = await seed(t);
   const rec = [{ to: "ali@acme.com", subject: "A", body: "b", date: "2026-05-01T09:00:00Z", message_id: "<x@acme>" }];
-  importMails(workspace, rec);
-  importMails(workspace, rec);
+  await importMails(workspace, rec);
+  await importMails(workspace, rec);
   assert.equal(listMails(workspace).length, 1);
   assert.equal(sendsByMail(workspace, listMails(workspace)[0].id).length, 1);
 });
 
 test("maildb + analytics imported maili sent+insan olarak gösterir", async (t) => {
   const workspace = await seed(t);
-  importMails(workspace, [{ to: "ali@acme.com", subject: "A", body: "b", date: "2026-05-01T09:00:00Z", company: "Acme A.Ş." }]);
+  await importMails(workspace, [{ to: "ali@acme.com", subject: "A", body: "b", date: "2026-05-01T09:00:00Z", company: "Acme A.Ş." }]);
   const [record] = await buildMailRecords(workspace, { now: () => new Date("2026-06-01T00:00:00Z") });
   assert.equal(record.source, "imported");
   assert.equal(record.sent, true);
   const analytics = await mailAnalytics(workspace, { now: () => new Date("2026-06-01T00:00:00Z") });
   assert.ok(analytics.by_source.some((c) => c.key === "insan (import)"));
+});
+
+test("import reply bilgisi → başarı analitiğine akar (yanıt aldı sayılır)", async (t) => {
+  const workspace = await seed(t);
+  const result = await importMails(workspace, [
+    // Yanıt ALAN mail (başarılı).
+    { to: "ali@acme.com", subject: "Teklif", body: "b", date: "2026-05-01T09:00:00Z", replied: true, reply_date: "2026-05-03T10:00:00Z" },
+  ]);
+  assert.equal(result.replies, 1);
+  const [record] = await buildMailRecords(workspace, { now: () => new Date("2026-06-01T00:00:00Z") });
+  assert.equal(record.reply.replied, true, "import edilen mail yanıt almış sayılmalı");
+  const analytics = await mailAnalytics(workspace, { now: () => new Date("2026-06-01T00:00:00Z") });
+  assert.equal(analytics.overall.replied, 1);
+  const humanBucket = analytics.by_source.find((c) => c.key === "insan (import)");
+  assert.equal(humanBucket.reply_rate, 100, "insan korpusunda reply-rate hesaplanmalı");
 });
