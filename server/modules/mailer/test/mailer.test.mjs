@@ -21,6 +21,8 @@ import {
 } from "../drafts.mjs";
 import { followUpDecision, runFollowUpEngine } from "../followup.mjs";
 import { runMailWriterCycle, selectWriterCandidates } from "../writer.mjs";
+import { dispatchDueSends } from "../dispatch.mjs";
+import { buildMailRecords, mailAnalytics } from "../maildb.mjs";
 
 const TEST_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_WORKSPACES = path.join(TEST_DIRECTORY, "fixtures/workspaces");
@@ -731,4 +733,47 @@ test("follow-up motoru 4/5 günlük eşikleri uygular, iki takipten sonra kapat�
   assert.deepEqual({ checked: empty.checked, drafted: empty.drafted, closed: empty.closed }, {
     checked: 0, drafted: 0, closed: 0,
   });
+});
+
+test("uçtan uca: approve → schedule → dispatch dry-run → maildb", async (t) => {
+  const { app, workspace } = await copiedApp(t);
+  const person = workspace.index.entities.get("kurucu");
+  const company = workspace.index.entities.get("oncelikli");
+  const draft = await createMailDraftStage(workspace, {
+    person, company, variants: variants(), score: 87, reasons: ["yüksek skor"],
+    author: "tuna", generation: { model: "claude-sonnet-5", engine: "claude" },
+    now: () => new Date("2026-07-16T21:00:00Z"),
+  });
+  const approved = (await app.inject({
+    method: "POST",
+    url: `/api/ws/fixture/maildrafts/${draft.id}/approve`,
+    payload: { variant: 0 },
+  })).json();
+  // Onay ANINDA göndermez: bir saate schedule eder (gelecekte).
+  assert.equal(approved.status, "approved");
+  assert.ok(approved.scheduled_at, "scheduled_at dönmeli");
+  assert.equal(approved.dispatch_mode, "dry_run");
+  assert.ok(new Date(approved.scheduled_at).getTime() > Date.now());
+
+  // Zamanı gelmeden dispatch bir şey yapmaz.
+  const early = await dispatchDueSends(workspace, { now: () => new Date("2026-07-16T21:05:00Z") });
+  assert.equal(early.processed, 0);
+
+  // Planlanan saatten sonra: dry-run → dışarı gitmez, işaretlenir + render saklanır.
+  const future = new Date(new Date(approved.scheduled_at).getTime() + 60_000);
+  const run = await dispatchDueSends(workspace, { now: () => future });
+  assert.equal(run.processed, 1);
+  assert.equal(run.dry_run, 1);
+  assert.equal(run.sent, 0);
+
+  const [record] = await buildMailRecords(workspace, { now: () => future });
+  assert.equal(record.send.status, "sent_dryrun");
+  assert.equal(record.sent, true);
+  assert.match(record.token, /^[a-f0-9]{16,}$/);
+  const full = await (await import("../maildb.mjs")).mailRecord(workspace, record.id, { now: () => future });
+  assert.ok(full.rendered?.message_id, "render edilmiş Message-ID saklanmalı");
+  assert.match(full.rendered.html, /t\/o\/fixture\//, "izleme pikseli maile gömülmeli");
+
+  const analytics = await mailAnalytics(workspace, { now: () => future });
+  assert.equal(analytics.total, 1);
 });

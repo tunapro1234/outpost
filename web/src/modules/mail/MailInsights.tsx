@@ -103,8 +103,29 @@ export default function MailInsights({ analytics }: { analytics: MailAnalytics |
           <span className="ikpi-l">açanların yanıtı</span>
         </div>
         <div className="ikpi">
+          <span className="ikpi-n">{minutes(o.median_time_to_open_ms)}</span>
+          <span className="ikpi-l">medyan açılma süresi</span>
+        </div>
+        <div className="ikpi">
           <span className="ikpi-n">{minutes(o.median_time_to_reply_ms)}</span>
           <span className="ikpi-l">medyan yanıt süresi</span>
+        </div>
+      </div>
+
+      {/* Güvenilirlik: open gürültülü. Bu üç sayı, open'a aldanmadan neyin
+          çalıştığını/çalışmadığını gösterir. */}
+      <div className="insight-kpis reliability">
+        <div className="ikpi good">
+          <span className="ikpi-n">{o.replied_without_open}</span>
+          <span className="ikpi-l">açılmadan yanıt (çalıştı)</span>
+        </div>
+        <div className="ikpi warn">
+          <span className="ikpi-n">{o.opened_no_reply}</span>
+          <span className="ikpi-l">açıldı, yanıt yok</span>
+        </div>
+        <div className="ikpi cold">
+          <span className="ikpi-n">{o.cold}</span>
+          <span className="ikpi-l">tutmadı (cold)</span>
         </div>
       </div>
 

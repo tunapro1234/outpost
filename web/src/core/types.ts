@@ -258,6 +258,24 @@ export interface MailRecordReply {
   time_to_reply_ms?: number;
 }
 
+export interface MailRecordSend {
+  status: string; // scheduled | sent_dryrun | sent | failed | unsent
+  scheduled_at: string | null;
+  window_reason: string | null;
+  dispatch_mode: string | null; // dry_run | brevo
+}
+
+export interface MailRecordDurations {
+  time_to_open_ms: number | null;
+  time_to_reply_ms: number | null;
+}
+
+export interface MailRecordFlags {
+  replied_without_open: boolean;
+  cold: boolean;
+  opened_no_reply: boolean;
+}
+
 export interface MailRecord {
   id: string;
   token: string | null;
@@ -274,6 +292,9 @@ export interface MailRecord {
   approved_at: string | null;
   sent: boolean;
   sent_at: string | null;
+  send: MailRecordSend;
+  durations: MailRecordDurations;
+  flags: MailRecordFlags;
   generation: MailRecordGeneration | null;
   tracking: MailRecordTracking;
   reply: MailRecordReply;
@@ -295,6 +316,14 @@ export interface MailRecordDetail extends MailRecord {
     source_agent?: string;
   }) | null;
   events?: { token: string; type: string; at: string; bot?: boolean; url?: string }[];
+  rendered?: {
+    message_id?: string;
+    subject?: string;
+    from?: string;
+    to?: string;
+    html?: string;
+    text?: string;
+  } | null;
 }
 
 export interface MailAnalyticsCell {
@@ -312,7 +341,11 @@ export interface MailAnalyticsCell {
 export interface MailAnalytics {
   overall: MailAnalyticsCell & {
     reply_rate_given_open: number;
+    median_time_to_open_ms: number | null;
     median_time_to_reply_ms: number | null;
+    replied_without_open: number;
+    cold: number;
+    opened_no_reply: number;
   };
   by_model: MailAnalyticsCell[];
   by_engine: MailAnalyticsCell[];
