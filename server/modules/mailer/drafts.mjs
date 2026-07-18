@@ -3,7 +3,10 @@ import path from "node:path";
 import { parseMarkdown, serializeMarkdown } from "../../lib/vault.mjs";
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
 import { isDraftStale, readCalibration } from "./calibration.mjs";
-import { newToken, extractLinks, trackingUrls, registerTracking } from "./tracking.mjs";
+import { newToken, extractLinks, trackingUrls } from "./tracking.mjs";
+import { insertMail, scheduleSend, scheduledSendTimes } from "./store.mjs";
+import { nextSendTime, resolveTimezone } from "./schedule.mjs";
+import { readMailSettings } from "./settings.mjs";
 
 function stageDirectory(workspace) {
   return path.join(workspace.directory, "stage");
@@ -391,20 +394,70 @@ export async function approveMailDraft(workspace, id, payload, { now = () => new
     click_urls: urls.clicks,
   };
   await appendOutbox(workspace, record);
-  await registerTracking(workspace, {
-    ws,
-    token,
-    outbox_id: record.id,
+
+  // Kanonik DB kaydı + akıllı schedule: mail ANINDA gitmez. Alıcının saat dilimine
+  // göre iyi bir saate (rolling) schedule edilir; gerçek gönderim dispatcher'da,
+  // varsayılan dry-run (dışarı hiçbir şey çıkmaz).
+  const person = workspace.index?.entities?.get(draft.person_id) ?? null;
+  const toAddr = person?.meta?.mail
+    ?? (Array.isArray(person?.meta?.mails) ? person.meta.mails[0] : null);
+  insertMail(workspace, {
+    id: record.id,
+    draft_id: id,
     person_id: draft.person_id,
     company_id: draft.company_id,
-    mail: null,
+    to_addr: toAddr,
     subject,
+    body,
+    tone: selected.tone,
+    variant: payload.variant,
+    score: draft.score,
+    followup_stage: draft.followup_stage,
+    author: draft.author ?? null,
+    rationale: selected.rationale,
+    variants: draft.variants,
+    reasons: draft.reasons,
+    generation: draft.generation ?? null,
     links,
-    now,
+    track_token: token,
+    created_at: draft.created_at,
+    approved_at: approvedAt,
   });
-  await updateEntityMeta(workspace, draft.person_id, { mail_state: "approved" });
+  const settings = await readMailSettings(workspace);
+  const timezone = resolveTimezone(
+    person?.meta?.city ?? person?.meta?.il ?? person?.meta?.sehir ?? null,
+  );
+  const taken = scheduledSendTimes(workspace)
+    .map((value) => new Date(value))
+    .filter((date) => !Number.isNaN(date.getTime()));
+  const slot = nextSendTime({
+    afterUtc: now(),
+    config: { ...settings.schedule, timezone },
+    takenUtc: taken,
+    rngSeed: token,
+  });
+  const sendId = scheduleSend(workspace, {
+    mail_id: record.id,
+    scheduled_at: slot.scheduledAtUtc.toISOString(),
+    window_reason: slot.windowReason,
+    dispatch_mode: settings.dispatch_mode,
+  });
+
+  await updateEntityMeta(workspace, draft.person_id, {
+    mail_state: "approved",
+    mail_scheduled_at: slot.scheduledAtUtc.toISOString(),
+  });
   await archiveDraft(workspace, draft.file);
-  return { ok: true, id, status: "approved", outbox: record };
+  return {
+    ok: true,
+    id,
+    status: "approved",
+    outbox: record,
+    scheduled_at: slot.scheduledAtUtc.toISOString(),
+    window_reason: slot.windowReason,
+    dispatch_mode: settings.dispatch_mode,
+    send_id: sendId,
+  };
 }
 
 const REJECT_KINDS = new Set([

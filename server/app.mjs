@@ -15,6 +15,9 @@ import { GatherScheduler } from "./modules/gather/scheduler.mjs";
 import { mailRoutes } from "./modules/mail/routes.mjs";
 import { mailerRoutes } from "./modules/mailer/routes.mjs";
 import { trackingRoutes } from "./modules/mailer/tracking-routes.mjs";
+import { importLegacy, syncEntities } from "./modules/mailer/store.mjs";
+import { closeWorkspaceDb } from "./lib/db.mjs";
+import { dispatchDueSends } from "./modules/mailer/dispatch.mjs";
 import { mailAgentRoutes } from "./modules/mailer/agent-routes.mjs";
 import { FollowUpScheduler } from "./modules/mailer/scheduler.mjs";
 import {
@@ -281,6 +284,37 @@ export async function createApp({
   // Public izleme uçları (auth yok, workspace path'te): alıcının mail client'ı ve
   // Brevo webhook'u vurur. Web catch-all'dan ÖNCE kayıtlı olmalı.
   await app.register(trackingRoutes, { registry });
+
+  // DB hazırlığı (bir kez, açılışta): eski JSONL'i içeri al + entity aynasını kur.
+  for (const workspace of registry.workspaces.values()) {
+    try {
+      await importLegacy(workspace);
+      syncEntities(workspace);
+    } catch (error) {
+      app.log?.warn?.({ err: error, ws: workspace.id }, "Workspace DB hazırlanamadı");
+    }
+  }
+
+  // Gönderim dispatcher tick'i: zamanı gelen scheduled mailleri işler. Varsayılan
+  // dry-run — dışarı HİÇBİR ŞEY çıkmaz, sadece "gönderecektim" olarak işaretlenir.
+  let dispatchTimer = null;
+  if (mailSchedule) {
+    const tick = async () => {
+      for (const workspace of registry.workspaces.values()) {
+        try {
+          await dispatchDueSends(workspace);
+        } catch (error) {
+          app.log?.warn?.({ err: error, ws: workspace.id }, "Dispatch tick hatası");
+        }
+      }
+    };
+    dispatchTimer = setInterval(() => void tick(), 60_000);
+    dispatchTimer.unref?.();
+  }
+  app.addHook("onClose", async () => {
+    if (dispatchTimer) clearInterval(dispatchTimer);
+    for (const workspace of registry.workspaces.values()) closeWorkspaceDb(workspace);
+  });
 
   if (mailSchedule) await mailIngestor.start();
 
