@@ -176,6 +176,51 @@ export interface ReachStats {
   pendingFollowUp: number;
 }
 
+// ---- mail tracking (server GET /api/ws/:ws/mailtracking) ----------------
+// One row per approved (tokenised) mail. `status` climbs queued → delivered →
+// opened → clicked (bounced short-circuits). Open tracking is noisy — proxy
+// prefetch (Apple Mail Privacy, Gmail image proxy) is counted separately in
+// `proxy_open_count` and NOT treated as a human open.
+export type MailTrackingStatus =
+  | "queued"
+  | "delivered"
+  | "proxy_open"
+  | "opened"
+  | "clicked"
+  | "bounced";
+
+export interface MailTrackingRow {
+  token: string;
+  outbox_id: string;
+  person_id: string;
+  person_name: string;
+  company_id: string | null;
+  subject: string | null;
+  mail: string | null;
+  created_at: string;
+  status: MailTrackingStatus;
+  delivered: boolean;
+  bounced: boolean;
+  open_count: number;
+  proxy_open_count: number;
+  first_open: string | null;
+  last_open: string | null;
+  click_count: number;
+  last_click: string | null;
+}
+
+export interface MailTrackingSummary {
+  rows: MailTrackingRow[];
+  counts: {
+    total: number;
+    queued: number;
+    delivered: number;
+    opened: number;
+    clicked: number;
+    bounced: number;
+  };
+}
+
 // ---- mail drafts awaiting approval (SPEC-MAILPIPE "Draft onay API kontratı")
 export interface MailDraftVariant {
   subject: string;
