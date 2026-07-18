@@ -64,6 +64,7 @@ function draftRecord(file, parsed) {
     created_at: parsed.meta.created_at,
     author: typeof parsed.meta.author === "string" ? parsed.meta.author : null,
     followup_stage: parsed.meta.followup_stage ?? 0,
+    generation: parsed.meta.generation ?? null,
     status: "pending",
   };
 }
@@ -124,6 +125,7 @@ export async function createMailDraftStage(workspace, {
   followupStage = 0,
   sourceAgent = "mail-writer",
   author,
+  generation = null,
   now = () => new Date(),
 }) {
   if (!validVariants(variants)) throw new Error("Mail draft tam olarak 3 geçerli varyant içermeli");
@@ -140,6 +142,9 @@ export async function createMailDraftStage(workspace, {
     created_at: createdAt,
     ...(author ? { author } : {}),
     followup_stage: followupStage,
+    // Üretim provenance'ı (model/engine/prompt/context/skills/kalibrasyon/süre/token):
+    // reply-rate'e göre optimize etmek için maildb'ye taşınır.
+    ...(generation ? { generation } : {}),
     status: "pending",
   };
   const body = `# ${person.meta.name} — Mail taslağı\n\nBu kayıt yalnız onay kuyruğudur; gönderim yapmaz.\n`;
@@ -155,6 +160,7 @@ export async function createMailDraftStage(workspace, {
 export async function rewriteMailDraftStage(workspace, draft, {
   variants,
   author = draft.author,
+  generation = null,
   now = () => new Date(),
 } = {}) {
   if (!validVariants(variants)) throw new Error("Mail draft tam olarak 3 geçerli varyant içermeli");
@@ -169,6 +175,7 @@ export async function rewriteMailDraftStage(workspace, draft, {
     variants,
     created_at: createdAt,
     ...(author ? { author } : {}),
+    ...(generation ? { generation } : {}),
   }), "utf8");
   return { id: draft.id, file: draft.file, created_at: createdAt };
 }
@@ -372,6 +379,10 @@ export async function approveMailDraft(workspace, id, payload, { now = () => new
     followup_stage: draft.followup_stage,
     created_at: draft.created_at,
     ...(draft.author ? { author: draft.author } : {}),
+    // Optimizasyon için: seçilen varyant + üretilen 3 varyantın tamamı + provenance.
+    variant_tone: selected.tone,
+    variants_all: draft.variants,
+    ...(draft.generation ? { generation: draft.generation } : {}),
     approved_at: approvedAt,
     approved: true,
     sent: false,

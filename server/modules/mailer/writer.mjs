@@ -361,6 +361,8 @@ export async function generateMailVariants(context, {
   mailAgentOptions = {},
   logger,
   usageKind = "draft",
+  provenance = null,
+  now = () => new Date(),
 } = {}) {
   const skills = await readMailSkills(skillNames, { skillsPath });
   const calibration = author ? await readCalibrationSource(workspace, author) : "";
@@ -369,6 +371,23 @@ export async function generateMailVariants(context, {
   const configuredModel = author
     ? (await readMailAgentConfig(workspace, author)).model
     : DEFAULT_MAIL_AGENT_MODEL;
+  // Provenance: reply-rate optimizasyonu için "hangi model, hangi prompt, ne zaman".
+  const startedAt = now();
+  if (provenance) {
+    provenance.model = configuredModel;
+    provenance.prompt = prompt;
+    provenance.skills = skillNames;
+    provenance.usage_kind = usageKind;
+    provenance.started_at = startedAt.toISOString();
+  }
+  const stamp = (engine, generated, attempts) => {
+    if (!provenance) return;
+    provenance.engine = engine;
+    provenance.attempts = attempts;
+    provenance.usage = generated?.usage ?? null;
+    provenance.generated_at = now().toISOString();
+    provenance.generation_ms = now().getTime() - startedAt.getTime();
+  };
   if (author && configuredModel === "gpt-5.6-sol") {
     let lastError;
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -393,6 +412,7 @@ export async function generateMailVariants(context, {
           chars: prompt.length + generated.text.length,
           ...(generated.usage ?? estimatedUsage(prompt.length, generated.text.length)),
         }).catch((error) => logger?.warn?.({ err: error }, "Codex usage yazılamadı"));
+        stamp("codex", generated, attempt + 1);
         return variants;
       } catch (error) {
         lastError = error;
@@ -414,6 +434,7 @@ export async function generateMailVariants(context, {
         user: author, agent: "mail", kind: usageKind,
         chars_in: prompt.length, chars_out: output.length,
       }).catch((error) => logger?.warn?.({ err: error }, "Mail agent usage yazılamadı"));
+      stamp("mail-agent", { usage: estimatedUsage(prompt.length, output.length) }, 1);
       return variants;
     } catch (error) {
       logger?.warn?.(
@@ -437,6 +458,7 @@ export async function generateMailVariants(context, {
           ...(generated.usage ?? estimatedUsage(prompt.length, generated.text.length)),
         }).catch((error) => logger?.warn?.({ err: error }, "Claude usage yazılamadı"));
       }
+      stamp("claude", generated, attempt + 1);
       return variants;
     } catch (error) {
       lastError = error;
@@ -547,10 +569,13 @@ export async function runMailWriterCycle({
     const company = item.company_id ? workspace.index.entities.get(item.company_id) : null;
     try {
       if (!person) throw new Error("Kişi entity bulunamadı");
+      const contextStartedAt = now();
       const context = await compileContext({
         person, company, queueItem: item, agent, workspace, user: profile.user,
       });
       const notes = await badContentNotes(workspace, person.id);
+      // Provenance: reply-rate'e göre optimize edebilmek için üretimin tam kaydı.
+      const provenance = {};
       const variants = await generateVariants(context, {
         ...generationOptions,
         workspace,
@@ -560,14 +585,24 @@ export async function runMailWriterCycle({
         authorName: profile.name,
         logger,
         usageKind: staleDraft ? "redraft" : "draft",
+        provenance,
+        now,
       });
+      const generation = {
+        ...provenance,
+        context,
+        context_model: agent.model ?? null,
+        context_ms: now().getTime() - contextStartedAt.getTime(),
+        rejected_notes: notes,
+        source_agent: agent.id,
+      };
       const draft = staleDraft
         ? await rewriteMailDraftStage(workspace, staleDraft, {
-            variants, author: profile.user, now,
+            variants, author: profile.user, generation, now,
           })
         : await createMailDraftStage(workspace, {
             person, company, variants, score: item.score, reasons: item.reasons,
-            sourceAgent: agent.id, author: profile.user, now,
+            sourceAgent: agent.id, author: profile.user, generation, now,
           });
       try {
         if (!staleDraft) await updateEntityMeta(workspace, person, { mail_state: "drafted" });

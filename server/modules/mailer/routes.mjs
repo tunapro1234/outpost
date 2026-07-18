@@ -2,6 +2,7 @@ import { mailQueue } from "./service.mjs";
 import { readMailSettings, writeMailSettings } from "./settings.mjs";
 import { verifyMailbox } from "./mailprobe.mjs";
 import { trackingRows } from "./tracking.mjs";
+import { buildMailRecords, mailRecord, mailAnalytics } from "./maildb.mjs";
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
 import {
   approveMailDraft,
@@ -55,6 +56,24 @@ export async function mailerRoutes(app, {
   app.get("/mailtracking", async (request) => {
     authenticatedMailerUser(request, defaultUser);
     return trackingRows(resolveWorkspace(request));
+  });
+  // Kanonik mail DB: içerik + track edilen her şey + üretim provenance'ı.
+  app.get("/maildb", async (request) => {
+    authenticatedMailerUser(request, defaultUser);
+    return { mails: await buildMailRecords(resolveWorkspace(request)) };
+  });
+  app.get("/maildb/:id", async (request) => {
+    authenticatedMailerUser(request, defaultUser);
+    const record = await mailRecord(resolveWorkspace(request), request.params.id);
+    if (!record) {
+      const error = new Error("Mail kaydı bulunamadı"); error.statusCode = 404; throw error;
+    }
+    return record;
+  });
+  // Reply-rate kırılımları: modele/tona/skora/saate/followup'a göre optimizasyon.
+  app.get("/mailanalytics", async (request) => {
+    authenticatedMailerUser(request, defaultUser);
+    return mailAnalytics(resolveWorkspace(request));
   });
   app.get("/maildrafts", async (request) => listMailDrafts(resolveWorkspace(request)));
   app.post("/maildrafts/:id/approve", async (request) => {

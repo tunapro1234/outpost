@@ -127,6 +127,24 @@ export async function registerTracking(workspace, {
   return record;
 }
 
+// Ham izleme kayıtları — maildb kanonik mail kaydını kurarken join için kullanır.
+export async function readTrackingRecords(workspace) {
+  return (await readJsonl(trackingPath(workspace))).filter((entry) => entry.kind === "track");
+}
+
+export async function readTrackingEvents(workspace) {
+  return readJsonl(eventsPath(workspace));
+}
+
+export function eventsByToken(events) {
+  const map = new Map();
+  for (const event of events) {
+    if (!map.has(event.token)) map.set(event.token, []);
+    map.get(event.token).push(event);
+  }
+  return map;
+}
+
 export async function findTracking(workspace, token) {
   if (!isTrackToken(token)) return null;
   const records = await readJsonl(trackingPath(workspace));
