@@ -344,6 +344,11 @@ export function nextSendTime({ afterUtc, config, takenUtc = [], rngSeed }) {
       const startMinute = w.startMin + Math.floor(r * (jitterSpan + 1));
 
       for (let minute = startMinute; minute < w.endMin; minute++) {
+        // ZORUNLU jitter: tam yuvarlak dakikalar (…:30, :35, :45, :00) otomatik/
+        // robot gönderim gibi görünür. 5'in katı her dakikayı atlayarak sonucu her
+        // zaman yuvarlak-olmayan bir saate düşürürüz (09:32, 09:46 gibi). Bu aynı
+        // zamanda pencere başlangıcına (09:30) tam oturmayı da engeller.
+        if (minute % 5 === 0) continue;
         const slotUtc = utcFromLocalWallClock(
           { year: cal.year, month: cal.month, day: cal.day, hour: Math.floor(minute / 60), minute: minute % 60 },
           tz,
