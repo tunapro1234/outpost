@@ -9,6 +9,7 @@
 // bir parser eklenir; bu fonksiyon aynı kalır.
 import { insertMail, scheduleSend, markSend, sendsByMail } from "./store.mjs";
 import { mailEntityIndex } from "../network/service.mjs";
+import { appendIngestedMailLog } from "../mail/service.mjs";
 import { resolveEmployer } from "./service.mjs";
 import { normalizeSearch } from "../../lib/slug.mjs";
 
@@ -42,7 +43,38 @@ function firstAddress(value) {
   return match ? match[0].toLowerCase() : null;
 }
 
-export function importMails(workspace, records, { now = () => new Date(), defaultAuthor = "human" } = {}) {
+// Dökümde yanıt/başarı bilgisi (replied / reply_date) varsa: bunu SENTETİK bir
+// inbound kaydına çevirip ingested log'a ekleriz. Böylece mevcut reply-matching
+// bu maili "yanıt aldı" sayar ve analytics'e (reply-rate by_source) akar —
+// yanıtlar posta kutusunda olmasa bile korpustan "neyin çalıştığını" öğreniriz.
+function syntheticReply(record, person, sentAtIso, now) {
+  const replied = record.replied === true || record.reply === true ||
+    Boolean(record.reply_date ?? record.replied_at ?? record.reply_at);
+  if (!replied || !person) return null;
+  const personAddr = person.meta?.mail
+    ?? (Array.isArray(person.meta?.mails) ? person.meta.mails[0] : null);
+  if (!personAddr) return null;
+  // Yanıt tarihi: verilmişse o, yoksa gönderimden hemen sonra (best-effort).
+  const rawReplyDate = record.reply_date ?? record.replied_at ?? record.reply_at;
+  const replyMs = Date.parse(String(rawReplyDate ?? ""));
+  const sentMs = Date.parse(sentAtIso);
+  const date = Number.isFinite(replyMs)
+    ? new Date(Math.max(replyMs, sentMs + 1000)).toISOString()
+    : new Date(sentMs + 60_000).toISOString();
+  let hash = 2166136261 >>> 0;
+  for (const ch of `${personAddr}|${sentAtIso}`) { hash ^= ch.charCodeAt(0); hash = Math.imul(hash, 16777619); }
+  return {
+    id: `import-reply-${(hash >>> 0).toString(16)}`,
+    account: "import",
+    direction: "received",
+    peer: [personAddr],
+    subject: record.reply_subject ?? `Re: ${record.subject ?? ""}`.trim(),
+    date,
+    folder: "Inbox",
+  };
+}
+
+export async function importMails(workspace, records, { now = () => new Date(), defaultAuthor = "human" } = {}) {
   if (!Array.isArray(records)) {
     const error = new Error("mails bir dizi olmalı");
     error.statusCode = 400;
@@ -55,6 +87,8 @@ export function importMails(workspace, records, { now = () => new Date(), defaul
   let skipped = 0;
   let matchedPerson = 0;
   let matchedCompany = 0;
+  let replies = 0;
+  const syntheticReplies = [];
 
   for (const record of records) {
     if (!record || typeof record !== "object") { skipped += 1; continue; }
@@ -94,8 +128,22 @@ export function importMails(workspace, records, { now = () => new Date(), defaul
       });
       markSend(workspace, sendId, { status: "sent", sent_at: at });
     }
+    // Dökümde yanıt bilgisi varsa: başarı sinyali olarak sentetik inbound.
+    const reply = syntheticReply(record, person, at, now);
+    if (reply) { syntheticReplies.push(reply); replies += 1; }
     imported += 1;
   }
 
-  return { imported, skipped, matched_person: matchedPerson, matched_company: matchedCompany, total: records.length };
+  // Sentetik yanıtları ingested log'a ekle (dedup + şema doğrulaması orada).
+  if (syntheticReplies.length) {
+    await appendIngestedMailLog(workspace, syntheticReplies).catch(() => {});
+  }
+
+  return {
+    imported, skipped,
+    matched_person: matchedPerson,
+    matched_company: matchedCompany,
+    replies,
+    total: records.length,
+  };
 }

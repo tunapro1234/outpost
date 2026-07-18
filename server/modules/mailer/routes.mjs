@@ -85,7 +85,7 @@ export async function mailerRoutes(app, {
     const body = request.body ?? {};
     // Entity eşleşmesi güncel olsun diye aynayı tazele (kişi/şirket bağlama için).
     try { syncEntities(workspace); } catch { /* aynasız da eşleşme in-memory index'ten çalışır */ }
-    const result = importMails(workspace, body.mails ?? body, {
+    const result = await importMails(workspace, body.mails ?? body, {
       defaultAuthor: typeof body.author === "string" && body.author.trim() ? body.author.trim() : "human",
     });
     return result;
