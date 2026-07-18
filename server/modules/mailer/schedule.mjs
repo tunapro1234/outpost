@@ -122,6 +122,9 @@ export const DEFAULT_SCHEDULE = {
   jitterMin: 20,
   rollingPerHour: 12,
   minGapMin: 4,
+  // Günlük gönderim tavanı (mailler hazır olsa bile). 0 = sınırsız. Yerel takvim
+  // gününe göre sayılır; dolu gün atlanır, mail ertesi uygun güne kayar.
+  dailyMax: 0,
 };
 
 function _clampNum(value, lo, hi, fallback) {
@@ -171,6 +174,7 @@ export function mergeSchedule(overrides = {}) {
     jitterMin: _clampNum(o.jitterMin, 0, 600, DEFAULT_SCHEDULE.jitterMin),
     rollingPerHour: Math.round(_clampNum(o.rollingPerHour, 1, 600, DEFAULT_SCHEDULE.rollingPerHour)),
     minGapMin: _clampNum(o.minGapMin, 0, 600, DEFAULT_SCHEDULE.minGapMin),
+    dailyMax: Math.round(_clampNum(o.dailyMax, 0, 100000, DEFAULT_SCHEDULE.dailyMax)),
   };
 }
 
@@ -330,10 +334,24 @@ export function nextSendTime({ afterUtc, config, takenUtc = [], rngSeed }) {
   const startParts = localPartsFromUtc(afterUtc, tz);
   const windows = cfg.windows; // already sorted by mergeSchedule
 
+  // Günlük tavan: zaten schedule edilmiş sendleri yerel takvim gününe göre say.
+  const takenByDay = new Map();
+  if (cfg.dailyMax) {
+    for (const t of taken) {
+      const p = localPartsFromUtc(new Date(t), tz);
+      const key = `${p.year}-${p.month}-${p.day}`;
+      takenByDay.set(key, (takenByDay.get(key) ?? 0) + 1);
+    }
+  }
+
   for (let dayOffset = 0; dayOffset <= HORIZON_DAYS; dayOffset++) {
     const cal = _addLocalDays(startParts, dayOffset);
     const weekday = new Date(Date.UTC(cal.year, cal.month - 1, cal.day)).getUTCDay();
     if (!cfg.weekdays.includes(weekday)) continue;
+    // Bu gün tavanı doldurmuşsa atla (mail ertesi uygun güne kayar).
+    if (cfg.dailyMax && (takenByDay.get(`${cal.year}-${cal.month}-${cal.day}`) ?? 0) >= cfg.dailyMax) {
+      continue;
+    }
 
     for (const w of windows) {
       const winLen = w.endMin - w.startMin;
@@ -345,10 +363,12 @@ export function nextSendTime({ afterUtc, config, takenUtc = [], rngSeed }) {
 
       for (let minute = startMinute; minute < w.endMin; minute++) {
         // ZORUNLU jitter: tam yuvarlak dakikalar (…:30, :35, :45, :00) otomatik/
-        // robot gönderim gibi görünür. 5'in katı her dakikayı atlayarak sonucu her
-        // zaman yuvarlak-olmayan bir saate düşürürüz (09:32, 09:46 gibi). Bu aynı
-        // zamanda pencere başlangıcına (09:30) tam oturmayı da engeller.
-        if (minute % 5 === 0) continue;
+        // robot gönderim gibi görünür → 5'in katını atlayıp yuvarlak-olmayan saate
+        // düşürürüz (09:32, 09:46). AMA pencere 1 dakikaysa (tek aday, o da yuvarlak)
+        // atlamak slot'u imkânsız kılar → yalnız pencere ≥2 dk ise atla (bu durumda
+        // her zaman yuvarlak-olmayan bir dakika mevcuttur, ardışık iki dakika aynı
+        // anda 5'in katı olamaz).
+        if (winLen > 1 && minute % 5 === 0) continue;
         const slotUtc = utcFromLocalWallClock(
           { year: cal.year, month: cal.month, day: cal.day, hour: Math.floor(minute / 60), minute: minute % 60 },
           tz,

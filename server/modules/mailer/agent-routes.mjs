@@ -9,6 +9,7 @@ import {
   readCalibration,
   readCalibrationSource,
   writeCalibration,
+  resetCalibration,
 } from "./calibration.mjs";
 import { recordCalibrationDraft } from "./calibration-sessions.mjs";
 import { buildPersonBrief, briefContextText } from "./brief.mjs";
@@ -246,6 +247,10 @@ export async function mailAgentRoutes(app, {
       fail(400, "JSON gövdesi nesne olmalı");
     }
     return writeCalibration(resolveWorkspace(request), user, request.body.content, { now });
+  });
+  app.post("/calibration/reset", async (request) => {
+    const user = authenticatedMailerUser(request, defaultUser);
+    return resetCalibration(resolveWorkspace(request), user);
   });
   app.get("/calibration/brief/:personId", async (request) => {
     authenticatedMailerUser(request, defaultUser);

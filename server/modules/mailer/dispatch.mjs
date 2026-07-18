@@ -33,9 +33,12 @@ export async function dispatchOne(workspace, send, {
   });
   const at = now().toISOString();
 
-  // Gerçek gönderim yalnız mod "brevo" VE relay fonksiyonu varsa. Aksi halde
-  // dry-run: payload saklanır, dışarı hiçbir şey çıkmaz.
-  const live = dispatchMode === "brevo" && typeof relay === "function";
+  // Gerçek gönderim için ÜÇ koşul da gerekli: (1) runtime mod "brevo", (2) bu send
+  // KALICI olarak "brevo" schedule edilmiş (dry_run/imported schedule edilmiş bir
+  // mail runtime brevo'ya dönse bile ASLA canlı gitmez), (3) relay fonksiyonu var.
+  const live = dispatchMode === "brevo" &&
+    send.dispatch_mode === "brevo" &&
+    typeof relay === "function";
   if (!live) {
     markSend(workspace, send.id, {
       status: "sent_dryrun",

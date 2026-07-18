@@ -4,7 +4,7 @@ import { parseMarkdown, serializeMarkdown } from "../../lib/vault.mjs";
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
 import { isDraftStale, readCalibration } from "./calibration.mjs";
 import { newToken, extractLinks, trackingUrls } from "./tracking.mjs";
-import { insertMail, scheduleSend, scheduledSendTimes } from "./store.mjs";
+import { insertMail, scheduleSend, sendLedgerTimes } from "./store.mjs";
 import { nextSendTime, resolveTimezone } from "./schedule.mjs";
 import { readMailSettings } from "./settings.mjs";
 
@@ -427,12 +427,12 @@ export async function approveMailDraft(workspace, id, payload, { now = () => new
   const timezone = resolveTimezone(
     person?.meta?.city ?? person?.meta?.il ?? person?.meta?.sehir ?? null,
   );
-  const taken = scheduledSendTimes(workspace)
+  const taken = sendLedgerTimes(workspace)
     .map((value) => new Date(value))
     .filter((date) => !Number.isNaN(date.getTime()));
   const slot = nextSendTime({
     afterUtc: now(),
-    config: { ...settings.schedule, timezone },
+    config: { ...settings.schedule, timezone, dailyMax: settings.daily_max_sends },
     takenUtc: taken,
     rngSeed: token,
   });

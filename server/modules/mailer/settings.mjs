@@ -11,6 +11,7 @@ export const DEFAULT_MAIL_SETTINGS = Object.freeze({
   dispatch_mode: "dry_run",
   cold_after_days: 5,
   followup_gap_days: 3,
+  daily_max_sends: 0, // 0 = sınırsız; günlük gönderim tavanı (mailler hazır olsa bile)
   schedule: DEFAULT_SCHEDULE,
 });
 
@@ -36,6 +37,7 @@ function normalize(parsed) {
       : DEFAULT_MAIL_SETTINGS.dispatch_mode,
     cold_after_days: clampInt(parsed?.cold_after_days, DEFAULT_MAIL_SETTINGS.cold_after_days, 1, 60),
     followup_gap_days: clampInt(parsed?.followup_gap_days, DEFAULT_MAIL_SETTINGS.followup_gap_days, 1, 30),
+    daily_max_sends: clampInt(parsed?.daily_max_sends, DEFAULT_MAIL_SETTINGS.daily_max_sends, 0, 100000),
     schedule: mergeSchedule(parsed?.schedule),
   };
 }

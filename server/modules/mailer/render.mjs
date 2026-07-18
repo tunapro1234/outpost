@@ -30,15 +30,24 @@ function linkMap(links, clickUrls) {
 }
 
 function htmlBody(text, map, pixelUrl) {
-  const escaped = escapeHtml(text);
-  // Linkleri anchor'a çevir (varsa tıklama-redirect hedefiyle).
-  const linked = escaped.replace(/https?:\/\/[^\s<>"')]+/gu, (raw) => {
-    const clean = raw.replace(/[.,;:]+$/u, "");
-    const trail = raw.slice(clean.length);
+  // Linkleri HAM metin üzerinde eşle (escape SONRA, segment segment). Aksi halde
+  // önce escape edilirse "?a=1&b=2" → "&amp;" olur, linkMap'in ham anahtarlarıyla
+  // eşleşmez (query-string'li link takip edilmez) ve çift-escape'le kırılırdı.
+  const raw = String(text ?? "");
+  let html = "";
+  let last = 0;
+  for (const match of raw.matchAll(/https?:\/\/[^\s<>"')]+/gu)) {
+    const index = match.index ?? 0;
+    html += escapeHtml(raw.slice(last, index));
+    const full = match[0];
+    const clean = full.replace(/[.,;:]+$/u, "");
+    const trail = full.slice(clean.length);
     const href = map.get(clean) ?? clean;
-    return `<a href="${escapeHtml(href)}">${escapeHtml(clean)}</a>${trail}`;
-  });
-  const paragraphs = linked.split(/\n{2,}/u)
+    html += `<a href="${escapeHtml(href)}">${escapeHtml(clean)}</a>${escapeHtml(trail)}`;
+    last = index + full.length;
+  }
+  html += escapeHtml(raw.slice(last));
+  const paragraphs = html.split(/\n{2,}/u)
     .map((block) => `<p>${block.replace(/\n/gu, "<br>")}</p>`)
     .join("\n");
   const pixel = pixelUrl

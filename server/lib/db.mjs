@@ -45,6 +45,14 @@ CREATE TABLE IF NOT EXISTS followup (
 );
 CREATE INDEX IF NOT EXISTS idx_followup_due ON followup(status, due_at);
 `,
+  // Migration 1: mailin kaynağı ve yazarı. Dışarıdan içeri alınan (compec korpusu
+  // gibi) insan-yazımı mailleri AI-üretimlerinden ayırmak için. source: generated
+  // | imported; authored_by: model id | "human" | kişi adı.
+  `
+ALTER TABLE mail ADD COLUMN source TEXT;
+ALTER TABLE mail ADD COLUMN authored_by TEXT;
+CREATE INDEX IF NOT EXISTS idx_mail_source ON mail(source);
+`,
 ];
 
 function currentUserVersion(db) {
@@ -68,6 +76,8 @@ export function openWorkspaceDb(workspace) {
   const dbPath = path.join(workspace.directory, "outpost.db");
   const db = new DatabaseSync(dbPath);
   db.exec("PRAGMA journal_mode=WAL;");
+  // İkinci bir proses (CLI, yedekleme) dosyaya dokunursa SQLITE_BUSY yerine bekle.
+  db.exec("PRAGMA busy_timeout=5000;");
   applyMigrations(db);
   workspace.__db = db;
   return db;

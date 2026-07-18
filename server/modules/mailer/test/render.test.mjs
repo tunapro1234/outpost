@@ -46,3 +46,18 @@ test("renderMail without pixel/links still produces valid html", () => {
   assert.match(rendered.html, /<p>düz gövde<\/p>/u);
   assert.ok(!rendered.html.includes("<img"));
 });
+
+test("query-string linkler kırılmadan tıklama-sarmalanır (çift-escape yok)", () => {
+  const rendered = renderMail(
+    { subject: "x", body: "bak https://probotstudio.com/p?a=1&b=2 son", track_token: TOKEN },
+    {
+      links: ["https://probotstudio.com/p?a=1&b=2"],
+      clickUrls: ["https://outpost.tunapro.xyz/t/c/probot/" + TOKEN + "/0"],
+      now: NOW,
+    },
+  );
+  // Tıklama-redirect'e sarmalanmış olmalı (query-string'e rağmen eşleşti).
+  assert.match(rendered.html, /href="https:\/\/outpost\.tunapro\.xyz\/t\/c\/probot\/aaaabbbbccccdddd\/0"/u);
+  // Çift-escape olmamalı.
+  assert.ok(!rendered.html.includes("&amp;amp;"));
+});
