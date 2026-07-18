@@ -7159,3 +7159,43 @@ textarea.np-input {
   border-radius: 3px;
 }
 .reply-val { position: relative; z-index: 1; padding: 0 4px; font-variant-numeric: tabular-nums; }
+
+/* --- send/schedule + reliability chips --- */
+.sent-wrap { display: flex; flex-direction: column; gap: 10px; }
+.dryrun-banner {
+  font-size: 12.5px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px dashed color-mix(in srgb, var(--warn) 45%, var(--line));
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--warn) 8%, var(--surface-2));
+}
+.dryrun-banner.live {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+  background: color-mix(in srgb, var(--ok) 8%, var(--surface-2));
+}
+.send-chip {
+  font-size: 11px;
+  color: var(--text-faint);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.flag-chip {
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  border: 1px solid var(--line);
+}
+.flag-chip.flag-good { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.flag-chip.flag-warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+.flag-chip.flag-cold { color: var(--text-faint); }
+.mp-flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.insight-kpis.reliability .ikpi.good .ikpi-n { color: var(--ok); }
+.insight-kpis.reliability .ikpi.warn .ikpi-n { color: var(--warn); }
+.insight-kpis.reliability .ikpi.cold .ikpi-n { color: var(--text-faint); }

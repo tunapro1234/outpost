@@ -29,6 +29,46 @@ function ms(value: number | null | undefined): string {
   return value >= 1000 ? `${(value / 1000).toFixed(1)}s` : `${value}ms`;
 }
 
+// Human duration for engagement latencies (open/reply take minutes to days).
+function dur(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  const m = Math.round(value / 60000);
+  if (m < 60) return `${m} dk`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `${h} sa`;
+  return `${Math.round(h / 24)} gün`;
+}
+
+const SEND_LABEL: Record<string, string> = {
+  scheduled: "planlandı",
+  sent_dryrun: "dry-run",
+  sent: "gönderildi",
+  failed: "başarısız",
+  unsent: "beklemede",
+  queued: "kuyrukta",
+};
+
+// Reliability flags: honest read of a noisy channel. "replied w/o open" means
+// the mail worked even though open tracking missed it; "cold" means it did not
+// land at all after maturing.
+function FlagChips({ r }: { r: MailRecord }) {
+  const chips: { k: string; label: string; cls: string; title: string }[] = [];
+  if (r.flags.replied_without_open)
+    chips.push({ k: "rwo", label: "açılmadan yanıt", cls: "flag-good", title: "Yanıt geldi ama açılma görünmedi — mail çalıştı, open tracking kaçırdı" });
+  if (r.flags.cold)
+    chips.push({ k: "cold", label: "tutmadı", cls: "flag-cold", title: "Olgunlaştı, hiç açılma/yanıt yok" });
+  if (r.flags.opened_no_reply)
+    chips.push({ k: "onr", label: "açıldı, yanıt yok", cls: "flag-warn", title: "Açıldı ama yanıt gelmedi — içerik/CTA zayıf olabilir" });
+  if (!chips.length) return null;
+  return (
+    <>
+      {chips.map((c) => (
+        <span key={c.k} className={`flag-chip ${c.cls}`} title={c.title}>{c.label}</span>
+      ))}
+    </>
+  );
+}
+
 function Field({ k, v }: { k: string; v: React.ReactNode }) {
   return (
     <div className="mp-field">
@@ -105,6 +145,33 @@ function Detail({ id, loader }: { id: string; loader: (id: string) => Promise<Ma
                 : "Henüz yok"
             }
           />
+          <Field k="Açılma süresi" v={dur(detail.durations.time_to_open_ms)} />
+          <Field k="Yanıt süresi" v={dur(detail.durations.time_to_reply_ms)} />
+          {(detail.flags.replied_without_open || detail.flags.cold || detail.flags.opened_no_reply) ? (
+            <div className="mp-flags"><FlagChips r={detail} /></div>
+          ) : null}
+        </section>
+
+        <section className="mp-sec">
+          <h4>Gönderim</h4>
+          <Field k="Durum" v={SEND_LABEL[detail.send.status] ?? detail.send.status} />
+          <Field
+            k="Planlanan saat"
+            v={
+              detail.send.scheduled_at
+                ? `${new Date(detail.send.scheduled_at).toLocaleString("tr-TR")}${detail.send.window_reason ? ` · ${detail.send.window_reason}` : ""}`
+                : "—"
+            }
+          />
+          <Field
+            k="Mod"
+            v={
+              detail.send.dispatch_mode === "brevo"
+                ? "brevo (canlı)"
+                : "dry-run — dışarı gönderilmedi"
+            }
+          />
+          {detail.rendered?.message_id ? <Field k="Message-ID" v={<code>{detail.rendered.message_id}</code>} /> : null}
         </section>
       </div>
     </div>
@@ -132,8 +199,15 @@ export default function MailSent({
       </div>
     );
   }
+  const live = records.some((r) => r.send.dispatch_mode === "brevo");
   return (
-    <div className="md-rows">
+    <div className="sent-wrap">
+      <div className={`dryrun-banner ${live ? "live" : ""}`}>
+        {live
+          ? "Canlı gönderim (brevo) açık — mailler planlanan saatlerinde gerçekten gönderiliyor."
+          : "Dry-run: mailler alıcı saatine göre planlanıyor ama DIŞARI GÖNDERİLMİYOR. Gerçek gönderim ayrı, açık bir onayla açılır."}
+      </div>
+      <div className="md-rows">
       {records.map((r) => {
         const open = openId === r.id;
         return (
@@ -144,7 +218,15 @@ export default function MailSent({
               <span className="md-row-company">{r.subject ?? "—"}</span>
               <span className="md-row-when">{relativeTime(r.approved_at ?? r.created_at ?? undefined) ?? ""}</span>
               {r.reply.replied ? <span className="track-badge track-clicked">yanıtladı</span> : null}
+              <FlagChips r={r} />
               {r.generation?.model ? <span className="mp-model-tag">{r.generation.model}</span> : null}
+              {r.send.status === "scheduled" && r.send.scheduled_at ? (
+                <span className="send-chip" title={r.send.window_reason ?? ""}>
+                  ⧗ {new Date(r.send.scheduled_at).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                </span>
+              ) : r.send.status && r.send.status !== "unsent" ? (
+                <span className="send-chip">{SEND_LABEL[r.send.status] ?? r.send.status}</span>
+              ) : null}
               <StatusBadge r={r} />
             </button>
             {open ? (
@@ -158,6 +240,7 @@ export default function MailSent({
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
