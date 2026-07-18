@@ -9,6 +9,7 @@ import { useMailDrafts } from "@/modules/mail/useMailDrafts";
 import { useMailDb } from "@/modules/mail/useMailDb";
 import MailSent from "@/modules/mail/MailSent";
 import MailInsights from "@/modules/mail/MailInsights";
+import MailSettings from "@/modules/mail/MailSettings";
 import ExclusionsPanel from "./ExclusionsPanel";
 import CalibrationStudio from "./CalibrationStudio";
 import { useExclusions } from "./useExclusions";
@@ -24,7 +25,14 @@ interface Props {
   onCloseCalibration: () => void;
 }
 
-type Tab = "drafts" | "sent" | "insights" | "inbound" | "candidates" | "exclusions";
+type Tab =
+  | "drafts"
+  | "sent"
+  | "insights"
+  | "inbound"
+  | "candidates"
+  | "exclusions"
+  | "settings";
 type CandSort = "score" | "name";
 
 const CANDIDATE_SCORE_MIN = 15;
@@ -209,6 +217,7 @@ export default function ReachView({
       label: "Exclusions",
       count: exclusions.items?.length || null,
     },
+    { k: "settings", label: "Settings", count: null },
   ];
 
   const activeLabel = TABS.find((t) => t.k === tab)?.label ?? "Mail";
@@ -265,7 +274,9 @@ export default function ReachView({
         </div>
       </header>
 
-      {tab === "exclusions" ? (
+      {tab === "settings" ? (
+        <MailSettings />
+      ) : tab === "exclusions" ? (
         <ExclusionsPanel
           state={exclusions}
           q={q}

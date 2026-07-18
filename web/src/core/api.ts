@@ -15,7 +15,10 @@ import type {
   GraphData,
   GraphNode,
   MailDraft,
+  MailImportItem,
+  MailImportResult,
   MailItem,
+  MailSettings,
   MailQueueSummary,
   MailTrackingSummary,
   MailRecord,
@@ -403,6 +406,69 @@ export const api = {
       company_excluded: data?.company_excluded,
       person_closed: data?.person_closed,
     };
+  },
+
+  // ---- mail settings (server GET/PUT /api/ws/:ws/mail-settings) ----------
+  // Workspace outreach controls. Returns null on 404 / error so the Settings
+  // tab renders a graceful "coming online" state while the endpoint ships.
+  async mailSettings(): Promise<MailSettings | null> {
+    if (MOCK) {
+      return {
+        approval_threshold: 60,
+        dispatch_mode: "dry_run",
+        cold_after_days: 14,
+        followup_gap_days: 4,
+        daily_max_sends: 0,
+        schedule: {
+          timezone: "Europe/Istanbul",
+          windows: [{ startMin: 540, endMin: 1080 }],
+          weekdays: [1, 2, 3, 4, 5],
+          jitterMin: 5,
+          rollingPerHour: 6,
+          minGapMin: 8,
+          dailyMax: 0,
+        },
+      };
+    }
+    try {
+      const res = await fetch(`${workspaceBase()}/mail-settings`);
+      if (!res.ok) return null;
+      return (await res.json()) as MailSettings;
+    } catch {
+      return null;
+    }
+  },
+
+  // Persist a partial patch (only changed fields). Owner-only on the server.
+  // Returns the full normalized settings; throws Error(message) on failure.
+  async updateMailSettings(
+    patch: Partial<MailSettings>
+  ): Promise<MailSettings> {
+    return json<MailSettings>(`${workspaceBase()}/mail-settings`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+  },
+
+  // Reset the caller's mail-voice calibration. Throws Error(message) on failure.
+  async resetMailCalibration(): Promise<{ reset: boolean }> {
+    return json<{ reset: boolean }>(`${workspaceBase()}/calibration/reset`, {
+      method: "POST",
+    });
+  },
+
+  // Import a batch of past mails (owner-only). Returns match/skip counts;
+  // throws Error(message) on failure so the Settings tab can surface it.
+  async importMails(payload: {
+    mails: MailImportItem[];
+    author?: string;
+  }): Promise<MailImportResult> {
+    return json<MailImportResult>(`${workspaceBase()}/mail/import`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
   },
 
   // ---- mail calibration (SPEC-MAILCAL §2) --------------------------------

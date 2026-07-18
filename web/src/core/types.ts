@@ -511,6 +511,55 @@ export interface MailRejectResult {
   person_closed?: { id: string; name: string };
 }
 
+// ---- mail settings (server GET/PUT /api/ws/:ws/mail-settings) -----------
+// Workspace-wide outreach controls. `dispatch_mode` is display-only in the UI —
+// switching to live sending is gated by explicit approval elsewhere, never a
+// toggle. PUT accepts a partial of this shape and returns the full normalized
+// object. The `schedule` block is carried through untouched by the Settings tab.
+export interface MailScheduleWindow {
+  startMin: number;
+  endMin: number;
+}
+
+export interface MailSchedule {
+  timezone: string;
+  windows: MailScheduleWindow[];
+  weekdays: number[];
+  jitterMin: number;
+  rollingPerHour: number;
+  minGapMin: number;
+  dailyMax: number;
+}
+
+export interface MailSettings {
+  approval_threshold: number; // 0-100
+  dispatch_mode: "dry_run" | "brevo";
+  cold_after_days: number;
+  followup_gap_days: number;
+  daily_max_sends: number; // 0 = unlimited
+  schedule: MailSchedule;
+}
+
+// ---- mail import (server POST /api/ws/:ws/mail/import) -------------------
+export interface MailImportItem {
+  to?: string;
+  subject?: string;
+  body?: string;
+  date?: string;
+  company?: string;
+  person?: string;
+  author?: string;
+  message_id?: string;
+}
+
+export interface MailImportResult {
+  imported: number;
+  skipped: number;
+  matched_person: number;
+  matched_company: number;
+  total: number;
+}
+
 // ---- outreach exclusions (server GET /api/ws/:ws/exclusions) ------------
 // A company removed from outreach via an `exclude-company` feedback. The owner
 // can override (re-include) it via DELETE /exclusions/:companyId.

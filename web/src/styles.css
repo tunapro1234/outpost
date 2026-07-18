@@ -7199,3 +7199,126 @@ textarea.np-input {
 .insight-kpis.reliability .ikpi.good .ikpi-n { color: var(--ok); }
 .insight-kpis.reliability .ikpi.warn .ikpi-n { color: var(--warn); }
 .insight-kpis.reliability .ikpi.cold .ikpi-n { color: var(--text-faint); }
+
+/* ============================================================ */
+/* Mail → Settings tab                                          */
+/* ============================================================ */
+.ms-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 720px;
+}
+.ms-loading {
+  padding: 24px 2px;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+.ms-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 16px 18px;
+}
+.ms-card-title {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.ms-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.ms-row:last-child {
+  border-bottom: none;
+  padding-bottom: 2px;
+}
+.ms-row-main {
+  min-width: 0;
+}
+.ms-label {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text);
+}
+.ms-help {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-faint);
+  margin-top: 3px;
+}
+.ms-help-block {
+  margin: 4px 0 12px;
+}
+.ms-row-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.ms-num {
+  width: 78px;
+  text-align: right;
+}
+.ms-suffix {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.ms-range {
+  width: 140px;
+  accent-color: var(--accent);
+}
+.ms-mode {
+  font-size: 12px;
+  font-weight: 550;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.ms-mode.dry {
+  color: var(--ok);
+}
+.ms-mode.live {
+  color: var(--warn);
+}
+.ms-import-actions {
+  margin-bottom: 10px;
+}
+.ms-file {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.ms-file::file-selector-button {
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+.ms-file::file-selector-button:hover {
+  border-color: var(--text-faint);
+}
+textarea.ms-import-text {
+  width: 100%;
+  height: auto;
+  min-height: 96px;
+  padding: 10px 11px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.ms-import-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}

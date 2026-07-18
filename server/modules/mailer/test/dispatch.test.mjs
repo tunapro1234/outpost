@@ -79,3 +79,28 @@ test("guvenlik: dry_run schedule edilmis send, runtime brevo olsa bile canli git
   assert.equal(summary.dry_run, 1);
   assert.equal(summary.sent, 0);
 });
+
+test("reply-cancel: mail olusturulduktan sonra cevap gelirse scheduled send iptal edilir", async (t) => {
+  const directory = await temporaryDirectory("outpost-cancel-");
+  const workspace = {
+    id: "probot", directory,
+    mailIngestedPath: `${directory}/mails/ingested.jsonl`,
+    index: { entities: new Map([["p1", { id: "p1", filePath: "p1.md", meta: { type: "person", name: "Ali", mail: "ali@x.com" } }]]) },
+  };
+  t.after(() => { closeWorkspaceDb(workspace); return fs.rm(directory, { recursive: true, force: true }); });
+  await fs.mkdir(`${directory}/mails`, { recursive: true });
+  // Kişi, mail olusturulduktan (10:00) SONRA (12:00) cevap yazmis.
+  await fs.writeFile(workspace.mailIngestedPath, JSON.stringify({
+    id: "r1", account: "probotstudio", direction: "received", peer: ["ali@x.com"],
+    subject: "Re", date: "2026-07-20T12:00:00Z", folder: "Inbox",
+  }) + "\n", "utf8");
+  insertMail(workspace, { id: "outbox--f1", person_id: "p1", to_addr: "ali@x.com", subject: "Follow-up", body: "x", track_token: "aaaabbbbccccdddd", created_at: "2026-07-20T10:00:00Z", approved_at: "2026-07-20T10:00:00Z" });
+  scheduleSend(workspace, { mail_id: "outbox--f1", scheduled_at: "2026-07-23T09:32:00Z" });
+
+  const summary = await dispatchDueSends(workspace, { now: () => new Date("2026-07-23T10:00:00Z") });
+  assert.equal(summary.canceled, 1);
+  assert.equal(summary.dry_run, 0);
+  const [send] = sendsByMail(workspace, "outbox--f1");
+  assert.equal(send.status, "canceled");
+  assert.equal(send.error, "reply-received");
+});
