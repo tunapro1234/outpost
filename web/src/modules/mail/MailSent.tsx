@@ -41,8 +41,10 @@ function dur(value: number | null | undefined): string {
 
 const SEND_LABEL: Record<string, string> = {
   scheduled: "planlandı",
+  sending: "gönderiliyor",
   sent_dryrun: "dry-run",
   sent: "gönderildi",
+  canceled: "iptal (cevap geldi)",
   failed: "başarısız",
   unsent: "beklemede",
   queued: "kuyrukta",
