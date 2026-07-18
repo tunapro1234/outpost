@@ -143,6 +143,7 @@ function buildRecord(mail, { events, sends, personReplies, index, coldAfterDays,
 function base_sentStatusLabel(sendStatus) {
   if (sendStatus === "sent" || sendStatus === "sent_dryrun") return "sent";
   if (sendStatus === "scheduled") return "scheduled";
+  if (sendStatus === "canceled") return "canceled";
   if (sendStatus === "failed") return "failed";
   return "queued";
 }
