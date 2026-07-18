@@ -171,3 +171,12 @@ test("followupDueTime is >= gapDays later and in a valid window", () => {
   assert.ok(inSomeWindow(p));
   assert.match(windowReason, /(sabah|öğleden sonra) penceresi/);
 });
+
+test("zorunlu jitter: sonuc asla yuvarlak dakikaya (5in kati) dusmez", () => {
+  const after = new Date("2026-07-20T06:00:00Z");
+  for (let i = 0; i < 40; i++) {
+    const { scheduledAtUtc } = nextSendTime({ afterUtc: after, config: DEFAULT_SCHEDULE, rngSeed: `mail-${i}` });
+    const local = localPartsFromUtc(scheduledAtUtc, TZ);
+    assert.notEqual(local.minute % 5, 0, `seed mail-${i}: ${local.hour}:${local.minute}`);
+  }
+});
