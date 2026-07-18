@@ -18,6 +18,9 @@ import type {
   MailItem,
   MailQueueSummary,
   MailTrackingSummary,
+  MailRecord,
+  MailRecordDetail,
+  MailAnalytics,
   MailRejectPayload,
   MailRejectResult,
   PersonBrief,
@@ -279,6 +282,43 @@ export const api = {
       const res = await fetch(`${workspaceBase()}/mailtracking`);
       if (!res.ok) return null;
       return (await res.json()) as MailTrackingSummary;
+    } catch {
+      return null;
+    }
+  },
+
+  // Canonical mail DB — one record per approved mail with content, tracking and
+  // full creation provenance. Returns null on 404 so the Sent tab degrades.
+  async maildb(): Promise<MailRecord[] | null> {
+    if (MOCK) return null;
+    try {
+      const res = await fetch(`${workspaceBase()}/maildb`);
+      if (!res.ok) return null;
+      const body = (await res.json()) as { mails?: MailRecord[] };
+      return body.mails ?? [];
+    } catch {
+      return null;
+    }
+  },
+
+  async maildbDetail(id: string): Promise<MailRecordDetail | null> {
+    if (MOCK) return null;
+    try {
+      const res = await fetch(`${workspaceBase()}/maildb/${encodeURIComponent(id)}`);
+      if (!res.ok) return null;
+      return (await res.json()) as MailRecordDetail;
+    } catch {
+      return null;
+    }
+  },
+
+  // Reply-rate breakdowns for optimizing outreach. Null on 404.
+  async mailanalytics(): Promise<MailAnalytics | null> {
+    if (MOCK) return null;
+    try {
+      const res = await fetch(`${workspaceBase()}/mailanalytics`);
+      if (!res.ok) return null;
+      return (await res.json()) as MailAnalytics;
     } catch {
       return null;
     }

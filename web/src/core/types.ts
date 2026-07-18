@@ -221,6 +221,111 @@ export interface MailTrackingSummary {
   };
 }
 
+// ---- mail DB (server GET /api/ws/:ws/maildb[/:id], /mailanalytics) -------
+// One canonical record per approved mail: the mail itself, everything tracked
+// about it, and its full creation provenance (model / prompt / time). The list
+// endpoint trims the heavy fields; /maildb/:id returns the full record.
+export interface MailRecordGeneration {
+  model: string | null;
+  engine: string | null;
+  generated_at: string | null;
+  generation_ms: number | null;
+  context_model: string | null;
+  context_ms: number | null;
+  attempts: number | null;
+  usage: { tokens_in?: number; tokens_out?: number; estimated?: boolean } | null;
+  skills: string[] | null;
+}
+
+export interface MailRecordTracking {
+  status: string;
+  delivered: boolean;
+  bounced: boolean;
+  open_count: number;
+  proxy_open_count: number;
+  first_open: string | null;
+  last_open: string | null;
+  click_count: number;
+  last_click: string | null;
+  clicks: { link_index: number; url: string | null; count: number }[];
+}
+
+export interface MailRecordReply {
+  replied: boolean;
+  reply_at?: string;
+  reply_count?: number;
+  reply_subject?: string | null;
+  time_to_reply_ms?: number;
+}
+
+export interface MailRecord {
+  id: string;
+  token: string | null;
+  person: { id: string; name: string };
+  company: { id: string | null; name: string | null };
+  to: string | null;
+  subject: string | null;
+  tone: string | null;
+  variant: number | null;
+  score: number | null;
+  followup_stage: number;
+  author: string | null;
+  created_at: string | null;
+  approved_at: string | null;
+  sent: boolean;
+  sent_at: string | null;
+  generation: MailRecordGeneration | null;
+  tracking: MailRecordTracking;
+  reply: MailRecordReply;
+}
+
+export interface MailRecordDetail extends MailRecord {
+  body?: string | null;
+  rationale?: string | null;
+  variants_all?: MailDraftVariant[] | null;
+  reasons?: string[] | null;
+  pixel_url?: string | null;
+  click_urls?: string[] | null;
+  generation_full?: (MailRecordGeneration & {
+    prompt?: string;
+    context?: string;
+    rejected_notes?: string[];
+    started_at?: string;
+    usage_kind?: string;
+    source_agent?: string;
+  }) | null;
+  events?: { token: string; type: string; at: string; bot?: boolean; url?: string }[];
+}
+
+export interface MailAnalyticsCell {
+  key: string;
+  n: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+  open_rate: number;
+  click_rate: number;
+  reply_rate: number;
+}
+
+export interface MailAnalytics {
+  overall: MailAnalyticsCell & {
+    reply_rate_given_open: number;
+    median_time_to_reply_ms: number | null;
+  };
+  by_model: MailAnalyticsCell[];
+  by_engine: MailAnalyticsCell[];
+  by_tone: MailAnalyticsCell[];
+  by_author: MailAnalyticsCell[];
+  by_followup: MailAnalyticsCell[];
+  by_score: MailAnalyticsCell[];
+  by_subject_length: MailAnalyticsCell[];
+  by_hour: MailAnalyticsCell[];
+  by_weekday: MailAnalyticsCell[];
+  total: number;
+}
+
 // ---- mail drafts awaiting approval (SPEC-MAILPIPE "Draft onay API kontratı")
 export interface MailDraftVariant {
   subject: string;
