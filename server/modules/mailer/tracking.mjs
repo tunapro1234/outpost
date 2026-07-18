@@ -1,13 +1,10 @@
-// Mail açılma/tıklama izleme. Gönderim henüz Brevo relay'e bağlı değil; bu modül
-// izleme ALTYAPISINI kurar: her onaylanan maile bir token verilir, maile gömülen
-// görünmez piksel (açılma) ve sarmalanan linkler (tıklama) bizim sunucuya düşer,
-// ayrıca Brevo webhook'u aynı olay deposunu besler. Açılma metriği gürültülüdür
-// (Apple Mail Privacy Protection / Gmail proxy önden yükler) — proxy kaynaklı
-// açılmalar `bot: true` ile işaretlenir ve gerçek "opened" sinyalinden ayrılır.
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
+// Mail açılma/tıklama izleme. Olaylar artık SQLite'ta (store.mail_event); token
+// kaydı da kanonik mail satırıdır (store.mail: track_token + links + person_id).
+// Açılma metriği gürültülüdür (Apple Mail Privacy / Gmail proxy önden yükler) —
+// proxy açılmaları `bot: true` ile işaretlenir ve gerçek "opened"tan ayrılır.
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
+import { randomUUID } from "node:crypto";
+import { mailByToken, insertEvent, eventsByToken, listMails } from "./store.mjs";
 
 // 1x1 saydam GIF — mail client'ın yükleyeceği piksel.
 export const TRACKING_PIXEL = Buffer.from(
@@ -17,12 +14,8 @@ export const TRACKING_PIXEL = Buffer.from(
 
 // Proxy/önden-yükleme imzaları: bu açılmalar insan açtı SAYILMAZ (soft sinyal).
 const PROXY_UA = [
-  "googleimageproxy",
-  "yahoomailproxy",
-  "google-read-aloud",
-  "microsoft office",
-  "outlook-ios",
-  "mail.apple.com",
+  "googleimageproxy", "yahoomailproxy", "google-read-aloud",
+  "microsoft office", "outlook-ios", "mail.apple.com",
 ];
 
 export function publicBase() {
@@ -35,46 +28,6 @@ export function newToken() {
 
 export function isTrackToken(value) {
   return typeof value === "string" && /^[a-f0-9]{16,64}$/u.test(value);
-}
-
-function trackingPath(workspace) {
-  return path.join(workspace.directory, "mails", "tracking.jsonl");
-}
-
-function eventsPath(workspace) {
-  return path.join(workspace.directory, "mails", "events.jsonl");
-}
-
-async function readJsonl(filePath) {
-  let source;
-  try {
-    source = await fs.readFile(filePath, "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") return [];
-    throw error;
-  }
-  const out = [];
-  source.split(/\r?\n/).forEach((line) => {
-    if (!line.trim()) return;
-    try {
-      out.push(JSON.parse(line));
-    } catch {
-      // Bozuk satırı sessizce atla; izleme deposu ölümcül değildir.
-    }
-  });
-  return out;
-}
-
-async function appendJsonl(filePath, record) {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  let prefix = "";
-  try {
-    const current = await fs.readFile(filePath);
-    if (current.length && current[current.length - 1] !== 10) prefix = "\n";
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
-  await fs.appendFile(filePath, `${prefix}${JSON.stringify(record)}\n`, "utf8");
 }
 
 // Maildeki http(s) linklerini çıkar (tıklama sarmalaması için sıra korunur, tekrar atılır).
@@ -90,8 +43,7 @@ export function extractLinks(body) {
   return links;
 }
 
-// Bir token'ın gönderim/piksel/tıklama URL'leri. Gönderici (Brevo relay bağlanınca)
-// bunları maile gömer; şimdilik onay anında hesaplanıp kaydedilir.
+// Bir token'ın gönderim/piksel/tıklama URL'leri.
 export function trackingUrls(ws, token, linkCount = 0) {
   const base = `${publicBase()}/t`;
   return {
@@ -100,56 +52,19 @@ export function trackingUrls(ws, token, linkCount = 0) {
   };
 }
 
-export async function registerTracking(workspace, {
-  ws,
-  token,
-  outbox_id,
-  person_id,
-  company_id = null,
-  mail = null,
-  subject = null,
-  links = [],
-  now = () => new Date(),
-}) {
-  const record = {
-    kind: "track",
-    token,
-    ws,
-    outbox_id,
-    person_id,
-    company_id,
-    mail,
-    subject,
-    links,
-    created_at: now().toISOString(),
-  };
-  await appendJsonl(trackingPath(workspace), record);
-  return record;
-}
-
-// Ham izleme kayıtları — maildb kanonik mail kaydını kurarken join için kullanır.
-export async function readTrackingRecords(workspace) {
-  return (await readJsonl(trackingPath(workspace))).filter((entry) => entry.kind === "track");
-}
-
-export async function readTrackingEvents(workspace) {
-  return readJsonl(eventsPath(workspace));
-}
-
-export function eventsByToken(events) {
-  const map = new Map();
-  for (const event of events) {
-    if (!map.has(event.token)) map.set(event.token, []);
-    map.get(event.token).push(event);
-  }
-  return map;
-}
-
-export async function findTracking(workspace, token) {
+// Token kaydı = kanonik mail satırı. person_id + links'i buradan alırız.
+export function findTracking(workspace, token) {
   if (!isTrackToken(token)) return null;
-  const records = await readJsonl(trackingPath(workspace));
-  // Son kayıt kazanır (aynı token yeniden kaydedilirse).
-  return records.filter((entry) => entry.kind === "track" && entry.token === token).at(-1) ?? null;
+  const mail = mailByToken(workspace, token);
+  if (!mail) return null;
+  return {
+    token,
+    person_id: mail.person_id,
+    company_id: mail.company_id ?? null,
+    mail: mail.to_addr ?? null,
+    subject: mail.subject ?? null,
+    links: Array.isArray(mail.links) ? mail.links : [],
+  };
 }
 
 function looksLikeProxy(ua) {
@@ -157,50 +72,35 @@ function looksLikeProxy(ua) {
   return PROXY_UA.some((needle) => value.includes(needle));
 }
 
-export async function recordOpen(workspace, token, { ua = null, ip = null, source = "pixel", now = () => new Date() } = {}) {
-  const tracking = await findTracking(workspace, token);
+export function recordOpen(workspace, token, { ua = null, ip = null, source = "pixel", now = () => new Date() } = {}) {
+  const tracking = findTracking(workspace, token);
   if (!tracking) return { ok: false, reason: "unknown-token" };
   const bot = source === "brevo" ? false : looksLikeProxy(ua);
-  await appendJsonl(eventsPath(workspace), {
-    token, type: "open", source, bot, at: now().toISOString(),
-    ...(ua ? { ua } : {}), ...(ip ? { ip } : {}),
-  });
-  if (!bot) await reflectEngagement(workspace, tracking.person_id, "opened", now);
+  insertEvent(workspace, { token, type: "open", source, bot, at: now().toISOString(), ua, ip });
+  if (!bot) reflectEngagement(workspace, tracking.person_id, "opened", now);
   return { ok: true, bot, tracking };
 }
 
-export async function recordClick(workspace, token, linkIndex, { ua = null, ip = null, source = "redirect", now = () => new Date() } = {}) {
-  const tracking = await findTracking(workspace, token);
+export function recordClick(workspace, token, linkIndex, { ua = null, ip = null, source = "redirect", now = () => new Date() } = {}) {
+  const tracking = findTracking(workspace, token);
   if (!tracking) return { ok: false, reason: "unknown-token" };
-  const url = Array.isArray(tracking.links) ? tracking.links[linkIndex] : undefined;
-  await appendJsonl(eventsPath(workspace), {
+  const url = tracking.links[linkIndex];
+  insertEvent(workspace, {
     token, type: "click", source, at: now().toISOString(),
-    link_index: linkIndex, ...(url ? { url } : {}),
-    ...(ua ? { ua } : {}), ...(ip ? { ip } : {}),
+    link_index: linkIndex, url: url ?? null, ua, ip,
   });
   // Tıklama = açılmanın kesin kanıtı; en güçlü etkileşim.
-  await reflectEngagement(workspace, tracking.person_id, "clicked", now);
+  reflectEngagement(workspace, tracking.person_id, "clicked", now);
   return { ok: true, url: isHttpUrl(url) ? url : null, tracking };
 }
 
 const BREVO_EVENT_MAP = Object.freeze({
-  delivered: "delivered",
-  opened: "open",
-  uniqueOpened: "open",
-  proxy_open: "open",
-  click: "click",
-  clicks: "click",
-  hardBounce: "bounce",
-  hard_bounce: "bounce",
-  softBounce: "bounce",
-  soft_bounce: "bounce",
-  blocked: "bounce",
-  spam: "bounce",
+  delivered: "delivered", opened: "open", uniqueOpened: "open", proxy_open: "open",
+  click: "click", clicks: "click", hardBounce: "bounce", hard_bounce: "bounce",
+  softBounce: "bounce", soft_bounce: "bounce", blocked: "bounce", spam: "bounce",
   unsubscribed: "unsubscribe",
 });
 
-// Brevo webhook payload'ı → olay deposu. Token'ı gönderim anında Brevo tag'ine
-// gömeriz; burada tag/header'dan çıkarıp eşleriz.
 export function brevoToken(payload) {
   const tags = payload?.tags ?? payload?.tag;
   const list = Array.isArray(tags) ? tags : typeof tags === "string" ? [tags] : [];
@@ -212,23 +112,21 @@ export function brevoToken(payload) {
   return null;
 }
 
-export async function ingestBrevo(workspace, payload, { now = () => new Date() } = {}) {
+export function ingestBrevo(workspace, payload, { now = () => new Date() } = {}) {
   const token = brevoToken(payload);
   if (!token) return { ok: false, reason: "no-token" };
   const type = BREVO_EVENT_MAP[payload?.event];
   if (!type) return { ok: false, reason: "unhandled-event", event: payload?.event ?? null };
-  if (type === "open") {
-    return recordOpen(workspace, token, { source: "brevo", now });
-  }
+  if (type === "open") return recordOpen(workspace, token, { source: "brevo", now });
   if (type === "click") {
-    const tracking = await findTracking(workspace, token);
+    const tracking = findTracking(workspace, token);
     if (!tracking) return { ok: false, reason: "unknown-token" };
-    const index = (tracking.links ?? []).indexOf(payload?.link ?? payload?.URL);
+    const index = tracking.links.indexOf(payload?.link ?? payload?.URL);
     return recordClick(workspace, token, index >= 0 ? index : 0, { source: "brevo", now });
   }
-  const tracking = await findTracking(workspace, token);
+  const tracking = findTracking(workspace, token);
   if (!tracking) return { ok: false, reason: "unknown-token" };
-  await appendJsonl(eventsPath(workspace), { token, type, source: "brevo", at: now().toISOString() });
+  insertEvent(workspace, { token, type, source: "brevo", at: now().toISOString() });
   return { ok: true, type };
 }
 
@@ -243,7 +141,7 @@ async function reflectEngagement(workspace, personId, level, now) {
   await updateEntityMeta(workspace, person, {
     mail_engagement: level,
     mail_engaged_at: now().toISOString(),
-  });
+  }).catch(() => {});
 }
 
 function isHttpUrl(value) {
@@ -255,17 +153,10 @@ function isHttpUrl(value) {
   }
 }
 
-// --- toplama (Sent görünümü + /mailtracking) ---
-
+// --- toplama (pure) ---
 export function summarizeEvents(events) {
-  let delivered = false;
-  let bounced = false;
-  let openCount = 0;
-  let proxyOpenCount = 0;
-  let clickCount = 0;
-  let firstOpen = null;
-  let lastOpen = null;
-  let lastClick = null;
+  let delivered = false, bounced = false, openCount = 0, proxyOpenCount = 0, clickCount = 0;
+  let firstOpen = null, lastOpen = null, lastClick = null;
   for (const event of events) {
     if (event.type === "delivered") delivered = true;
     else if (event.type === "bounce") bounced = true;
@@ -288,48 +179,30 @@ export function summarizeEvents(events) {
     : delivered ? "delivered"
     : null;
   return {
-    status,
-    delivered,
-    bounced,
-    open_count: openCount,
-    proxy_open_count: proxyOpenCount,
-    first_open: firstOpen,
-    last_open: lastOpen,
-    click_count: clickCount,
-    last_click: lastClick,
+    status, delivered, bounced,
+    open_count: openCount, proxy_open_count: proxyOpenCount,
+    first_open: firstOpen, last_open: lastOpen,
+    click_count: clickCount, last_click: lastClick,
   };
 }
 
-export async function trackingRows(workspace) {
-  const [tracking, events] = await Promise.all([
-    readJsonl(trackingPath(workspace)),
-    readJsonl(eventsPath(workspace)),
-  ]);
-  const byToken = new Map();
-  for (const event of events) {
-    if (!byToken.has(event.token)) byToken.set(event.token, []);
-    byToken.get(event.token).push(event);
-  }
-  const rows = tracking
-    .filter((entry) => entry.kind === "track")
-    .map((entry) => {
-      const person = workspace.index?.entities.get(entry.person_id);
-      const summary = summarizeEvents(byToken.get(entry.token) ?? []);
-      return {
-        token: entry.token,
-        outbox_id: entry.outbox_id,
-        person_id: entry.person_id,
-        person_name: person?.meta.name ?? entry.person_id,
-        company_id: entry.company_id ?? null,
-        subject: entry.subject ?? null,
-        mail: entry.mail ?? null,
-        created_at: entry.created_at,
-        // Gönderim henüz bağlı değil: kayıt varsa "queued", olaylar geldikçe yükselir.
-        status: summary.status ?? "queued",
-        ...summary,
-      };
-    })
-    .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)));
+export function trackingRows(workspace) {
+  const rows = listMails(workspace).map((mail) => {
+    const summary = summarizeEvents(eventsByToken(workspace, mail.track_token ?? ""));
+    const person = workspace.index?.entities?.get(mail.person_id);
+    return {
+      token: mail.track_token,
+      outbox_id: mail.id,
+      person_id: mail.person_id,
+      person_name: person?.meta.name ?? mail.person_id,
+      company_id: mail.company_id ?? null,
+      subject: mail.subject ?? null,
+      mail: mail.to_addr ?? null,
+      created_at: mail.approved_at ?? mail.created_at,
+      status: summary.status ?? "queued",
+      ...summary,
+    };
+  });
   return { rows, counts: rowCounts(rows) };
 }
 

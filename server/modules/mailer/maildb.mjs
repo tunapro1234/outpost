@@ -1,19 +1,13 @@
-// Gönderilen maillerin sağlam kaydı. Ayrı DB motoru yok; mevcut JSONL/vault
-// felsefesine uygun olarak kanonik mail kaydı DÖRT kaynağı join ederek kurulur:
-//   1. outbox.jsonl          → mailin kendisi + üretim provenance'ı (model/prompt/zaman)
-//   2. mails/tracking.jsonl  → token kaydı (linkler, kişi)
-//   3. mails/events.jsonl    → açılma/tıklama/bounce olayları
-//   4. ingested inbound mail → reply eşleşmesi (kişiden gönderim sonrası gelen)
-// Amaç: her mailin içeriğini, hakkında track edilen her şeyi ve nasıl üretildiğini
-// tek kayıtta görüp reply-rate'e göre optimize edebilmek.
-import { readOutbox } from "./drafts.mjs";
-import {
-  readTrackingRecords,
-  readTrackingEvents,
-  eventsByToken,
-  summarizeEvents,
-} from "./tracking.mjs";
+// Gönderilen maillerin kanonik kaydı — artık SQLite'tan (store) okunur. Her mail
+// için: içeriği + üretim provenance'ı (store.mail) + gönderim/schedule durumu
+// (store.mail_send) + açılma/tıklama olayları (store.mail_event) + reply eşleşmesi
+// (vault inbound) + süre/güvenilirlik işaretleri (reliability). Amaç: reply-rate'e
+// göre optimize etmek, open'ın gürültüsüne aldanmadan.
+import { listMails, mailById, sendsByMail, eventsByToken } from "./store.mjs";
+import { summarizeEvents } from "./tracking.mjs";
 import { ingestedWorkspaceMails } from "../mail/service.mjs";
+import { withReliability } from "./reliability.mjs";
+import { readMailSettings } from "./settings.mjs";
 
 function millis(value) {
   const time = Date.parse(String(value ?? ""));
@@ -21,7 +15,6 @@ function millis(value) {
 }
 
 function replyIndex(inbound) {
-  // person_id → gönderim sonrası gelen inbound tarihleri (artan).
   const byPerson = new Map();
   for (const mail of inbound) {
     if (mail.direction !== "in" || !mail.person_id) continue;
@@ -61,36 +54,46 @@ function clickBreakdown(events) {
   return [...byIndex.values()].sort((a, b) => a.link_index - b.link_index);
 }
 
-// Tek kanonik mail kaydı. `full` false ise büyük alanlar (prompt/context/body)
-// kırpılır (liste görünümü); true ise her şey döner (detay görünümü).
-function buildRecord(outbox, { tracking, events, personReplies, index, full }) {
-  const generation = outbox.generation ?? null;
-  const person = index?.entities.get(outbox.person_id);
-  const company = outbox.company_id ? index?.entities.get(outbox.company_id) : null;
-  const summary = summarizeEvents(events);
-  const sinceMs = millis(outbox.sent_at ?? outbox.approved_at);
-  const reply = matchReply(personReplies, sinceMs);
-  const sent = outbox.sent === true;
+function latestSend(sends) {
+  return sends.length ? sends[sends.length - 1] : null;
+}
 
-  const record = {
-    id: outbox.id,
-    token: outbox.track_token ?? null,
-    person: { id: outbox.person_id, name: person?.meta.name ?? outbox.person_id },
-    company: outbox.company_id
-      ? { id: outbox.company_id, name: company?.meta.name ?? outbox.company_id }
+function buildRecord(mail, { events, sends, personReplies, index, coldAfterDays, now, full }) {
+  const generation = mail.generation ?? null;
+  const person = index?.entities.get(mail.person_id);
+  const company = mail.company_id ? index?.entities.get(mail.company_id) : null;
+  const summary = summarizeEvents(events);
+  const send = latestSend(sends);
+  const sendStatus = send?.status ?? "unsent";
+  const sentAt = send?.sent_at ?? null;
+  // Reply/süre referansı: gönderildiyse gönderim, yoksa onay zamanı.
+  const sinceMs = millis(sentAt ?? mail.approved_at);
+  const reply = matchReply(personReplies, sinceMs);
+
+  const base = {
+    id: mail.id,
+    token: mail.track_token ?? null,
+    person: { id: mail.person_id, name: person?.meta.name ?? mail.person_id },
+    company: mail.company_id
+      ? { id: mail.company_id, name: company?.meta.name ?? mail.company_id }
       : { id: null, name: null },
-    to: outbox.to ?? tracking?.mail ?? person?.meta.mail ?? null,
-    subject: outbox.subject ?? null,
-    tone: outbox.variant_tone ?? outbox.tone ?? null,
-    variant: outbox.variant ?? null,
-    score: outbox.queue_score ?? outbox.score ?? null,
-    followup_stage: outbox.followup_stage ?? 0,
-    author: outbox.author ?? null,
-    created_at: outbox.created_at ?? null,
-    approved_at: outbox.approved_at ?? null,
-    sent,
-    sent_at: outbox.sent_at ?? null,
-    // Üretim provenance'ı (özet; tam prompt/context detay görünümünde).
+    to: mail.to_addr ?? null,
+    subject: mail.subject ?? null,
+    tone: mail.tone ?? null,
+    variant: mail.variant ?? null,
+    score: mail.score ?? null,
+    followup_stage: mail.followup_stage ?? 0,
+    author: mail.author ?? null,
+    created_at: mail.created_at ?? null,
+    approved_at: mail.approved_at ?? null,
+    sent: sendStatus === "sent" || sendStatus === "sent_dryrun",
+    sent_at: sentAt,
+    send: {
+      status: sendStatus,
+      scheduled_at: send?.scheduled_at ?? null,
+      window_reason: send?.window_reason ?? null,
+      dispatch_mode: send?.dispatch_mode ?? null,
+    },
     generation: generation
       ? {
           model: generation.model ?? null,
@@ -105,7 +108,7 @@ function buildRecord(outbox, { tracking, events, personReplies, index, full }) {
         }
       : null,
     tracking: {
-      status: sent ? summary.status ?? "sent" : summary.status ?? "queued",
+      status: summary.status ?? (base_sentStatusLabel(sendStatus)),
       delivered: summary.delivered,
       bounced: summary.bounced,
       open_count: summary.open_count,
@@ -119,40 +122,48 @@ function buildRecord(outbox, { tracking, events, personReplies, index, full }) {
     reply,
   };
 
+  const record = withReliability(base, { now, coldAfterDays });
+
   if (full) {
-    record.body = outbox.body ?? null;
-    record.rationale = outbox.rationale ?? null;
-    record.variants_all = outbox.variants_all ?? null;
-    record.reasons = outbox.reasons ?? null;
-    record.pixel_url = outbox.pixel_url ?? null;
-    record.click_urls = outbox.click_urls ?? null;
+    record.body = mail.body ?? null;
+    record.rationale = mail.rationale ?? null;
+    record.variants_all = mail.variants ?? null;
+    record.reasons = mail.reasons ?? null;
     record.generation_full = generation;
     record.events = events;
+    record.rendered = send?.rendered ?? null;
   }
   return record;
 }
 
-async function loadSources(workspace) {
-  const [outbox, trackingRecords, events, inbound] = await Promise.all([
-    readOutbox(workspace),
-    readTrackingRecords(workspace),
-    readTrackingEvents(workspace),
-    ingestedWorkspaceMails(workspace).catch(() => []),
-  ]);
-  const trackingByToken = new Map(trackingRecords.map((entry) => [entry.token, entry]));
-  const eventMap = eventsByToken(events);
-  const replies = replyIndex(inbound);
-  const approved = outbox.filter((record) => record.approved === true);
-  return { approved, trackingByToken, eventMap, replies };
+// Olay yoksa engagement durumu, gönderim durumundan türetilir.
+function base_sentStatusLabel(sendStatus) {
+  if (sendStatus === "sent" || sendStatus === "sent_dryrun") return "sent";
+  if (sendStatus === "scheduled") return "scheduled";
+  if (sendStatus === "failed") return "failed";
+  return "queued";
 }
 
-export async function buildMailRecords(workspace, { full = false } = {}) {
-  const { approved, trackingByToken, eventMap, replies } = await loadSources(workspace);
-  const records = approved.map((outbox) => buildRecord(outbox, {
-    tracking: outbox.track_token ? trackingByToken.get(outbox.track_token) : null,
-    events: outbox.track_token ? eventMap.get(outbox.track_token) ?? [] : [],
-    personReplies: replies.get(outbox.person_id),
+async function loadContext(workspace) {
+  const [inbound, settings] = await Promise.all([
+    ingestedWorkspaceMails(workspace).catch(() => []),
+    readMailSettings(workspace),
+  ]);
+  return {
+    replies: replyIndex(inbound),
+    coldAfterDays: settings.cold_after_days,
+  };
+}
+
+export async function buildMailRecords(workspace, { full = false, now = () => new Date() } = {}) {
+  const { replies, coldAfterDays } = await loadContext(workspace);
+  const records = listMails(workspace).map((mail) => buildRecord(mail, {
+    events: mail.track_token ? eventsByToken(workspace, mail.track_token) : [],
+    sends: sendsByMail(workspace, mail.id),
+    personReplies: replies.get(mail.person_id),
     index: workspace.index,
+    coldAfterDays,
+    now,
     full,
   }));
   records.sort((left, right) =>
@@ -160,20 +171,22 @@ export async function buildMailRecords(workspace, { full = false } = {}) {
   return records;
 }
 
-export async function mailRecord(workspace, id) {
-  const { approved, trackingByToken, eventMap, replies } = await loadSources(workspace);
-  const outbox = approved.find((record) => record.id === id);
-  if (!outbox) return null;
-  return buildRecord(outbox, {
-    tracking: outbox.track_token ? trackingByToken.get(outbox.track_token) : null,
-    events: outbox.track_token ? eventMap.get(outbox.track_token) ?? [] : [],
-    personReplies: replies.get(outbox.person_id),
+export async function mailRecord(workspace, id, { now = () => new Date() } = {}) {
+  const mail = mailById(workspace, id);
+  if (!mail) return null;
+  const { replies, coldAfterDays } = await loadContext(workspace);
+  return buildRecord(mail, {
+    events: mail.track_token ? eventsByToken(workspace, mail.track_token) : [],
+    sends: sendsByMail(workspace, mail.id),
+    personReplies: replies.get(mail.person_id),
     index: workspace.index,
+    coldAfterDays,
+    now,
     full: true,
   });
 }
 
-// --- analytics: reply-rate kırılımları ---
+// --- analytics: reply-rate kırılımları + güvenilirlik ---
 
 function scoreBucket(score) {
   if (typeof score !== "number" || !Number.isFinite(score)) return "bilinmiyor";
@@ -195,14 +208,12 @@ function subjectBucket(subject) {
 
 function hourOf(value) {
   const time = millis(value);
-  if (time === null) return null;
-  return new Date(time).getUTCHours();
+  return time === null ? null : new Date(time).getUTCHours();
 }
 
 function weekdayOf(value) {
   const time = millis(value);
-  if (time === null) return null;
-  return ["Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"][new Date(time).getUTCDay()];
+  return time === null ? null : ["Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"][new Date(time).getUTCDay()];
 }
 
 function rate(part, whole) {
@@ -223,12 +234,8 @@ function accumulate(cell, record) {
 
 function finalizeCell(key, cell) {
   return {
-    key,
-    n: cell.n,
-    delivered: cell.delivered,
-    opened: cell.opened,
-    clicked: cell.clicked,
-    replied: cell.replied,
+    key, n: cell.n,
+    delivered: cell.delivered, opened: cell.opened, clicked: cell.clicked, replied: cell.replied,
     open_rate: rate(cell.opened, cell.n),
     click_rate: rate(cell.clicked, cell.n),
     reply_rate: rate(cell.replied, cell.n),
@@ -248,40 +255,42 @@ function breakdown(records, keyOf) {
     .sort((a, b) => b.reply_rate - a.reply_rate || b.n - a.n);
 }
 
-export async function mailAnalytics(workspace) {
-  const records = await buildMailRecords(workspace, { full: false });
+function median(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+export async function mailAnalytics(workspace, { now = () => new Date() } = {}) {
+  const records = await buildMailRecords(workspace, { full: false, now });
   const overall = emptyCell();
   for (const record of records) accumulate(overall, record);
-  const openedRecords = records.filter((record) => record.tracking.open_count > 0);
-  const repliesWithTime = records
-    .filter((record) => record.reply.replied && Number.isFinite(record.reply.time_to_reply_ms))
-    .map((record) => record.reply.time_to_reply_ms)
-    .sort((a, b) => a - b);
-  const medianTtr = repliesWithTime.length
-    ? repliesWithTime[Math.floor(repliesWithTime.length / 2)]
-    : null;
+  const opened = records.filter((r) => r.tracking.open_count > 0);
+  const tto = records.map((r) => r.durations.time_to_open_ms).filter((v) => Number.isFinite(v));
+  const ttr = records.map((r) => r.durations.time_to_reply_ms).filter((v) => Number.isFinite(v));
   return {
     overall: {
       ...finalizeCell("overall", overall),
-      // Açan kişiler arasında reply oranı — huni sinyali.
-      reply_rate_given_open: rate(
-        openedRecords.filter((record) => record.reply.replied).length,
-        openedRecords.length,
-      ),
-      median_time_to_reply_ms: medianTtr,
+      reply_rate_given_open: rate(opened.filter((r) => r.reply.replied).length, opened.length),
+      median_time_to_open_ms: median(tto),
+      median_time_to_reply_ms: median(ttr),
+      // Güvenilirlik: open patlamış ama çalışmış / hiç tutmamış.
+      replied_without_open: records.filter((r) => r.flags.replied_without_open).length,
+      cold: records.filter((r) => r.flags.cold).length,
+      opened_no_reply: records.filter((r) => r.flags.opened_no_reply).length,
     },
-    by_model: breakdown(records, (record) => record.generation?.model ?? "bilinmiyor"),
-    by_engine: breakdown(records, (record) => record.generation?.engine ?? "bilinmiyor"),
-    by_tone: breakdown(records, (record) => record.tone ?? "bilinmiyor"),
-    by_author: breakdown(records, (record) => record.author ?? "bilinmiyor"),
-    by_followup: breakdown(records, (record) => `f${record.followup_stage ?? 0}`),
-    by_score: breakdown(records, (record) => scoreBucket(record.score)),
-    by_subject_length: breakdown(records, (record) => subjectBucket(record.subject)),
-    by_hour: breakdown(records, (record) => {
-      const hour = hourOf(record.approved_at);
+    by_model: breakdown(records, (r) => r.generation?.model ?? "bilinmiyor"),
+    by_engine: breakdown(records, (r) => r.generation?.engine ?? "bilinmiyor"),
+    by_tone: breakdown(records, (r) => r.tone ?? "bilinmiyor"),
+    by_author: breakdown(records, (r) => r.author ?? "bilinmiyor"),
+    by_followup: breakdown(records, (r) => `f${r.followup_stage ?? 0}`),
+    by_score: breakdown(records, (r) => scoreBucket(r.score)),
+    by_subject_length: breakdown(records, (r) => subjectBucket(r.subject)),
+    by_hour: breakdown(records, (r) => {
+      const hour = hourOf(r.sent_at ?? r.approved_at);
       return hour === null ? null : `${String(hour).padStart(2, "0")}:00`;
     }),
-    by_weekday: breakdown(records, (record) => weekdayOf(record.approved_at)),
+    by_weekday: breakdown(records, (r) => weekdayOf(r.sent_at ?? r.approved_at)),
     total: records.length,
   };
 }
