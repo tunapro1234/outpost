@@ -10,6 +10,7 @@ import { useMailDb } from "@/modules/mail/useMailDb";
 import MailSent from "@/modules/mail/MailSent";
 import MailInsights from "@/modules/mail/MailInsights";
 import MailSettings from "@/modules/mail/MailSettings";
+import MailTracking from "@/modules/mail/MailTracking";
 import ExclusionsPanel from "./ExclusionsPanel";
 import CalibrationStudio from "./CalibrationStudio";
 import { useExclusions } from "./useExclusions";
@@ -28,6 +29,7 @@ interface Props {
 type Tab =
   | "drafts"
   | "sent"
+  | "tracking"
   | "insights"
   | "inbound"
   | "candidates"
@@ -209,6 +211,7 @@ export default function ReachView({
       label: "Sent",
       count: (maildb.records ? dbRecords.length : sent.length) || null,
     },
+    { k: "tracking", label: "Tracking", count: null },
     { k: "insights", label: "Insights", count: null },
     { k: "inbound", label: "Inbound", count: inbound.length || null },
     { k: "candidates", label: "Candidates", count: candidates.length || null },
@@ -385,6 +388,12 @@ export default function ReachView({
         ) : (
           <MailTable rows={filteredSent} />
         )
+      ) : tab === "tracking" ? (
+        <MailTracking
+          records={filteredDb}
+          analytics={maildb.analytics}
+          onOpenEntity={onOpenEntity}
+        />
       ) : tab === "insights" ? (
         <MailInsights analytics={maildb.analytics} />
       ) : tab === "inbound" ? (
