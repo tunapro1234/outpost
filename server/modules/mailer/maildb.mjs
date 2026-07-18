@@ -111,7 +111,7 @@ function buildRecord(mail, { events, sends, personReplies, index, coldAfterDays,
         }
       : null,
     tracking: {
-      status: summary.status ?? (base_sentStatusLabel(sendStatus)),
+      status: summary.status ?? (engagementFromSend(sendStatus)),
       delivered: summary.delivered,
       bounced: summary.bounced,
       open_count: summary.open_count,
@@ -140,7 +140,7 @@ function buildRecord(mail, { events, sends, personReplies, index, coldAfterDays,
 }
 
 // Olay yoksa engagement durumu, gönderim durumundan türetilir.
-function base_sentStatusLabel(sendStatus) {
+function engagementFromSend(sendStatus) {
   if (sendStatus === "sent" || sendStatus === "sent_dryrun") return "sent";
   if (sendStatus === "scheduled") return "scheduled";
   if (sendStatus === "canceled") return "canceled";
