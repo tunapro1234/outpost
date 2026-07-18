@@ -15,7 +15,7 @@ import { GatherScheduler } from "./modules/gather/scheduler.mjs";
 import { mailRoutes } from "./modules/mail/routes.mjs";
 import { mailerRoutes } from "./modules/mailer/routes.mjs";
 import { trackingRoutes } from "./modules/mailer/tracking-routes.mjs";
-import { importLegacy, syncEntities } from "./modules/mailer/store.mjs";
+import { importLegacy, syncEntities, resetStuckSends } from "./modules/mailer/store.mjs";
 import { closeWorkspaceDb } from "./lib/db.mjs";
 import { dispatchDueSends } from "./modules/mailer/dispatch.mjs";
 import { mailAgentRoutes } from "./modules/mailer/agent-routes.mjs";
@@ -290,6 +290,8 @@ export async function createApp({
     try {
       await importLegacy(workspace);
       syncEntities(workspace);
+      // Crash/restart ortasında kalmış 'sending' sendleri tekrar 'scheduled'e al.
+      resetStuckSends(workspace);
     } catch (error) {
       app.log?.warn?.({ err: error, ws: workspace.id }, "Workspace DB hazırlanamadı");
     }

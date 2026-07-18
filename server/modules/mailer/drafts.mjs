@@ -4,7 +4,7 @@ import { parseMarkdown, serializeMarkdown } from "../../lib/vault.mjs";
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
 import { isDraftStale, readCalibration } from "./calibration.mjs";
 import { newToken, extractLinks, trackingUrls } from "./tracking.mjs";
-import { insertMail, scheduleSend, sendLedgerTimes } from "./store.mjs";
+import { scheduleApprovedMail, sendLedgerTimes } from "./store.mjs";
 import { nextSendTime, resolveTimezone } from "./schedule.mjs";
 import { readMailSettings } from "./settings.mjs";
 
@@ -296,9 +296,6 @@ export async function overrideExclusion(workspace, companyId, payload = {}, {
   return { ok: true, company_id: company.id, status: "overridden" };
 }
 
-async function appendOutbox(workspace, record) {
-  await appendJsonLines(outboxPath(workspace), [record]);
-}
 
 async function archiveDraft(workspace, file) {
   const source = path.join(stageDirectory(workspace), file);
@@ -393,15 +390,27 @@ export async function approveMailDraft(workspace, id, payload, { now = () => new
     pixel_url: urls.pixel,
     click_urls: urls.clicks,
   };
-  await appendOutbox(workspace, record);
-
-  // Kanonik DB kaydı + akıllı schedule: mail ANINDA gitmez. Alıcının saat dilimine
-  // göre iyi bir saate (rolling) schedule edilir; gerçek gönderim dispatcher'da,
-  // varsayılan dry-run (dışarı hiçbir şey çıkmaz).
+  // Kanonik DB kaydı + akıllı schedule (ATOMİK + idempotent tek transaction).
+  // Mail ANINDA gitmez: alıcının saat dilimine göre iyi bir saate (rolling)
+  // schedule edilir; gönderim dispatcher'da, varsayılan dry-run. outbox.jsonl
+  // ARTIK YAZILMAZ — SQLite tek kaynak (dual-write kaldırıldı).
   const person = workspace.index?.entities?.get(draft.person_id) ?? null;
   const toAddr = person?.meta?.mail
     ?? (Array.isArray(person?.meta?.mails) ? person.meta.mails[0] : null);
-  insertMail(workspace, {
+  const settings = await readMailSettings(workspace);
+  const timezone = resolveTimezone(
+    person?.meta?.city ?? person?.meta?.il ?? person?.meta?.sehir ?? null,
+  );
+  const taken = sendLedgerTimes(workspace)
+    .map((value) => new Date(value))
+    .filter((date) => !Number.isNaN(date.getTime()));
+  const slot = nextSendTime({
+    afterUtc: now(),
+    config: { ...settings.schedule, timezone, dailyMax: settings.daily_max_sends },
+    takenUtc: taken,
+    rngSeed: token,
+  });
+  const { send_id: sendId } = scheduleApprovedMail(workspace, {
     id: record.id,
     draft_id: id,
     person_id: draft.person_id,
@@ -422,22 +431,7 @@ export async function approveMailDraft(workspace, id, payload, { now = () => new
     track_token: token,
     created_at: draft.created_at,
     approved_at: approvedAt,
-  });
-  const settings = await readMailSettings(workspace);
-  const timezone = resolveTimezone(
-    person?.meta?.city ?? person?.meta?.il ?? person?.meta?.sehir ?? null,
-  );
-  const taken = sendLedgerTimes(workspace)
-    .map((value) => new Date(value))
-    .filter((date) => !Number.isNaN(date.getTime()));
-  const slot = nextSendTime({
-    afterUtc: now(),
-    config: { ...settings.schedule, timezone, dailyMax: settings.daily_max_sends },
-    takenUtc: taken,
-    rngSeed: token,
-  });
-  const sendId = scheduleSend(workspace, {
-    mail_id: record.id,
+  }, {
     scheduled_at: slot.scheduledAtUtc.toISOString(),
     window_reason: slot.windowReason,
     dispatch_mode: settings.dispatch_mode,

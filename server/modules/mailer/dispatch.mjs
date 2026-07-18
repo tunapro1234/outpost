@@ -3,7 +3,7 @@
 // sadece "gönderecektim + tam payload" olarak kaydedilir (status=sent_dryrun).
 // Gerçek relay (Brevo) yalnız açık config + bir relay fonksiyonu verilirse devreye
 // girer; verilmezse dry_run gibi davranır. Böylece sistem komple hazır ama sessiz.
-import { mailById, dueSends, markSend } from "./store.mjs";
+import { mailById, claimDueSends, markSend } from "./store.mjs";
 import { renderMail } from "./render.mjs";
 import { trackingUrls } from "./tracking.mjs";
 import { ingestedWorkspaceMails } from "../mail/service.mjs";
@@ -98,7 +98,8 @@ export async function dispatchOne(workspace, send, {
 // schedule tarafından zamana yayılmıştır).
 export async function dispatchDueSends(workspace, options = {}) {
   const { now = () => new Date(), limit = 50 } = options;
-  const due = dueSends(workspace, now().toISOString(), { limit });
+  // Atomik claim: seçilen sendler anında 'sending'e geçer → çakışan tick çift işlemez.
+  const due = claimDueSends(workspace, now().toISOString(), { limit });
   // Reply-cancel için gelen kutusunu bir kez yükle (dispatchOne'a paslanır).
   const replies = repliesByPerson(await ingestedWorkspaceMails(workspace).catch(() => []));
   const results = [];

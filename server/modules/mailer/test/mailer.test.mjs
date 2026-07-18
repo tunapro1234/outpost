@@ -17,8 +17,8 @@ import {
 import {
   createMailDraftStage,
   listMailDraftRecords,
-  readOutbox,
 } from "../drafts.mjs";
+import { approvedMails } from "../store.mjs";
 import { followUpDecision, runFollowUpEngine } from "../followup.mjs";
 import { runMailWriterCycle, selectWriterCandidates } from "../writer.mjs";
 import { dispatchDueSends } from "../dispatch.mjs";
@@ -305,11 +305,12 @@ test("maildraft API approve outbox-ready kaydı yazar; reject taslağı kapatıp
     payload: { variant: 1, subject: "Düzenlenmiş konu", body: "Düzenlenmiş gövde" },
   });
   assert.equal(approved.statusCode, 200);
-  const outbox = await readOutbox(workspace);
-  assert.equal(outbox.length, 1);
-  assert.equal(outbox[0].approved, true);
-  assert.equal(outbox[0].sent, false);
-  assert.equal(outbox[0].subject, "Düzenlenmiş konu");
+  // Onay artık outbox.jsonl'e değil SQLite'a yazar (dual-write kaldırıldı).
+  const approvedRows = approvedMails(workspace);
+  assert.equal(approvedRows.length, 1);
+  assert.equal(approvedRows[0].pending, true); // scheduled, henüz gönderilmedi
+  assert.equal(approvedRows[0].sent, false);
+  assert.equal(approvedRows[0].subject, "Düzenlenmiş konu");
   assert.equal(workspace.index.entities.get("kurucu").meta.mail_state, "approved");
   assert.equal((await listMailDraftRecords(workspace)).length, 0);
 
@@ -337,7 +338,8 @@ test("maildraft API approve outbox-ready kaydı yazar; reject taslağı kapatıp
     rejected: [rejectedDraft.id],
   });
   assert.equal(workspace.index.entities.get("direktor").meta.mail_state, "none");
-  assert.equal((await readOutbox(workspace)).length, 1);
+  // Reject, daha önce onaylanmış maili (DB'de) etkilemez.
+  assert.equal(approvedMails(workspace).length, 1);
   assert.equal((await listMailDraftRecords(workspace)).length, 0);
   const [feedback] = await readFeedback(workspace);
   assert.deepEqual(feedback, {

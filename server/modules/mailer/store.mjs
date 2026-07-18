@@ -151,6 +151,30 @@ export function listMails(workspace) {
   return rows.map(parseMailRow);
 }
 
+// Onaylanmış mailler + EN SON send durumu. outbox.jsonl'in yerini alır: eskiden
+// JSONL'deki donuk `sent:false` yüzünden "approved && !sent" hep true kalıyordu
+// (writer/followup/stats yanlış hesaplıyordu). Artık gerçek send durumundan:
+//   sent    = son send sent/sent_dryrun (gönderildi)
+//   pending = son send scheduled/sending (bekliyor — inflight)
+export function approvedMails(workspace) {
+  const db = openWorkspaceDb(workspace);
+  const rows = db
+    .prepare(
+      `SELECT m.*,
+         (SELECT status  FROM mail_send s WHERE s.mail_id = m.id ORDER BY s.id DESC LIMIT 1) AS send_status,
+         (SELECT sent_at FROM mail_send s WHERE s.mail_id = m.id ORDER BY s.id DESC LIMIT 1) AS send_sent_at
+       FROM mail m ORDER BY m.approved_at DESC`,
+    )
+    .all();
+  return rows.map((row) => ({
+    ...parseMailRow(row),
+    send_status: row.send_status ?? null,
+    sent_at: row.send_sent_at ?? null,
+    sent: row.send_status === "sent" || row.send_status === "sent_dryrun",
+    pending: row.send_status === "scheduled" || row.send_status === "sending",
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // Sends
 // ---------------------------------------------------------------------------
@@ -189,6 +213,52 @@ export function dueSends(workspace, nowIsoValue, { limit = 100 } = {}) {
     )
     .all(nowIsoValue, limit);
   return rows.map(parseSendRow);
+}
+
+// Atomik CLAIM: zamanı gelen 'scheduled' sendleri TEK senkron adımda 'sending'e
+// çevirip döndürür. JS tek-thread + senkron UPDATE olduğu için çakışan iki
+// dispatcher tick'i aynı sendi asla iki kez seçemez (çift-gönderim guard'ı —
+// gerçek relay açıldığında kritik).
+export function claimDueSends(workspace, nowIsoValue, { limit = 100 } = {}) {
+  const db = openWorkspaceDb(workspace);
+  const rows = db
+    .prepare(
+      `UPDATE mail_send SET status = 'sending'
+       WHERE id IN (
+         SELECT id FROM mail_send
+         WHERE status = 'scheduled' AND scheduled_at <= ?
+         ORDER BY scheduled_at LIMIT ?
+       )
+       RETURNING *`,
+    )
+    .all(nowIsoValue, limit);
+  return rows.map(parseSendRow);
+}
+
+// Açılışta kalmış 'sending' (crash/restart ortası) sendleri 'scheduled'e geri al
+// ki yeniden denensin. Gerçek relay eklenince idempotency key ile kullanılmalı.
+export function resetStuckSends(workspace) {
+  const db = openWorkspaceDb(workspace);
+  const info = db.prepare("UPDATE mail_send SET status = 'scheduled' WHERE status = 'sending'").run();
+  return Number(info.changes ?? 0);
+}
+
+// Onaylanan maili ATOMİK + İDEMPOTENT yazar: mail satırı + (henüz yoksa) TEK bir
+// scheduled send, tek transaction'da. Aynı draft yeniden onaylanırsa ikinci send
+// açılmaz (retry güvenli).
+export function scheduleApprovedMail(workspace, mailRow, sendParams) {
+  const db = openWorkspaceDb(workspace);
+  db.exec("BEGIN");
+  try {
+    insertMail(workspace, mailRow);
+    const existing = db.prepare("SELECT id FROM mail_send WHERE mail_id = ?").get(mailRow.id);
+    const sendId = existing ? existing.id : scheduleSend(workspace, { ...sendParams, mail_id: mailRow.id });
+    db.exec("COMMIT");
+    return { mail_id: mailRow.id, send_id: sendId, already_scheduled: Boolean(existing) };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 // Rolling hız-sınırı defteri: schedule.nextSendTime'a takenUtc olarak beslenir.
