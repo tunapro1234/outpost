@@ -53,7 +53,8 @@ test("future-scheduled sends are not dispatched yet", async (t) => {
 
 test("brevo mode with a relay actually calls it and marks sent", async (t) => {
   const workspace = await seed(t);
-  scheduleSend(workspace, { mail_id: "outbox--m1", scheduled_at: "2026-07-20T09:30:00.000Z" });
+  // Canlı gönderim için send KALICI olarak brevo schedule edilmeli (dry_run değil).
+  scheduleSend(workspace, { mail_id: "outbox--m1", scheduled_at: "2026-07-20T09:30:00.000Z", dispatch_mode: "brevo" });
   const summary = await dispatchDueSends(workspace, {
     now: () => new Date("2026-07-20T10:00:00.000Z"),
     dispatchMode: "brevo",
@@ -63,4 +64,18 @@ test("brevo mode with a relay actually calls it and marks sent", async (t) => {
   const [send] = sendsByMail(workspace, "outbox--m1");
   assert.equal(send.status, "sent");
   assert.equal(send.message_id, "relay-ali@x.com");
+});
+
+test("guvenlik: dry_run schedule edilmis send, runtime brevo olsa bile canli gitmez", async (t) => {
+  const workspace = await seed(t);
+  scheduleSend(workspace, { mail_id: "outbox--m1", scheduled_at: "2026-07-20T09:30:00.000Z", dispatch_mode: "dry_run" });
+  let relayCalled = false;
+  const summary = await dispatchDueSends(workspace, {
+    now: () => new Date("2026-07-20T10:00:00.000Z"),
+    dispatchMode: "brevo",
+    relay: async () => { relayCalled = true; return { message_id: "x" }; },
+  });
+  assert.equal(relayCalled, false, "kalici dry_run send asla relay cagirmamali");
+  assert.equal(summary.dry_run, 1);
+  assert.equal(summary.sent, 0);
 });

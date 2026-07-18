@@ -180,3 +180,18 @@ test("zorunlu jitter: sonuc asla yuvarlak dakikaya (5in kati) dusmez", () => {
     assert.notEqual(local.minute % 5, 0, `seed mail-${i}: ${local.hour}:${local.minute}`);
   }
 });
+
+test("dailyMax: gunluk tavan dolunca mail ertesi uygun gune kayar", () => {
+  const after = new Date("2026-07-20T06:00:00Z"); // Mon -> Tue
+  const cfg = { ...DEFAULT_SCHEDULE, dailyMax: 2 };
+  const taken = [];
+  const days = new Set();
+  for (let i = 0; i < 6; i++) {
+    const { scheduledAtUtc } = nextSendTime({ afterUtc: after, config: cfg, takenUtc: taken, rngSeed: `m-${i}` });
+    taken.push(scheduledAtUtc);
+    const p = localPartsFromUtc(scheduledAtUtc, TZ);
+    days.add(`${p.year}-${p.month}-${p.day}`);
+  }
+  // 6 mail, gunde en fazla 2 -> en az 3 farkli gune yayilmali.
+  assert.ok(days.size >= 3, `beklenen >=3 gun, gelen ${days.size}`);
+});

@@ -100,8 +100,9 @@ export function insertMail(workspace, row) {
     `INSERT OR REPLACE INTO mail
        (id, draft_id, person_id, company_id, to_addr, subject, body, tone, variant,
         score, followup_stage, author, rationale, variants_json, reasons_json,
-        generation_json, links_json, track_token, created_at, approved_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        generation_json, links_json, track_token, created_at, approved_at,
+        source, authored_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     row.id,
     row.draft_id ?? null,
@@ -123,6 +124,9 @@ export function insertMail(workspace, row) {
     row.track_token ?? null,
     row.created_at ?? null,
     row.approved_at ?? null,
+    // Varsayılan: bizim üretimimiz. Import edilenler explicit "imported"/"human".
+    row.source ?? "generated",
+    row.authored_by ?? null,
   );
   return row.id;
 }
@@ -187,12 +191,18 @@ export function dueSends(workspace, nowIsoValue, { limit = 100 } = {}) {
   return rows.map(parseSendRow);
 }
 
-// Halihazırda schedule edilmiş (henüz gönderilmemiş) send zamanları — rolling
-// hız sınırı hesabı için schedule.nextSendTime'a takenUtc olarak beslenir.
-export function scheduledSendTimes(workspace) {
+// Rolling hız-sınırı defteri: schedule.nextSendTime'a takenUtc olarak beslenir.
+// Yalnız "scheduled" değil, ZATEN GÖNDERİLMİŞ (sent_dryrun/sent) sendleri de sayar —
+// aksi halde bir saatteki 12 mail dispatch olunca limit "unutulur" ve aynı saate
+// yeni mail sıkışabilirdi (GPT/Opus review bulgusu).
+export function sendLedgerTimes(workspace) {
   const db = openWorkspaceDb(workspace);
   return db
-    .prepare("SELECT scheduled_at FROM mail_send WHERE status = 'scheduled' ORDER BY scheduled_at")
+    .prepare(
+      `SELECT scheduled_at FROM mail_send
+       WHERE status IN ('scheduled', 'sent_dryrun', 'sent') AND scheduled_at IS NOT NULL
+       ORDER BY scheduled_at`,
+    )
     .all()
     .map((row) => row.scheduled_at);
 }
@@ -345,10 +355,12 @@ async function readJsonlLines(filePath) {
 
 export async function importLegacy(workspace) {
   const db = openWorkspaceDb(workspace);
-  const count = Number(
-    db.prepare("SELECT COUNT(*) AS n FROM mail").get()?.n ?? 0,
-  );
-  if (count > 0) return { imported: false };
+  // Marker: mail VEYA event tablosunda veri varsa import zaten yapılmış say. Sadece
+  // mail sayısına bakmak, event-only legacy verisini her açılışta yeniden import
+  // ederdi (GPT review bulgusu #4).
+  const mailN = Number(db.prepare("SELECT COUNT(*) AS n FROM mail").get()?.n ?? 0);
+  const eventN = Number(db.prepare("SELECT COUNT(*) AS n FROM mail_event").get()?.n ?? 0);
+  if (mailN > 0 || eventN > 0) return { imported: false };
 
   const mailsDir = path.join(workspace.directory, "mails");
   const outbox = await readJsonlLines(path.join(mailsDir, "outbox.jsonl"));

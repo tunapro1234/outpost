@@ -63,6 +63,17 @@ export async function readCalibrationSource(workspace, user) {
   }
 }
 
+// Kalibrasyonu sıfırla: kullanıcının voice dosyasını sil → readCalibration boş
+// tabana (EMPTY_CALIBRATION, calibrated_at=null) döner. Geri döndürülemez.
+export async function resetCalibration(workspace, user) {
+  try {
+    await fs.unlink(calibrationPath(workspace, user));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  return { content: EMPTY_CALIBRATION, calibrated_at: null, reset: true };
+}
+
 export async function writeCalibration(workspace, user, content, {
   now = () => new Date(),
 } = {}) {

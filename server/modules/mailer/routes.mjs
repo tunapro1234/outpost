@@ -3,6 +3,8 @@ import { readMailSettings, writeMailSettings } from "./settings.mjs";
 import { verifyMailbox } from "./mailprobe.mjs";
 import { trackingRows } from "./tracking.mjs";
 import { buildMailRecords, mailRecord, mailAnalytics } from "./maildb.mjs";
+import { importMails } from "./import.mjs";
+import { syncEntities } from "./store.mjs";
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
 import {
   approveMailDraft,
@@ -74,6 +76,19 @@ export async function mailerRoutes(app, {
   app.get("/mailanalytics", async (request) => {
     authenticatedMailerUser(request, defaultUser);
     return mailAnalytics(resolveWorkspace(request));
+  });
+  // Var olan / insan-yazımı mailleri içeri al (compec korpusu vb). Owner-only.
+  // Gövde: { mails: [{to,subject,body,date,company,person,author,message_id}], author? }
+  app.post("/mail/import", async (request) => {
+    await ownerUser(request, "mail import yalnız owner");
+    const workspace = resolveWorkspace(request);
+    const body = request.body ?? {};
+    // Entity eşleşmesi güncel olsun diye aynayı tazele (kişi/şirket bağlama için).
+    try { syncEntities(workspace); } catch { /* aynasız da eşleşme in-memory index'ten çalışır */ }
+    const result = importMails(workspace, body.mails ?? body, {
+      defaultAuthor: typeof body.author === "string" && body.author.trim() ? body.author.trim() : "human",
+    });
+    return result;
   });
   app.get("/maildrafts", async (request) => listMailDrafts(resolveWorkspace(request)));
   app.post("/maildrafts/:id/approve", async (request) => {
