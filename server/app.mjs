@@ -14,6 +14,7 @@ import { GatherRunner } from "./modules/gather/runner.mjs";
 import { GatherScheduler } from "./modules/gather/scheduler.mjs";
 import { mailRoutes } from "./modules/mail/routes.mjs";
 import { mailerRoutes } from "./modules/mailer/routes.mjs";
+import { trackingRoutes } from "./modules/mailer/tracking-routes.mjs";
 import { mailAgentRoutes } from "./modules/mailer/agent-routes.mjs";
 import { FollowUpScheduler } from "./modules/mailer/scheduler.mjs";
 import {
@@ -276,6 +277,10 @@ export async function createApp({
     metricsNow,
     defaultUser,
   });
+
+  // Public izleme uçları (auth yok, workspace path'te): alıcının mail client'ı ve
+  // Brevo webhook'u vurur. Web catch-all'dan ÖNCE kayıtlı olmalı.
+  await app.register(trackingRoutes, { registry });
 
   if (mailSchedule) await mailIngestor.start();
 

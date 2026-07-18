@@ -1,11 +1,18 @@
 import { useMemo, useState } from "react";
-import type { EntityListItem, MailItem, ReachStats } from "@/core/types";
+import type {
+  EntityListItem,
+  MailItem,
+  MailTrackingRow,
+  MailTrackingStatus,
+  ReachStats,
+} from "@/core/types";
 import { STATUS_COLORS, STATUS_LABELS, TYPE_LABELS } from "@/core/theme";
 import { trNormalize } from "@/core/normalize";
 import { relativeTime } from "@/core/format";
 import { IconAssistant, IconSearch } from "@/core/icons";
 import DraftCard from "@/modules/mail/DraftCard";
 import { useMailDrafts } from "@/modules/mail/useMailDrafts";
+import { useMailTracking } from "@/modules/mail/useMailTracking";
 import ExclusionsPanel from "./ExclusionsPanel";
 import CalibrationStudio from "./CalibrationStudio";
 import { useExclusions } from "./useExclusions";
@@ -29,6 +36,46 @@ const CANDIDATE_SCORE_MIN = 15;
 function hasMail(mail: string | null | undefined): boolean {
   const m = (mail ?? "").trim();
   return m !== "" && m !== "-" && m !== "yok";
+}
+
+// Engagement badge for a tracked mail. Open tracking is deliberately honest:
+// "opened" is a human open; proxy prefetch (Apple Mail Privacy, Gmail proxy)
+// shows as the softer "prefetch" so it is never mistaken for real interest.
+const TRACK_LABEL: Record<MailTrackingStatus, string> = {
+  queued: "queued",
+  delivered: "delivered",
+  proxy_open: "prefetch",
+  opened: "opened",
+  clicked: "clicked",
+  bounced: "bounced",
+};
+
+function TrackBadge({ row }: { row: MailTrackingRow }) {
+  const label = TRACK_LABEL[row.status] ?? row.status;
+  const count =
+    row.status === "clicked"
+      ? row.click_count
+      : row.status === "opened"
+        ? row.open_count
+        : 0;
+  const title =
+    row.status === "opened"
+      ? `${row.open_count} open${row.open_count === 1 ? "" : "s"}${
+          row.last_open ? ` · last ${relativeTime(row.last_open)}` : ""
+        }`
+      : row.status === "clicked"
+        ? `${row.click_count} click${row.click_count === 1 ? "" : "s"}`
+        : row.status === "proxy_open"
+          ? "Opened by a mail proxy (Apple/Gmail prefetch), not a confirmed human open"
+          : row.status === "queued"
+            ? "Approved and tokenised; tracking begins once it is sent"
+            : label;
+  return (
+    <span className={`track-badge track-${row.status}`} title={title}>
+      {label}
+      {count > 1 ? ` ×${count}` : ""}
+    </span>
+  );
 }
 
 // "drafted 3h ago · by tuna" — the small provenance line on a draft. Renders
@@ -63,11 +110,23 @@ export default function ReachView({
   const [candAsc, setCandAsc] = useState(false);
   const [openDraftId, setOpenDraftId] = useState<string | null>(null);
   const drafts = useMailDrafts();
+  const tracking = useMailTracking();
   const exclusions = useExclusions();
 
   const list = mails ?? [];
   const sent = useMemo(() => list.filter((m) => m.direction === "out"), [list]);
   const inbound = useMemo(() => list.filter((m) => m.direction === "in"), [list]);
+
+  // Tracked mails (approved + tokenised) are the primary Sent surface once the
+  // endpoint is live; the plain mail log is the fallback for older servers.
+  const trackRows = tracking.rows ?? [];
+  const filteredTrack = useMemo(() => {
+    const nq = trNormalize(q);
+    if (!nq) return trackRows;
+    return trackRows.filter((r) =>
+      trNormalize(`${r.person_name} ${r.subject ?? ""}`).includes(nq)
+    );
+  }, [trackRows, q]);
 
   const kpis = stats ?? { sent: 0, replied: 0, replyRate: 0, pendingFollowUp: 0 };
 
@@ -181,7 +240,11 @@ export default function ReachView({
 
   const TABS: { k: Tab; label: string; count: number | null }[] = [
     { k: "drafts", label: "Drafts", count: draftList?.length || null },
-    { k: "sent", label: "Sent", count: sent.length || null },
+    {
+      k: "sent",
+      label: "Sent",
+      count: (tracking.rows ? trackRows.length : sent.length) || null,
+    },
     { k: "inbound", label: "Inbound", count: inbound.length || null },
     { k: "candidates", label: "Candidates", count: candidates.length || null },
     {
@@ -336,7 +399,49 @@ export default function ReachView({
           </div>
         )
       ) : tab === "sent" ? (
-        filteredSent.length === 0 ? (
+        // Tracking endpoint live → engagement view; else fall back to mail log.
+        tracking.rows ? (
+          filteredTrack.length === 0 ? (
+            <div className="empty-state">
+              <div className="es-title">No mail sent yet</div>
+              <div className="es-sub">
+                Approved mails land here with their open and click state. Opens
+                are a soft signal (mail proxies prefetch images); a click or a
+                reply is the real one.
+              </div>
+            </div>
+          ) : (
+            <table className="grid mails-grid track-grid">
+              <thead>
+                <tr>
+                  <th style={{ width: 96 }}>When</th>
+                  <th>Person</th>
+                  <th>Subject</th>
+                  <th style={{ width: 118 }}>Engagement</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTrack.map((r) => (
+                  <tr key={r.token}>
+                    <td className="mono">{relativeTime(r.created_at) ?? "—"}</td>
+                    <td>
+                      <button
+                        className="link-btn"
+                        onClick={() => onOpenEntity(r.person_id)}
+                      >
+                        {r.person_name}
+                      </button>
+                    </td>
+                    <td>{r.subject ?? "—"}</td>
+                    <td>
+                      <TrackBadge row={r} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        ) : filteredSent.length === 0 ? (
           <div className="empty-state">
             <div className="es-title">No mail sent yet</div>
             <div className="es-sub">

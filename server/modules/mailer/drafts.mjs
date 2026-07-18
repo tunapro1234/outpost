@@ -3,6 +3,7 @@ import path from "node:path";
 import { parseMarkdown, serializeMarkdown } from "../../lib/vault.mjs";
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
 import { isDraftStale, readCalibration } from "./calibration.mjs";
+import { newToken, extractLinks, trackingUrls, registerTracking } from "./tracking.mjs";
 
 function stageDirectory(workspace) {
   return path.join(workspace.directory, "stage");
@@ -349,6 +350,14 @@ export async function approveMailDraft(workspace, id, payload, { now = () => new
   }
   const selected = draft.variants[payload.variant];
   const approvedAt = now().toISOString();
+  const subject = payload.subject?.trim() || selected.subject;
+  const body = payload.body?.trim() || selected.body;
+  // İzleme token'ı onay anında verilir: gönderici (Brevo relay bağlanınca) pikseli
+  // ve sarmalanan linkleri maile gömer, açılma/tıklama bu token altında toplanır.
+  const token = newToken();
+  const ws = workspace.id ?? "demo";
+  const links = extractLinks(body);
+  const urls = trackingUrls(ws, token, links.length);
   const record = {
     id: `outbox--${id}`,
     draft_id: id,
@@ -356,8 +365,8 @@ export async function approveMailDraft(workspace, id, payload, { now = () => new
     person_id: draft.person_id,
     company_id: draft.company_id,
     variant: payload.variant,
-    subject: payload.subject?.trim() || selected.subject,
-    body: payload.body?.trim() || selected.body,
+    subject,
+    body,
     rationale: selected.rationale,
     tone: selected.tone,
     followup_stage: draft.followup_stage,
@@ -366,8 +375,22 @@ export async function approveMailDraft(workspace, id, payload, { now = () => new
     approved_at: approvedAt,
     approved: true,
     sent: false,
+    track_token: token,
+    pixel_url: urls.pixel,
+    click_urls: urls.clicks,
   };
   await appendOutbox(workspace, record);
+  await registerTracking(workspace, {
+    ws,
+    token,
+    outbox_id: record.id,
+    person_id: draft.person_id,
+    company_id: draft.company_id,
+    mail: null,
+    subject,
+    links,
+    now,
+  });
   await updateEntityMeta(workspace, draft.person_id, { mail_state: "approved" });
   await archiveDraft(workspace, draft.file);
   return { ok: true, id, status: "approved", outbox: record };

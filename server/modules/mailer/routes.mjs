@@ -1,6 +1,7 @@
 import { mailQueue } from "./service.mjs";
 import { readMailSettings, writeMailSettings } from "./settings.mjs";
 import { verifyMailbox } from "./mailprobe.mjs";
+import { trackingRows } from "./tracking.mjs";
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
 import {
   approveMailDraft,
@@ -50,6 +51,10 @@ export async function mailerRoutes(app, {
   app.put("/mail-settings", async (request) => {
     await ownerUser(request, "mail ayarları yalnız owner");
     return writeMailSettings(resolveWorkspace(request), request.body ?? {});
+  });
+  app.get("/mailtracking", async (request) => {
+    authenticatedMailerUser(request, defaultUser);
+    return trackingRows(resolveWorkspace(request));
   });
   app.get("/maildrafts", async (request) => listMailDrafts(resolveWorkspace(request)));
   app.post("/maildrafts/:id/approve", async (request) => {

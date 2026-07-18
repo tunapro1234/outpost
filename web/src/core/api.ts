@@ -17,6 +17,7 @@ import type {
   MailDraft,
   MailItem,
   MailQueueSummary,
+  MailTrackingSummary,
   MailRejectPayload,
   MailRejectResult,
   PersonBrief,
@@ -264,6 +265,20 @@ export const api = {
       const res = await fetch(`${workspaceBase()}/mailqueue`);
       if (!res.ok) return null;
       return (await res.json()) as MailQueueSummary;
+    } catch {
+      return null;
+    }
+  },
+
+  // Mail tracking — one row per approved/tokenised mail with open/click state.
+  // Returns null on 404 (endpoint not deployed yet) so the Sent tab can fall
+  // back to the plain mail log.
+  async mailtracking(): Promise<MailTrackingSummary | null> {
+    if (MOCK) return null;
+    try {
+      const res = await fetch(`${workspaceBase()}/mailtracking`);
+      if (!res.ok) return null;
+      return (await res.json()) as MailTrackingSummary;
     } catch {
       return null;
     }
