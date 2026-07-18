@@ -1,4 +1,5 @@
-import { readFeedback, listMailDraftRecords, readOutbox } from "./drafts.mjs";
+import { readFeedback, listMailDraftRecords } from "./drafts.mjs";
+import { approvedMails } from "./store.mjs";
 import { mailerUsers } from "./auth.mjs";
 import { readUsage } from "./usage.mjs";
 
@@ -6,7 +7,7 @@ export async function userStats(workspace, options = {}) {
   const [users, drafts, outbox, feedback, usage] = await Promise.all([
     mailerUsers(options),
     listMailDraftRecords(workspace),
-    readOutbox(workspace),
+    approvedMails(workspace),
     readFeedback(workspace),
     readUsage(workspace),
   ]);
@@ -22,8 +23,8 @@ export async function userStats(workspace, options = {}) {
     const stat = byUser.get(draft.author);
     if (stat) draftIds.get(draft.author).add(draft.id);
   }
+  // approvedMails: her satır zaten onaylanmış bir mail (DB tek kaynak).
   for (const record of outbox) {
-    if (record.approved !== true) continue;
     const stat = byUser.get(record.author);
     if (stat) {
       stat.approved += 1;

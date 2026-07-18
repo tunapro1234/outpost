@@ -10,9 +10,9 @@ import {
   badContentNotes,
   createMailDraftStage,
   listMailDraftRecords,
-  readOutbox,
   rewriteMailDraftStage,
 } from "./drafts.mjs";
+import { approvedMails } from "./store.mjs";
 import { mailQueue, resolveCompany } from "./service.mjs";
 import { mailerUsers, writerUser } from "./auth.mjs";
 import { isDraftStale, readCalibration, readCalibrationSource } from "./calibration.mjs";
@@ -471,15 +471,16 @@ export async function selectWriterCandidates(workspace, { limit = 5, now = new D
   const [{ queue }, drafts, outbox] = await Promise.all([
     mailQueue(workspace),
     listMailDraftRecords(workspace),
-    readOutbox(workspace),
+    approvedMails(workspace),
   ]);
   // Toplam taslak tavanı YOK (Tuna, 2026-07-17); tempo cycle limitiyle sınırlı.
   const remaining = Infinity;
   const cycleLimit = Math.min(5, Number.isInteger(limit) && limit >= 0 ? limit : 5);
+  // Inflight = bekleyen (henüz gönderilmemiş) maili olan şirketler. Artık gerçek
+  // send durumundan (pending), donuk sent:false'tan değil — gönderilince temizlenir.
   const inflightCompanies = new Set([
     ...drafts.map((item) => item.company_id).filter(Boolean),
-    ...outbox.filter((item) => item.approved === true && item.sent === false)
-      .map((item) => item.company_id).filter(Boolean),
+    ...outbox.filter((item) => item.pending).map((item) => item.company_id).filter(Boolean),
   ]);
   for (const person of workspace.index.entities.values()) {
     if (person.meta.type === "person" && person.meta.mail_state === "approved") {

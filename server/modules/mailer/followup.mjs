@@ -1,6 +1,7 @@
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
 import { workspaceMails } from "../reach/mails.mjs";
-import { createMailDraftStage, listMailDraftRecords, readOutbox } from "./drafts.mjs";
+import { createMailDraftStage, listMailDraftRecords } from "./drafts.mjs";
+import { approvedMails } from "./store.mjs";
 import { loadSignals, resolveCompany, scorePerson } from "./service.mjs";
 import { generateMailVariants } from "./writer.mjs";
 
@@ -78,16 +79,17 @@ export async function runFollowUpEngine(workspace, {
   generateVariants = generateFollowUpVariants,
 } = {}) {
   const current = now();
-  const [mails, pending, outbox, signals] = await Promise.all([
+  const [mails, pending, approved, signals] = await Promise.all([
     suppliedMails ?? workspaceMails(workspace),
     listMailDraftRecords(workspace),
-    readOutbox(workspace),
+    approvedMails(workspace),
     loadSignals(workspace),
   ]);
+  // Bekleyen mail (henüz gönderilmemiş) olan kişiye follow-up taslağı yazma.
+  // Artık gerçek send durumundan (pending = scheduled/sending), donuk sent:false'tan değil.
   const pendingPeople = new Set([
     ...pending.map((draft) => draft.person_id),
-    ...outbox.filter((record) => record.approved === true && record.sent === false)
-      .map((record) => record.person_id ?? record.entity_id),
+    ...approved.filter((mail) => mail.pending).map((mail) => mail.person_id),
   ]);
   const result = { checked: 0, drafted: 0, closed: 0, drafts: [], warnings: [] };
 
