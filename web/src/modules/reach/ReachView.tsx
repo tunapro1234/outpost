@@ -3,7 +3,7 @@ import type { EntityListItem, MailItem, ReachStats } from "@/core/types";
 import { STATUS_COLORS, STATUS_LABELS, TYPE_LABELS } from "@/core/theme";
 import { trNormalize } from "@/core/normalize";
 import { relativeTime } from "@/core/format";
-import { IconAssistant, IconSearch } from "@/core/icons";
+import { IconSearch } from "@/core/icons";
 import DraftCard from "@/modules/mail/DraftCard";
 import { useMailDrafts } from "@/modules/mail/useMailDrafts";
 import { useMailDb } from "@/modules/mail/useMailDb";
@@ -12,7 +12,6 @@ import MailInsights from "@/modules/mail/MailInsights";
 import MailSettings from "@/modules/mail/MailSettings";
 import MailTracking from "@/modules/mail/MailTracking";
 import ExclusionsPanel from "./ExclusionsPanel";
-import CalibrationStudio from "./CalibrationStudio";
 import { useExclusions } from "./useExclusions";
 
 interface Props {
@@ -20,10 +19,6 @@ interface Props {
   stats: ReachStats | null;
   entities: EntityListItem[];
   onOpenEntity: (id: string) => void;
-  // Calibration lives at /mail/calibration as a detached full-page sub-view.
-  showCalibration: boolean;
-  onOpenCalibration: () => void;
-  onCloseCalibration: () => void;
 }
 
 type Tab =
@@ -66,9 +61,6 @@ export default function ReachView({
   stats,
   entities,
   onOpenEntity,
-  showCalibration,
-  onOpenCalibration,
-  onCloseCalibration,
 }: Props) {
   const [tab, setTab] = useState<Tab>("drafts");
   const [q, setQ] = useState("");
@@ -193,17 +185,6 @@ export default function ReachView({
     </table>
   );
 
-  if (showCalibration) {
-    return (
-      <div className="view-pad mail">
-        <CalibrationStudio
-          onBack={onCloseCalibration}
-          onCalibrationChanged={drafts.reload}
-        />
-      </div>
-    );
-  }
-
   const TABS: { k: Tab; label: string; count: number | null }[] = [
     { k: "drafts", label: "Drafts", count: draftList?.length || null },
     {
@@ -228,8 +209,8 @@ export default function ReachView({
   return (
     <div className="view-pad mail">
       {/* One header band: a big active-section title with thin text tabs
-          beneath it on the left; the KPI line, search and Calibration share
-          the same band on the right. A single hairline parts it from content. */}
+          beneath it on the left; the KPI line and search share the same band
+          on the right. A single hairline parts it from content. */}
       <header className="mail-header">
         <div className="mh-left">
           <h1 className="mh-title">{activeLabel}</h1>
@@ -266,14 +247,6 @@ export default function ReachView({
               onChange={(e) => setQ(e.target.value)}
             />
           </label>
-          <button
-            className="mh-cal"
-            onClick={onOpenCalibration}
-            title="Open the calibration studio"
-          >
-            <IconAssistant size={15} />
-            Calibration
-          </button>
         </div>
       </header>
 
@@ -335,7 +308,7 @@ export default function ReachView({
                     {d.stale && (
                       <span
                         className="md-stale"
-                        title="This draft is from before your latest calibration, so it will be rewritten automatically."
+                        title="This draft predates the mail writer's current voice, so it will be rewritten automatically."
                       >
                         outdated, queued for rewrite
                       </span>

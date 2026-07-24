@@ -48,13 +48,7 @@ import {
 } from "@/core/filters";
 import type { Physics } from "@/core/physics";
 import { loadPhysics, savePhysics } from "@/core/physics";
-import {
-  useRoute,
-  navigate,
-  entityPath,
-  viewPath,
-  MAIL_CALIBRATION_PATH,
-} from "@/core/router";
+import { useRoute, navigate, entityPath, viewPath } from "@/core/router";
 
 const EMPTY: GraphData = { nodes: [], edges: [] };
 const WORKSPACE_STORAGE_KEY = "outpost.workspace";
@@ -791,15 +785,12 @@ export default function App() {
               stats={reachStats}
               entities={entityList}
               onOpenEntity={openFull}
-              showCalibration={route.name === "view" && route.sub === "calibration"}
-              onOpenCalibration={() => navigate(MAIL_CALIBRATION_PATH)}
-              onCloseCalibration={() => navigate(viewPath("mail"))}
             />
           )}
           {view === "agents" && (
             <GatherView
               onOpenAssistant={openAssistant}
-              onOpenMailCalibration={() => navigate(MAIL_CALIBRATION_PATH)}
+              onOpenMail={() => navigate(viewPath("mail"))}
             />
           )}
           {view === "workspace" && (

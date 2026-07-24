@@ -17,10 +17,7 @@ export type ViewKey =
   | "profile";
 
 export type Route =
-  // `sub` carries an in-view sub-route (e.g. the Mail Calibration studio at
-  // /mail/calibration) so the shell can render a full-page sub-view without a
-  // separate top-level route.
-  | { name: "view"; key: ViewKey; sub: string | null }
+  | { name: "view"; key: ViewKey }
   | { name: "entity"; id: string };
 
 const PATH_TO_VIEW: Record<string, ViewKey> = {
@@ -50,13 +47,14 @@ const VIEW_TO_PATH: Record<ViewKey, string> = {
 };
 
 // Rewrite legacy URLs to their canonical paths on first load so bookmarks and
-// shared links land on a working page. /gather → /agents, /reach* → /mail*.
+// shared links land on a working page instead of a 404-ish fallback:
+// /gather* → /agents, /reach* → /mail, and any retired /mail sub-page → /mail.
 if (typeof window !== "undefined") {
   const p = window.location.pathname;
   let rewritten: string | null = null;
-  if (p === "/gather") rewritten = "/agents";
-  else if (p === "/reach/calibration") rewritten = "/mail/calibration";
-  else if (p === "/reach") rewritten = "/mail";
+  if (p === "/gather" || p.startsWith("/gather/")) rewritten = "/agents";
+  else if (p === "/reach" || p.startsWith("/reach/")) rewritten = "/mail";
+  else if (p.startsWith("/mail/")) rewritten = "/mail";
   if (rewritten) {
     window.history.replaceState(
       null,
@@ -70,24 +68,18 @@ export function viewPath(key: ViewKey): string {
   return VIEW_TO_PATH[key];
 }
 
-// The Mail Calibration studio lives at a stable deep-linkable sub-path.
-export const MAIL_CALIBRATION_PATH = "/mail/calibration";
-
 function parse(): Route {
   const path = window.location.pathname;
   const m = path.match(/^\/e\/(.+)$/);
   if (m) return { name: "entity", id: decodeURIComponent(m[1]) };
-  if (path === "/mail/calibration")
-    return { name: "view", key: "mail", sub: "calibration" };
   const key = PATH_TO_VIEW[path] ?? "overview";
-  return { name: "view", key, sub: null };
+  return { name: "view", key };
 }
 
 function sameRoute(a: Route, b: Route): boolean {
   if (a.name !== b.name) return false;
   if (a.name === "entity" && b.name === "entity") return a.id === b.id;
-  if (a.name === "view" && b.name === "view")
-    return a.key === b.key && a.sub === b.sub;
+  if (a.name === "view" && b.name === "view") return a.key === b.key;
   return true;
 }
 

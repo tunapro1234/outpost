@@ -1,8 +1,6 @@
 import type {
   Agent,
   AgentRun,
-  Calibration,
-  CalibrationSkill,
   MailAgentConfig,
   MailAgentModel,
   Entity,
@@ -26,7 +24,6 @@ import type {
   MailAnalytics,
   MailRejectPayload,
   MailRejectResult,
-  PersonBrief,
   PersonalAgent,
   ReachStats,
   Metrics,
@@ -451,13 +448,6 @@ export const api = {
     });
   },
 
-  // Reset the caller's mail-voice calibration. Throws Error(message) on failure.
-  async resetMailCalibration(): Promise<{ reset: boolean }> {
-    return json<{ reset: boolean }>(`${workspaceBase()}/calibration/reset`, {
-      method: "POST",
-    });
-  },
-
   // Import a batch of past mails (owner-only). Returns match/skip counts;
   // throws Error(message) on failure so the Settings tab can surface it.
   async importMails(payload: {
@@ -471,46 +461,8 @@ export const api = {
     });
   },
 
-  // ---- mail calibration (SPEC-MAILCAL §2) --------------------------------
-  // The caller's personal mail-voice file. Returns null on 404 / error so the
-  // Calibration tab renders an empty editor while the endpoint is still shipping.
-  async calibration(): Promise<Calibration | null> {
-    if (MOCK) return { content: "", calibrated_at: null };
-    try {
-      const res = await fetch(`${workspaceBase()}/calibration`);
-      if (!res.ok) return null;
-      return (await res.json()) as Calibration;
-    } catch {
-      return null;
-    }
-  },
-
-  // Persist the calibration file; the server stamps a fresh calibrated_at.
-  // Throws Error(message) on failure so the editor can surface it.
-  async saveCalibration(content: string): Promise<Calibration> {
-    return json<Calibration>(`${workspaceBase()}/calibration`, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ content }),
-    });
-  },
-
-  // Deterministic person brief for the Studio card (GET .../calibration/brief/
-  // :id). Null on 404 / error so the card simply doesn't render.
-  async calibrationBrief(personId: string): Promise<PersonBrief | null> {
-    try {
-      const res = await fetch(
-        `${workspaceBase()}/calibration/brief/${encodeURIComponent(personId)}`,
-      );
-      if (!res.ok) return null;
-      return (await res.json()) as PersonBrief;
-    } catch {
-      return null;
-    }
-  },
-
   // ---- mail agent model config (SPEC-MAILCAL §11) ------------------------
-  // Returns null on 404 / error so the studio falls back to the default model.
+  // Returns null on 404 / error so callers fall back to the default model.
   async mailAgentConfig(): Promise<MailAgentConfig | null> {
     if (MOCK) return { model: "claude-opus-4-8" };
     try {
@@ -530,61 +482,6 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ model }),
     });
-  },
-
-  // ---- user mail skills (SPEC-MAILCAL §10) -------------------------------
-  // Uploaded md files that feed the writer/calibration prompt. Returns null on
-  // 404 / error so the Skills panel hides gracefully.
-  async calibrationSkills(): Promise<CalibrationSkill[] | null> {
-    if (MOCK) return [];
-    try {
-      const res = await fetch(`${workspaceBase()}/calibration/skills`);
-      if (!res.ok) return null;
-      const body = (await res.json()) as
-        | { skills?: CalibrationSkill[] }
-        | CalibrationSkill[];
-      return Array.isArray(body) ? body : body.skills ?? [];
-    } catch {
-      return null;
-    }
-  },
-
-  // Create/overwrite a skill file. name must match [a-z0-9-]+\.md, ≤64KB.
-  // Throws Error(message) on failure so the panel can surface it.
-  async saveCalibrationSkill(
-    name: string,
-    content: string
-  ): Promise<CalibrationSkill> {
-    return json<CalibrationSkill>(
-      `${workspaceBase()}/calibration/skills/${encodeURIComponent(name)}`,
-      {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ content }),
-      }
-    );
-  },
-
-  async deleteCalibrationSkill(name: string): Promise<{ ok: boolean }> {
-    const res = await fetch(
-      `${workspaceBase()}/calibration/skills/${encodeURIComponent(name)}`,
-      { method: "DELETE" }
-    );
-    if (!res.ok) {
-      let msg = `HTTP ${res.status}`;
-      try {
-        const b = await res.json();
-        if (b?.error) msg = b.error;
-      } catch {
-        /* ignore */
-      }
-      throw new Error(msg);
-    }
-    try {
-      return (await res.json()) as { ok: boolean };
-    } catch {
-      return { ok: true };
-    }
   },
 
   // ---- workspace user stats (SPEC-MAILCAL §3) ----------------------------

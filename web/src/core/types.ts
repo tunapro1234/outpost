@@ -154,8 +154,8 @@ export interface MailItem {
 // A queue row is always a PERSON with a usable mail address (the server filters
 // out org-type entities and excluded companies). `queue` holds scanned-and-
 // ready people (they carry a priority `score`); `awaitingScan` holds people who
-// still need a scan (no score yet). The pipeline band reads only `counts`; the
-// Calibration target picker reads the row arrays.
+// still need a scan (no score yet). The pipeline band reads only `counts`;
+// the row arrays are there for callers that need the people themselves.
 export interface MailQueuePerson {
   id: string;
   name: string;
@@ -378,59 +378,10 @@ export interface MailDraft {
   followup_stage: 0 | 1 | 2;
   status: "pending";
   // SPEC-MAILCAL §2/§4 — who authored the draft and whether it predates the
-  // author's latest calibration (queued for an automatic rewrite). Optional so
+  // writer's current voice file (queued for an automatic rewrite). Optional so
   // older servers that omit them degrade to "no author / not stale".
   author?: string | null;
   stale?: boolean;
-}
-
-// ---- mail calibration (SPEC-MAILCAL §2) ---------------------------------
-// The caller's personal "mail voice" file. `calibrated_at` is stamped on every
-// write (agent or PUT). Returns null on 404 so the tab shows an empty editor.
-export interface Calibration {
-  content: string;
-  calibrated_at: string | null;
-}
-
-// ---- deterministic person brief (GET /calibration/brief/:personId) ------
-// Built with no LLM from the vault entity + employer edge + score — the same
-// source the writer's context is derived from, so what the card shows, the
-// writer knows. Shown above the draft in the Studio.
-export type BriefConfidence = "verified" | "scan" | "unverified";
-
-export interface BriefKnown {
-  label: string;
-  text: string;
-  confidence: BriefConfidence | null;
-}
-
-export interface BriefFinding {
-  text: string;
-  urls: string[];
-}
-
-export interface PersonBrief {
-  person: {
-    id: string;
-    name: string;
-    role: string | null;
-    mail: string | null;
-    mail_probe: string;
-    mail_state: string;
-    scan_state: string;
-    scan_depth: number | null;
-  };
-  employer: {
-    id: string;
-    name: string;
-    type: string;
-    relation: string | null;
-    meaning: string | null;
-  } | null;
-  hooks: string[];
-  score: { value: number; reasons: string[] };
-  known: BriefKnown[];
-  findings: BriefFinding[];
 }
 
 // ---- mail agent model config (SPEC-MAILCAL §11) -------------------------
@@ -443,21 +394,6 @@ export type MailAgentModel =
 
 export interface MailAgentConfig {
   model: MailAgentModel;
-}
-
-// ---- user mail skills (SPEC-MAILCAL §10) --------------------------------
-// GET (list+content) / PUT / DELETE /api/ws/:ws/calibration/skills[/:name].
-// name is a "<slug>.md" file ([a-z0-9-]+\.md), content max 64KB.
-export interface CalibrationSkill {
-  name: string;
-  content: string;
-}
-
-// ---- calibration studio feedback (SPEC-MAILCAL §9) ----------------------
-export interface CalibrationFeedback {
-  rating: number; // 1..5
-  liked: string;
-  disliked: string;
 }
 
 // ---- workspace user stats (SPEC-MAILCAL §3, GET /users/stats) -----------
