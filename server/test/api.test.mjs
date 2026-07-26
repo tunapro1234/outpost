@@ -45,7 +45,12 @@ test("entities, stats, detail ve health endpointleri sözleşme şeklini döndü
   assert.equal(entities.length, 3);
   assert.deepEqual(Object.keys(entities[0]), [
     "id", "name", "type", "subtype", "role", "closeness", "hook", "mail_source",
-    "status", "score", "city", "mail", "degree",
+    "status", "score", "city", "mail",
+    // adapter/manual-contact alanları — phone & kimlik_guveni SALT GÖRÜNTÜ,
+    // outreach akışlarına lib/outreach-guard.mjs tarafından hiç geçmez.
+    "org", "location", "durum", "lead_source",
+    "phone", "phone_source", "contact_channel", "kimlik_guveni", "gun", "sira",
+    "degree",
     "mail_count", "last_mail_date", "last_mail_direction", "last_mail_from",
   ]);
   assert.ok(entities[0].score >= entities[1].score);

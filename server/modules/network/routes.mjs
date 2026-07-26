@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   TYPE_DIRECTORIES,
   assertSafeVaultPath,
+  assertVaultWritable,
   serializeMarkdown,
 } from "../../lib/vault.mjs";
 import { normalizeSearch, slugify } from "../../lib/slug.mjs";
@@ -78,6 +79,8 @@ export async function networkRoutes(app, { resolveWorkspace }) {
 
   app.patch("/entities/:id", async (request) => {
     const index = resolveWorkspace(request).index;
+    // Yerinde bağlanmış, bize ait olmayan vault'lara yazma yok.
+    assertVaultWritable(index.vaultPath);
     const entity = index.entities.get(request.params.id);
     if (!entity) fail(404, "Entity bulunamadı");
     const payload = request.body;
@@ -125,6 +128,8 @@ export async function networkRoutes(app, { resolveWorkspace }) {
 
   app.post("/entities", async (request, reply) => {
     const index = resolveWorkspace(request).index;
+    // Yerinde bağlanmış, bize ait olmayan vault'lara yazma yok.
+    assertVaultWritable(index.vaultPath);
     const payload = request.body;
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
       fail(400, "JSON gövdesi nesne olmalı");
@@ -176,6 +181,8 @@ export async function networkRoutes(app, { resolveWorkspace }) {
 
   app.delete("/entities/:id", async (request, reply) => {
     const index = resolveWorkspace(request).index;
+    // Yerinde bağlanmış, bize ait olmayan vault'lara yazma yok.
+    assertVaultWritable(index.vaultPath);
     const entity = index.entities.get(request.params.id);
     if (!entity) fail(404, "Entity bulunamadı");
     const trash = path.join(index.vaultPath, ".trash");

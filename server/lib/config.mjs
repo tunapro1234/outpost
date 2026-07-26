@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import { VaultIndex } from "./vault.mjs";
+import { resolveVaultAdapter } from "./vault-adapters.mjs";
 
 const MODULE_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_EXAMPLE_VAULT = path.resolve(MODULE_DIRECTORY, "../../example-vault");
@@ -64,6 +65,14 @@ async function seedDemoWorkspace(root, exampleVaultPath) {
   }
 }
 
+function configuredVaultPath(directory, config) {
+  const raw = config.vault_path ?? config.vaultPath;
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  // Relative values stay inside the workspace; absolute values mount an
+  // existing vault in place (no copy, single physical source of truth).
+  return path.resolve(directory, raw.trim());
+}
+
 function workspaceRecord(id, directory, config, vaultPath) {
   const mailLogPath = path.resolve(directory, "mails", "log.jsonl");
   const mailIngestedPath = path.resolve(directory, "mails", "ingested.jsonl");
@@ -74,7 +83,13 @@ function workspaceRecord(id, directory, config, vaultPath) {
     name: typeof config.name === "string" && config.name.trim() ? config.name.trim() : id,
     directory,
     config,
-    vaultPath: path.resolve(vaultPath ?? path.join(directory, "vault")),
+    adapter: resolveVaultAdapter(config.adapter),
+    // A vault Outpost does not own (someone else's live Obsidian vault) is
+    // mounted read-only: every write path in the app refuses it.
+    readOnly: config.read_only === true || config.readOnly === true,
+    vaultPath: path.resolve(
+      vaultPath ?? configuredVaultPath(directory, config) ?? path.join(directory, "vault"),
+    ),
     mailLogPath,
     mailIngestedPath,
     mailsOutboxPath,
@@ -175,7 +190,10 @@ export class WorkspaceRegistry {
 
   async open({ watch }) {
     for (const workspace of this.workspaces.values()) {
-      workspace.index = await new VaultIndex(workspace.vaultPath).load();
+      workspace.index = await new VaultIndex(workspace.vaultPath, {
+        adapter: workspace.adapter,
+        readOnly: workspace.readOnly,
+      }).load();
       if (watch) await workspace.index.startWatching();
     }
   }

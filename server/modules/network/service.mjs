@@ -55,6 +55,19 @@ export function entityListItem(entity, index, statsByEntity) {
     score: typeof entity.meta.score === "number" ? entity.meta.score : null,
     city: entity.meta.city ?? null,
     mail: entity.meta.mail ?? null,
+    // Adapter-mapped / manual-outreach fields. `phone` and `kimlik_guveni` are
+    // DISPLAY ONLY — lib/outreach-guard.mjs keeps them out of every generator
+    // and sender; they exist so a human can dial the number himself.
+    org: entity.meta.org ?? null,
+    location: entity.meta.location ?? entity.meta.city ?? null,
+    durum: entity.meta.durum ?? null,
+    lead_source: entity.meta.lead_source ?? null,
+    phone: entity.meta.phone ?? null,
+    phone_source: entity.meta.phone_source ?? null,
+    contact_channel: entity.meta.contact_channel ?? null,
+    kimlik_guveni: entity.meta.kimlik_guveni ?? null,
+    gun: entity.meta.gun ?? null,
+    sira: Number.isInteger(entity.meta.sira) ? entity.meta.sira : null,
     degree: index.degrees.get(entity.id) ?? 0,
     ...(statsByEntity.get(entity.id) ?? emptyMailStats()),
   };

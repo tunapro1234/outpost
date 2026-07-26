@@ -78,6 +78,17 @@ export interface EntityListItem {
   mail_source?: string | null;
   connected_org?: string | null;
   connected_org_id?: string | null;
+  org?: string | null;
+  location?: string | null;
+  durum?: string | null;
+  lead_source?: string | null;
+  // Display only — see EntityMeta above; never feed these to an outreach flow.
+  phone?: string | null;
+  phone_source?: "elden" | "ocr" | "web" | null;
+  contact_channel?: string | null;
+  kimlik_guveni?: "iyi" | "orta" | "zayif" | null;
+  gun?: string | null;
+  sira?: number | null;
 }
 
 export interface Relation {
@@ -108,8 +119,31 @@ export interface EntityMeta {
   source_url?: string | null;
   found_date?: string | null;
   tags?: string[] | null;
+  // `closeness` is genuinely nullable: a missing warmth reading is NOT the same
+  // as a "belirsiz" (0) reading, and the adapters never collapse one into the
+  // other. Render "—" for null, "belirsiz" for 0.
   closeness?: number | null;
   role?: string | null;
+  org?: string | null;
+  location?: string | null;
+  // Turkish workflow state carried through verbatim from the source vault:
+  // yeni | yazilacak | ulasildi | konusuldu | referans-verdi | ilgili-pilot | pasif
+  durum?: string | null;
+  // `kategori: lead-<kaynak>` -> who opened this lead.
+  lead_source?: string | null;
+  // ---- manual-contact fields — DISPLAY ONLY ------------------------------
+  // These are hand-collected phone numbers. They are stripped from every
+  // outreach path server-side (server/lib/outreach-guard.mjs): no mail writer,
+  // follow-up generator or bulk sender ever receives them. Show them; never
+  // wire them into an automated flow.
+  phone_source?: "elden" | "ocr" | "web" | null;
+  contact_channel?: string | null;
+  // How sure we are the contact details belong to THIS person — the real risk
+  // with a hand-copied number is reaching the wrong human, not a bad number.
+  kimlik_guveni?: "iyi" | "orta" | "zayif" | null;
+  // Planned call day / order, for a future "bugün kimi arayacağım" view.
+  gun?: string | null;
+  sira?: number | null;
   alumni_school?: string | null;
   alumni_year?: string | null;
   alumni_dept?: string | null;
