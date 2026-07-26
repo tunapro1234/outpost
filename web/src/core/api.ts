@@ -32,6 +32,7 @@ import type {
   StageItem,
   Status,
   UserStat,
+  NetworkInfo,
   WorkspaceInfo,
 } from "./types";
 import { trNormalize } from "./normalize";
@@ -52,6 +53,27 @@ export function getWorkspace(): string {
 
 export function workspaceBase(): string {
   return `/api/ws/${encodeURIComponent(getWorkspace())}`;
+}
+
+// ---- network selection -------------------------------------------------
+// A workspace is a line of business; it holds one or more networks (separate
+// graphs, never merged). Graph/entity endpoints take `?network=<id>`; leaving
+// it unset asks the server for the workspace's default network.
+let activeNetwork: string | null = null;
+
+export function setNetwork(id: string | null): void {
+  activeNetwork = id;
+}
+
+export function getNetwork(): string | null {
+  return activeNetwork;
+}
+
+function netUrl(url: string, params?: URLSearchParams): string {
+  const p = params ?? new URLSearchParams();
+  if (activeNetwork) p.set("network", activeNetwork);
+  const q = p.toString();
+  return q ? `${url}?${q}` : url;
 }
 
 // ---- mock data (bundled) ----
@@ -219,14 +241,14 @@ export const api = {
   // Full unfiltered graph — v2 loads this once and filters client-side.
   async fullGraph(): Promise<GraphData> {
     if (MOCK) return { nodes: mockGraph.nodes, edges: mockGraph.edges };
-    return json<GraphData>(`${workspaceBase()}/graph`);
+    return json<GraphData>(netUrl(`${workspaceBase()}/graph`));
   },
 
   // Server-provided facets. Returns null on 404 so the caller derives them.
   async facets(): Promise<Facets | null> {
     if (MOCK) return null;
     try {
-      const res = await fetch(`${workspaceBase()}/facets`);
+      const res = await fetch(netUrl(`${workspaceBase()}/facets`));
       if (!res.ok) return null;
       return (await res.json()) as Facets;
     } catch {
@@ -538,15 +560,12 @@ export const api = {
     if (params.q) p.set("q", params.q);
     if (params.sort) p.set("sort", params.sort);
     if (params.order) p.set("order", params.order);
-    const s = p.toString();
-    return json<EntityListItem[]>(
-      `${workspaceBase()}/entities${s ? `?${s}` : ""}`
-    );
+    return json<EntityListItem[]>(netUrl(`${workspaceBase()}/entities`, p));
   },
 
   async entity(id: string): Promise<Entity> {
     if (MOCK) return mockEntities[id] ?? fallbackEntity(id);
-    return json<Entity>(`${workspaceBase()}/entities/${encodeURIComponent(id)}`);
+    return json<Entity>(netUrl(`${workspaceBase()}/entities/${encodeURIComponent(id)}`));
   },
 
   async patchEntity(
@@ -571,7 +590,7 @@ export const api = {
       mockEntities[id] = next;
       return next;
     }
-    return json<Entity>(`${workspaceBase()}/entities/${encodeURIComponent(id)}`, {
+    return json<Entity>(netUrl(`${workspaceBase()}/entities/${encodeURIComponent(id)}`), {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(patch),
@@ -607,7 +626,7 @@ export const api = {
       }
       return ent;
     }
-    return json<Entity>(`${workspaceBase()}/entities`, {
+    return json<Entity>(netUrl(`${workspaceBase()}/entities`), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -747,6 +766,20 @@ export const api = {
       const res = await fetch(`/api/workspaces`);
       if (!res.ok) return null;
       return (await res.json()) as WorkspaceInfo[];
+    } catch {
+      return null;
+    }
+  },
+
+  // Networks (separate graphs) inside the active workspace. Older servers
+  // have no such endpoint — null means "assume a single, default network".
+  async networks(): Promise<NetworkInfo[] | null> {
+    if (MOCK) return null;
+    try {
+      const res = await fetch(`${workspaceBase()}/networks`);
+      if (!res.ok) return null;
+      const list = (await res.json()) as NetworkInfo[];
+      return Array.isArray(list) ? list : null;
     } catch {
       return null;
     }

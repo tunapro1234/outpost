@@ -100,6 +100,35 @@ test("workspace config code alanını workspace nesnesine taşır", async (t) =>
   assert.equal(registry.get("probot").code, "prb");
 });
 
+test("networks tanımlamayan workspace tek varsayılan network'e düşer", async (t) => {
+  const root = await temporaryDirectory("outpost-implicit-network-");
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const { directory, vault } = await writeWorkspace(root, "alpha", "Alpha", "alpha-sirketi");
+
+  const registry = await WorkspaceRegistry.load({
+    workspacesPath: root,
+    outpostVault: null,
+    watch: false,
+  });
+  t.after(() => registry.close());
+
+  const workspace = registry.get("alpha");
+  assert.equal(workspace.directory, directory);
+  assert.deepEqual(workspace.listNetworks(), [
+    {
+      id: "default",
+      label: "Alpha",
+      read_only: false,
+      adapter: "default",
+      entities: 1,
+      default: true,
+    },
+  ]);
+  // Eski tekil alanlar varsayılan network'ü gösterir.
+  assert.equal(workspace.vaultPath, path.resolve(vault));
+  assert.equal(workspace.index, workspace.getNetwork("default").index);
+});
+
 test("scoped entities listesi frontmatter liste alanlarını ve null varsayılanlarını döndürür", async (t) => {
   const root = await temporaryDirectory("outpost-entity-list-");
   t.after(() => fs.rm(root, { recursive: true, force: true }));

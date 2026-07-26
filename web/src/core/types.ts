@@ -127,7 +127,8 @@ export interface EntityMeta {
   org?: string | null;
   location?: string | null;
   // Turkish workflow state carried through verbatim from the source vault:
-  // yeni | yazilacak | ulasildi | konusuldu | referans-verdi | ilgili-pilot | pasif
+  // yeni | yazilacak | ulasildi | konusuldu | referans-verdi | ilgili-pilot |
+  // pasif | ic ("ic" = ekip üyesi; outreach akışının dışında, bilinmeyen değil)
   durum?: string | null;
   // `kategori: lead-<kaynak>` -> who opened this lead.
   lead_source?: string | null;
@@ -657,6 +658,17 @@ export interface Profile {
 }
 
 // ---- workspaces (global /api/workspaces) --------------------------------
+// One graph inside a workspace. Workspaces hold 1..N of these; the app shows
+// exactly one at a time and never merges records across them.
+export interface NetworkInfo {
+  id: string;
+  label: string;
+  entities?: number;
+  adapter?: string;
+  read_only?: boolean;
+  default?: boolean;
+}
+
 export interface WorkspaceInfo {
   id: string;
   name: string;

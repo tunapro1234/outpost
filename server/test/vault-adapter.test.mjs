@@ -347,6 +347,108 @@ test("iki workspace bağımsız kalır — otomatik merge/dedup yapılmaz", asyn
   assert.equal(app.workspaceRegistry.getDefault().id, "probot");
 });
 
+// ---------------------------------------------------------------------------
+// one workspace (line of business) holding two networks (separate graphs)
+// ---------------------------------------------------------------------------
+
+async function twoNetworkWorkspace(t, prefix) {
+  const root = await temporaryDirectory(`${prefix}-`);
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const external = await temporaryDirectory(`${prefix}-vault-`);
+  t.after(() => fs.rm(external, { recursive: true, force: true }));
+  t.after(() => setVaultReadOnly(external, false));
+  await fs.writeFile(path.join(external, "Fırat.md"), "---\ntip: kisi\n---\n\n# Fırat\n", "utf8");
+
+  await fs.mkdir(path.join(root, "probot"), { recursive: true });
+  await fs.writeFile(
+    path.join(root, "probot", "config.yaml"),
+    [
+      "name: Probot",
+      "networks:",
+      "  - id: research",
+      "    label: Research",
+      "    vault_path: vault",
+      "  - id: warm",
+      "    label: Warm network",
+      `    vault_path: ${external}`,
+      "    adapter: tr-network",
+      "    read_only: true",
+      "default_network: research",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  await writeEntity(
+    path.join(root, "probot", "vault"),
+    "people",
+    "firat-ozcan",
+    "---\ntype: person\nname: Fırat Özcan\n---\n",
+  );
+  return { root, external };
+}
+
+test("bir workspace iki network taşır; ağlar birbirine karışmaz", async (t) => {
+  const { root, external } = await twoNetworkWorkspace(t, "outpost-two-networks");
+  const app = await createApp({ workspacesPath: root, outpostVault: null, watch: false });
+  t.after(() => app.close());
+
+  const networks = (await app.inject({ url: "/api/ws/probot/networks" })).json();
+  assert.deepEqual(networks.map((network) => network.id), ["research", "warm"]);
+  assert.deepEqual(networks.map((network) => network.default), [true, false]);
+  assert.deepEqual(networks.map((network) => network.read_only), [false, true]);
+  assert.deepEqual(networks.map((network) => network.adapter), ["default", "tr-network"]);
+
+  const base = "/api/ws/probot/entities";
+  // Parametresiz çağrı varsayılan (research) ağını döndürmeye devam eder.
+  const implicit = (await app.inject({ url: base })).json();
+  const research = (await app.inject({ url: `${base}?network=research` })).json();
+  const warm = (await app.inject({ url: `${base}?network=warm` })).json();
+  assert.deepEqual(implicit.map((entity) => entity.id), ["firat-ozcan"]);
+  assert.deepEqual(research.map((entity) => entity.id), ["firat-ozcan"]);
+  // İsim benzerliği kimlik kanıtı değildir: "Fırat" ile "Fırat Özcan" ayrı kalır.
+  assert.deepEqual(warm.map((entity) => entity.id), ["firat"]);
+
+  const graph = (await app.inject({ url: "/api/ws/probot/graph?network=warm" })).json();
+  assert.deepEqual(graph.nodes.map((node) => node.id), ["firat"]);
+  assert.equal(
+    (await app.inject({ url: `${base}?network=yok` })).statusCode,
+    404,
+  );
+
+  const workspace = app.workspaceRegistry.get("probot");
+  assert.equal(workspace.vaultPath, path.join(root, "probot", "vault"));
+  assert.equal(workspace.index.entities.has("firat"), false);
+  assert.equal(workspace.getNetwork("warm").index.entities.has("firat-ozcan"), false);
+  assert.equal(workspace.getNetwork("warm").vaultPath, path.resolve(external));
+});
+
+test("read_only network'e yazma uçları 403 döner, yazılabilir kardeşi etkilenmez", async (t) => {
+  const { root, external } = await twoNetworkWorkspace(t, "outpost-network-readonly");
+  const app = await createApp({ workspacesPath: root, outpostVault: null, watch: false });
+  t.after(() => app.close());
+
+  const base = "/api/ws/probot/entities";
+  const calls = [
+    { method: "PATCH", url: `${base}/firat?network=warm`, payload: { meta: { role: "test" } } },
+    { method: "POST", url: `${base}?network=warm`, payload: { type: "person", name: "Sızma" } },
+    { method: "DELETE", url: `${base}/firat?network=warm` },
+  ];
+  for (const call of calls) {
+    assert.equal((await app.inject(call)).statusCode, 403, `${call.method} ${call.url}`);
+  }
+  // Warm vault diskte bit bit aynı.
+  assert.deepEqual(await fs.readdir(external), ["Fırat.md"]);
+
+  // Aynı workspace'in yazılabilir ağı çalışmaya devam eder.
+  const created = await app.inject({
+    method: "POST",
+    url: `${base}?network=research`,
+    payload: { type: "person", name: "Yeni Kişi" },
+  });
+  assert.equal(created.statusCode, 201);
+  assert.deepEqual(await fs.readdir(external), ["Fırat.md"]);
+});
+
 test("read_only workspace'te entity yazma uçları 403 döner", async (t) => {
   const root = await temporaryDirectory("outpost-readonly-routes-");
   t.after(() => fs.rm(root, { recursive: true, force: true }));

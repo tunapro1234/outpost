@@ -7,6 +7,7 @@ import {
   serializeMarkdown,
 } from "../../lib/vault.mjs";
 import { normalizeSearch, slugify } from "../../lib/slug.mjs";
+import { workspaceNetworkView } from "../../lib/config.mjs";
 import { mailStats, workspaceTrafficMails } from "../reach/mails.mjs";
 import {
   VALID_TYPES,
@@ -26,7 +27,23 @@ async function statsFor(workspace) {
   return mailStats(await workspaceTrafficMails(workspace));
 }
 
-export async function networkRoutes(app, { resolveWorkspace }) {
+export async function networkRoutes(app, { resolveWorkspace: resolveBase }) {
+  /**
+   * `?network=<id>` picks one of the workspace's networks. Without it every
+   * endpoint answers from the workspace's default network exactly as before,
+   * so existing callers (and the legacy `/api/...` alias) keep working.
+   */
+  function resolveWorkspace(request) {
+    const workspace = resolveBase(request);
+    const requested = request.query?.network;
+    if (requested === undefined || requested === "") return workspace;
+    const network = workspace.getNetwork?.(String(requested)) ?? null;
+    if (!network) fail(404, "Network bulunamadı");
+    return workspaceNetworkView(workspace, network);
+  }
+
+  app.get("/networks", async (request) => resolveBase(request).listNetworks?.() ?? []);
+
   app.get("/graph", async (request) => {
     const workspace = resolveWorkspace(request);
     return graph(workspace.index, await statsFor(workspace), request.query);

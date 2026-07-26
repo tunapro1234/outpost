@@ -612,6 +612,19 @@ textarea {
   border-bottom: 1px solid var(--line);
   z-index: 24;
 }
+/* Network switch: one graph at a time, never side by side. Inherits the .seg
+   tokens so both themes keep the label at full --text contrast when active. */
+.fb-networks {
+  flex: 0 0 auto;
+  margin-right: 4px;
+}
+.fb-networks button {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.fb-networks button:not(.on):hover {
+  color: var(--text);
+}
 .fb-search {
   position: relative;
   display: flex;

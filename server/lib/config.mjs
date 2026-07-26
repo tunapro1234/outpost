@@ -73,29 +73,141 @@ function configuredVaultPath(directory, config) {
   return path.resolve(directory, raw.trim());
 }
 
+function trimmed(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+// A workspace is a line of business; a network is one graph inside it. The
+// relation is 1:N — Probot keeps its big research vault and the small warm
+// vault side by side, and nothing is ever merged across the two (name
+// similarity is not proof of identity).
+export const DEFAULT_NETWORK_ID = "default";
+const NETWORK_ID = /^[a-z0-9][a-z0-9_-]*$/i;
+
+function networkRecord(directory, entry, { id, label, vaultPath } = {}) {
+  const resolvedId = id ?? trimmed(entry.id);
+  if (!resolvedId) throw new Error("network tanımında id zorunlu");
+  if (!NETWORK_ID.test(resolvedId)) throw new Error(`geçersiz network id: ${resolvedId}`);
+  return {
+    id: resolvedId,
+    label: trimmed(entry.label) ?? trimmed(entry.name) ?? label ?? resolvedId,
+    vaultPath: path.resolve(
+      vaultPath ?? configuredVaultPath(directory, entry) ?? path.join(directory, "vault"),
+    ),
+    adapter: resolveVaultAdapter(entry.adapter),
+    // A vault Outpost does not own (someone else's live Obsidian vault) is
+    // mounted read-only: every write path in the app refuses it.
+    readOnly: entry.read_only === true || entry.readOnly === true,
+    index: null,
+  };
+}
+
+/**
+ * Networks of a workspace. A config without a `networks:` list keeps the old
+ * single-network shape (top-level `vault_path`/`adapter`/`read_only`, falling
+ * back to `<workspace>/vault`), so existing workspaces are untouched.
+ */
+function workspaceNetworks(directory, config, vaultPath) {
+  const declared = Array.isArray(config.networks)
+    ? config.networks.filter((entry) => entry && typeof entry === "object" && !Array.isArray(entry))
+    : [];
+  if (!declared.length || vaultPath) {
+    return [
+      networkRecord(directory, config, {
+        id: DEFAULT_NETWORK_ID,
+        label: trimmed(config.name) ?? "Network",
+        vaultPath,
+      }),
+    ];
+  }
+  const networks = declared.map((entry) => networkRecord(directory, entry));
+  const seen = new Set();
+  for (const network of networks) {
+    if (seen.has(network.id)) throw new Error(`network id tekrar ediyor: ${network.id}`);
+    seen.add(network.id);
+  }
+  return networks;
+}
+
 function workspaceRecord(id, directory, config, vaultPath) {
   const mailLogPath = path.resolve(directory, "mails", "log.jsonl");
   const mailIngestedPath = path.resolve(directory, "mails", "ingested.jsonl");
   const mailsOutboxPath = path.resolve(directory, "mails", "outbox.jsonl");
-  return {
+  const networks = workspaceNetworks(directory, config, vaultPath);
+  const declaredDefault = trimmed(config.default_network);
+  const workspace = {
     id,
     code: typeof config.code === "string" && config.code.trim() ? config.code.trim() : id,
     name: typeof config.name === "string" && config.name.trim() ? config.name.trim() : id,
     directory,
     config,
-    adapter: resolveVaultAdapter(config.adapter),
-    // A vault Outpost does not own (someone else's live Obsidian vault) is
-    // mounted read-only: every write path in the app refuses it.
-    readOnly: config.read_only === true || config.readOnly === true,
-    vaultPath: path.resolve(
-      vaultPath ?? configuredVaultPath(directory, config) ?? path.join(directory, "vault"),
-    ),
+    networks,
+    defaultNetworkId: networks.some((network) => network.id === declaredDefault)
+      ? declaredDefault
+      : networks[0].id,
     mailLogPath,
     mailIngestedPath,
     mailsOutboxPath,
     mailsPath: mailLogPath,
-    index: null,
   };
+
+  // `index`/`vaultPath`/`adapter`/`readOnly` keep working as before: they are
+  // the workspace's DEFAULT network. Everything that never learned about
+  // networks (mailer, gather, reach…) therefore stays on the same graph.
+  const active = () =>
+    workspace.networks.find((network) => network.id === workspace.defaultNetworkId)
+    ?? workspace.networks[0];
+  Object.defineProperties(workspace, {
+    defaultNetwork: { get: active, enumerable: false },
+    index: { get: () => active().index, set: (value) => { active().index = value; }, enumerable: true },
+    vaultPath: {
+      get: () => active().vaultPath,
+      set: (value) => { active().vaultPath = path.resolve(value); },
+      enumerable: true,
+    },
+    adapter: { get: () => active().adapter, enumerable: true },
+    readOnly: { get: () => active().readOnly, enumerable: true },
+    getNetwork: {
+      value: (networkId) =>
+        workspace.networks.find((network) => network.id === networkId) ?? null,
+      enumerable: false,
+    },
+    listNetworks: {
+      value: () => workspace.networks.map((network) => ({
+        id: network.id,
+        label: network.label,
+        read_only: network.readOnly,
+        adapter: network.adapter.name,
+        entities: network.index?.entities.size ?? 0,
+        default: network.id === workspace.defaultNetworkId,
+      })),
+      enumerable: false,
+    },
+  });
+  return workspace;
+}
+
+/**
+ * A workspace as seen through ONE of its networks: same mail/db/directory
+ * plumbing, different graph. The default network returns the workspace itself
+ * so per-workspace caches (`__db`) keep a single identity.
+ */
+export function workspaceNetworkView(workspace, network) {
+  if (!network || network.id === workspace.defaultNetworkId) return workspace;
+  return Object.create(workspace, {
+    network: { value: network, enumerable: false },
+    networkId: { value: network.id, enumerable: true },
+    index: { get: () => network.index, enumerable: true },
+    vaultPath: { get: () => network.vaultPath, enumerable: true },
+    adapter: { get: () => network.adapter, enumerable: true },
+    readOnly: { get: () => network.readOnly, enumerable: true },
+    // The SQLite handle belongs to the workspace, not to a network.
+    __db: {
+      get: () => workspace.__db,
+      set: (value) => { workspace.__db = value; },
+      enumerable: false,
+    },
+  });
 }
 
 export class WorkspaceRegistry {
@@ -190,11 +302,13 @@ export class WorkspaceRegistry {
 
   async open({ watch }) {
     for (const workspace of this.workspaces.values()) {
-      workspace.index = await new VaultIndex(workspace.vaultPath, {
-        adapter: workspace.adapter,
-        readOnly: workspace.readOnly,
-      }).load();
-      if (watch) await workspace.index.startWatching();
+      for (const network of workspace.networks) {
+        network.index = await new VaultIndex(network.vaultPath, {
+          adapter: network.adapter,
+          readOnly: network.readOnly,
+        }).load();
+        if (watch) await network.index.startWatching();
+      }
     }
   }
 
@@ -221,7 +335,8 @@ export class WorkspaceRegistry {
 
   async close() {
     await Promise.all(
-      [...this.workspaces.values()].map((workspace) => workspace.index.close()),
+      [...this.workspaces.values()].flatMap((workspace) =>
+        workspace.networks.map((network) => network.index?.close())),
     );
   }
 }
