@@ -14,6 +14,7 @@ import ListView from "@/modules/network/ListView";
 import EntityPanel from "@/modules/network/EntityPanel";
 import PhysicsPanel from "@/modules/network/PhysicsPanel";
 import LegendOverlay from "@/modules/network/LegendOverlay";
+import HiddenNodesMenu from "@/modules/network/HiddenNodesMenu";
 import ReachView from "@/modules/reach/ReachView";
 import EntityPage from "@/modules/entity/EntityPage";
 import GatherView from "@/modules/gather/GatherView";
@@ -45,6 +46,7 @@ import {
   applyFilters,
   applyPreset,
   buildAdjacency,
+  DEFAULT_FILTERS,
   deriveFacets,
   loadFilters,
   loadPresets,
@@ -60,9 +62,12 @@ const WORKSPACE_STORAGE_KEY = "outpost.workspace";
 // The chosen network is remembered per workspace, same pattern as the
 // workspace choice itself.
 const networkStorageKey = (ws: string) => `outpost.network.${ws}`;
+const hiddenNodesStorageKey = (ws: string, network: string) =>
+  `outpost.graph.hidden.${encodeURIComponent(ws)}.${encodeURIComponent(network || "default")}`;
 const SIDEBAR_MIN = 180;
 const SIDEBAR_MAX = 360;
 const SIDEBAR_DEFAULT = 208;
+const MOBILE_MEDIA = "(max-width: 768px)";
 
 const TITLES: Record<NavKey, string> = {
   overview: "Overview",
@@ -79,9 +84,33 @@ function loadTheme(): ThemeName {
   return t === "light" ? "light" : "dark";
 }
 
+function loadHiddenNodes(workspace: string, network: string): Set<string> {
+  try {
+    const value = JSON.parse(
+      localStorage.getItem(hiddenNodesStorageKey(workspace, network)) ?? "[]"
+    );
+    if (Array.isArray(value)) {
+      return new Set(
+        value.filter((item): item is string => typeof item === "string" && Boolean(item))
+      );
+    }
+  } catch {
+    /* ignore malformed local state */
+  }
+  return new Set();
+}
+
+function graphEndpointId(endpoint: string | GraphNode): string {
+  return typeof endpoint === "string" ? endpoint : endpoint.id;
+}
+
 export default function App() {
   const [theme, setTheme] = useState<ThemeName>(loadTheme);
   const [graphMode, setGraphMode] = useState<"graph" | "list">("graph");
+  const [isMobile, setIsMobile] = useState(
+    () => window.matchMedia(MOBILE_MEDIA).matches
+  );
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   // Sidebar: fully hide/show (persisted) plus a draggable width. "Collapsed"
   // now means fully hidden — a reveal handle stays on the left edge.
   const [sidebarHidden, setSidebarHidden] = useState(
@@ -97,6 +126,16 @@ export default function App() {
   const [physicsOpen, setPhysicsOpen] = useState(
     () => localStorage.getItem("outpost.physicsOpen") === "1"
   );
+
+  useEffect(() => {
+    const media = window.matchMedia(MOBILE_MEDIA);
+    const onChange = (event: MediaQueryListEvent) => {
+      setIsMobile(event.matches);
+      if (!event.matches) setMobileSidebarOpen(false);
+    };
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
 
   const route = useRoute();
   // Active view is derived from the path. On the entity page (/e/:id) we keep
@@ -119,6 +158,12 @@ export default function App() {
   // shown at a time; they are never merged (see server/lib/config.mjs).
   const [network, setNetworkState] = useState<string | null>(null);
   const [networks, setNetworks] = useState<NetworkInfo[]>([]);
+  const [userHiddenNodes, setUserHiddenNodes] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [revealedConfigNodes, setRevealedConfigNodes] = useState<Set<string>>(
+    () => new Set()
+  );
   const [controlToast, setControlToast] = useState<string | null>(null);
   const controlToastTimer = useRef<number | null>(null);
   const controlHandler = useRef<(command: ControlCommand) => void>(() => {});
@@ -339,6 +384,7 @@ export default function App() {
       const stored = localStorage.getItem(networkStorageKey(workspace));
       const chosen =
         all.find((n) => n.id === stored) ??
+        all.find((n) => n.ui_default) ??
         all.find((n) => n.default) ??
         all[0] ??
         null;
@@ -350,6 +396,12 @@ export default function App() {
       alive = false;
     };
   }, [workspace]);
+
+  useEffect(() => {
+    if (!workspace || network === null) return;
+    setUserHiddenNodes(loadHiddenNodes(workspace, network));
+    setRevealedConfigNodes(new Set());
+  }, [workspace, network]);
 
   const changeNetwork = useCallback(
     (id: string) => {
@@ -389,6 +441,7 @@ export default function App() {
                 role: m.role ?? null,
                 closeness: m.closeness ?? null,
                 hook: m.hook ?? null,
+                tags: m.tags ?? null,
                 mailSource: m.mail_source ?? null,
                 mail_count: m.mail_count ?? 0,
                 last_mail_date: m.last_mail_date ?? null,
@@ -456,6 +509,93 @@ export default function App() {
     () => ({ nodes: result.nodes, edges: result.edges }),
     [result]
   );
+  const configHiddenNodes = useMemo(
+    () =>
+      new Set(
+        networks.find((item) => item.id === network)?.hidden_nodes ?? []
+      ),
+    [networks, network]
+  );
+  const effectiveHiddenNodes = useMemo(() => {
+    const hidden = new Set([...configHiddenNodes, ...userHiddenNodes]);
+    for (const id of revealedConfigNodes) hidden.delete(id);
+    return hidden;
+  }, [configHiddenNodes, userHiddenNodes, revealedConfigNodes]);
+  const graphData: GraphData = useMemo(() => {
+    if (!effectiveHiddenNodes.size) return filteredData;
+    return {
+      nodes: filteredData.nodes.filter((node) => !effectiveHiddenNodes.has(node.id)),
+      edges: filteredData.edges.filter(
+        (edge) =>
+          !effectiveHiddenNodes.has(graphEndpointId(edge.source)) &&
+          !effectiveHiddenNodes.has(graphEndpointId(edge.target))
+      ),
+    };
+  }, [filteredData, effectiveHiddenNodes]);
+  const hiddenNodeItems = useMemo(
+    () =>
+      full.nodes
+        .filter((node) => effectiveHiddenNodes.has(node.id))
+        .sort((left, right) =>
+          left.name.localeCompare(right.name, "tr", { sensitivity: "base" })
+        ),
+    [full.nodes, effectiveHiddenNodes]
+  );
+
+  const persistUserHiddenNodes = useCallback(
+    (next: Set<string>) => {
+      if (!workspace || network === null) return;
+      const key = hiddenNodesStorageKey(workspace, network);
+      if (next.size) {
+        localStorage.setItem(key, JSON.stringify([...next].sort()));
+      } else {
+        localStorage.removeItem(key);
+      }
+    },
+    [workspace, network]
+  );
+
+  const hideGraphNode = useCallback(
+    (id: string) => {
+      setUserHiddenNodes((current) => {
+        const next = new Set(current);
+        next.add(id);
+        persistUserHiddenNodes(next);
+        return next;
+      });
+      setRevealedConfigNodes((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+      setSelectedId(null);
+    },
+    [persistUserHiddenNodes]
+  );
+
+  const showGraphNode = useCallback(
+    (id: string) => {
+      setUserHiddenNodes((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        persistUserHiddenNodes(next);
+        return next;
+      });
+      if (configHiddenNodes.has(id)) {
+        setRevealedConfigNodes((current) => new Set(current).add(id));
+      }
+    },
+    [configHiddenNodes, persistUserHiddenNodes]
+  );
+
+  const showAllGraphNodes = useCallback(() => {
+    setUserHiddenNodes(() => {
+      const next = new Set<string>();
+      persistUserHiddenNodes(next);
+      return next;
+    });
+    setRevealedConfigNodes(new Set(configHiddenNodes));
+  }, [configHiddenNodes, persistUserHiddenNodes]);
 
   // ---- keyboard ----
   useEffect(() => {
@@ -467,12 +607,14 @@ export default function App() {
         setAssistantOpen((o) => !o);
       } else if ((e.metaKey || e.ctrlKey) && (e.key === "b" || e.key === "B")) {
         e.preventDefault();
-        setSidebarHidden((h) => !h);
+        if (isMobile) setMobileSidebarOpen((open) => !open);
+        else setSidebarHidden((h) => !h);
       } else if (e.key === "/" && !typing) {
         e.preventDefault();
         searchRef.current?.focus();
       } else if (e.key === "Escape") {
-        if (assistantOpen) setAssistantOpen(false);
+        if (mobileSidebarOpen) setMobileSidebarOpen(false);
+        else if (assistantOpen) setAssistantOpen(false);
         else if (!typing) {
           if (filters.egoId) setFilters({ ...filters, egoId: null });
           else if (selectedId) setSelectedId(null);
@@ -481,7 +623,14 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, filters, setFilters, assistantOpen]);
+  }, [
+    selectedId,
+    filters,
+    setFilters,
+    assistantOpen,
+    mobileSidebarOpen,
+    isMobile,
+  ]);
 
   const gotoNode = useCallback((id: string) => {
     if (window.location.pathname !== viewPath("network")) navigate(viewPath("network"));
@@ -524,9 +673,24 @@ export default function App() {
     [filters, setFilters]
   );
 
+  const openRelatedPeople = useCallback(
+    (entityId: string) => {
+      setFilters({
+        ...DEFAULT_FILTERS,
+        types: ["person"],
+        egoId: entityId,
+        egoDepth: 1,
+      });
+      setSelectedId(null);
+      setGraphMode("list");
+      navigate(viewPath("network"));
+    },
+    [setFilters]
+  );
+
   // first org each entity is connected to (for the People list preset)
   const orgByEntity = useMemo(() => {
-    const ORG = new Set(["company", "institution", "school", "channel"]);
+    const ORG = new Set(["company", "institution", "school", "channel", "team"]);
     const type = new Map(full.nodes.map((n) => [n.id, n]));
     const map = new Map<string, { id: string; name: string }>();
     for (const e of full.edges) {
@@ -564,6 +728,7 @@ export default function App() {
           role: n.role ?? null,
           closeness: n.closeness ?? null,
           hook: n.hook ?? null,
+          tags: n.tags ?? null,
           mail_source: n.mailSource ?? null,
           connected_org: org?.name ?? null,
           connected_org_id: org?.id ?? null,
@@ -586,23 +751,52 @@ export default function App() {
     navigate(viewPath(k));
   }, []);
 
+  const navigateFromSidebar = useCallback(
+    (k: NavKey) => {
+      navigateHome(k);
+      setMobileSidebarOpen(false);
+    },
+    [navigateHome]
+  );
+
+  const changeWorkspaceFromSidebar = useCallback(
+    (id: string) => {
+      const changed = changeWorkspace(id);
+      if (changed) setMobileSidebarOpen(false);
+      return changed;
+    },
+    [changeWorkspace]
+  );
+
   // Sidebar + its left-edge reveal handle (mirrors the assistant FAB on the
   // right). The handle only appears while the rail is hidden.
-  const renderSidebar = () => (
-    <>
+  const renderSidebar = () => {
+    const sidebarVisible = isMobile ? mobileSidebarOpen : !sidebarHidden;
+    return (
+      <>
       <Sidebar
         active={view}
-        onNavigate={navigateHome}
-        hidden={sidebarHidden}
-        onClose={() => setSidebarHidden(true)}
+        onNavigate={navigateFromSidebar}
+        hidden={!sidebarVisible}
+        mobileOpen={mobileSidebarOpen}
+        onClose={() =>
+          isMobile ? setMobileSidebarOpen(false) : setSidebarHidden(true)
+        }
         width={sidebarWidth}
         resizing={sidebarResizing}
         onResizeStart={startSidebarResize}
         workspace={workspace!}
         workspaces={workspaces}
-        onWorkspaceChange={changeWorkspace}
+        onWorkspaceChange={changeWorkspaceFromSidebar}
       />
-      {sidebarHidden && (
+      {isMobile && mobileSidebarOpen && (
+        <button
+          className="sidebar-backdrop"
+          onClick={() => setMobileSidebarOpen(false)}
+          aria-label="Close navigation menu"
+        />
+      )}
+      {!isMobile && sidebarHidden && (
         <button
           className="sidebar-reveal"
           onClick={() => setSidebarHidden(false)}
@@ -612,8 +806,9 @@ export default function App() {
           <span className="sidebar-reveal-label">Menu</span>
         </button>
       )}
-    </>
-  );
+      </>
+    );
+  };
 
   // Assistant lives at layout level so it is reachable from every view. The
   // edge FAB is suppressed while another right rail (entity panel) owns that
@@ -667,12 +862,14 @@ export default function App() {
           <EntityPage
             id={route.id}
             theme={theme}
+            onOpenMenu={() => setMobileSidebarOpen(true)}
             onToggleTheme={() =>
               setTheme((t) => (t === "dark" ? "light" : "dark"))
             }
             mails={mails}
             graph={full}
             onChanged={onDataChanged}
+            onOpenRelatedPeople={openRelatedPeople}
           />
         </div>
         {error && (
@@ -694,6 +891,10 @@ export default function App() {
       <div className="main" key={workspace}>
         <TopBar
           title={TITLES[view]}
+          workspace={workspace}
+          workspaces={workspaces}
+          onWorkspaceChange={changeWorkspace}
+          onOpenMenu={() => setMobileSidebarOpen(true)}
           showGraphToggle={isNetwork}
           graphMode={graphMode}
           onGraphMode={setGraphMode}
@@ -729,6 +930,12 @@ export default function App() {
           <div className={`net-stage ${isNetwork ? "" : "hidden"}`}>
             {isNetwork && graphMode === "graph" && (
               <div className="stage-tools right">
+                <HiddenNodesMenu
+                  key={`${workspace}:${network}`}
+                  nodes={hiddenNodeItems}
+                  onShow={showGraphNode}
+                  onShowAll={showAllGraphNodes}
+                />
                 <button
                   className="tool-btn"
                   title="Fit to view"
@@ -772,14 +979,22 @@ export default function App() {
             )}
 
             {graphMode === "graph" ? (
-              loaded && filteredData.nodes.length === 0 ? (
+              loaded && graphData.nodes.length === 0 ? (
                 <div className="center-msg">
-                  <div>No matching nodes</div>
-                  <div style={{ fontSize: 12 }}>Loosen the filters</div>
+                  <div>
+                    {filteredData.nodes.length
+                      ? "All matching nodes are hidden"
+                      : "No matching nodes"}
+                  </div>
+                  <div style={{ fontSize: 12 }}>
+                    {filteredData.nodes.length
+                      ? "Use the hidden chip to show them"
+                      : "Loosen the filters"}
+                  </div>
                 </div>
               ) : (
                 <GraphView
-                  data={filteredData}
+                  data={graphData}
                   theme={theme}
                   selectedId={selectedId}
                   onSelect={setSelectedId}
@@ -804,9 +1019,9 @@ export default function App() {
               <LegendOverlay
                 theme={theme}
                 typeCounts={result.typeCounts}
-                visibleNodes={result.nodes.length}
+                visibleNodes={graphData.nodes.length}
                 totalNodes={full.nodes.length}
-                visibleEdges={result.edges.length}
+                visibleEdges={graphData.edges.length}
                 mentionOff={!filters.showMention}
               />
             )}
@@ -869,6 +1084,7 @@ export default function App() {
               onOpenFull={openFull}
               onChanged={onDataChanged}
               onEgo={onEgo}
+              onHide={hideGraphNode}
               egoActive={result.egoActive && filters.egoId === selectedId}
             />
           )}

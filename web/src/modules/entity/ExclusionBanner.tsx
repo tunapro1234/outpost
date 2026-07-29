@@ -9,6 +9,7 @@ const ORG_TYPES = new Set<EntityType>([
   "institution",
   "school",
   "channel",
+  "team",
 ]);
 
 interface Resolved {

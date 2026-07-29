@@ -1,5 +1,10 @@
 import type { ThemeName } from "@/core/theme";
-import { TYPE_LABELS, TYPE_ORDER, typeColors } from "@/core/theme";
+import {
+  TYPE_ICONS,
+  TYPE_LABELS,
+  TYPE_ORDER,
+  typeColors,
+} from "@/core/theme";
 
 interface Props {
   theme: ThemeName;
@@ -24,6 +29,7 @@ export default function LegendOverlay({
       {TYPE_ORDER.map((t) => (
         <div className="lo-row" key={t}>
           <span className="sw" style={{ background: tc[t] }} />
+          <span className="lo-icon" aria-hidden>{TYPE_ICONS[t]}</span>
           <span className="lo-name">{TYPE_LABELS[t]}</span>
           <span className="lo-cnt">{typeCounts[t] ?? 0}</span>
         </div>

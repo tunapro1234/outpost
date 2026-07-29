@@ -779,7 +779,18 @@ export const api = {
       const res = await fetch(`${workspaceBase()}/networks`);
       if (!res.ok) return null;
       const list = (await res.json()) as NetworkInfo[];
-      return Array.isArray(list) ? list : null;
+      if (!Array.isArray(list)) return null;
+      // Keep the UI default at the front without changing the server's
+      // operational `default` network semantics.
+      return list
+        .map((network, order) => ({ network, order }))
+        .sort(
+          (left, right) =>
+            Number(Boolean(right.network.ui_default)) -
+              Number(Boolean(left.network.ui_default)) ||
+            left.order - right.order
+        )
+        .map(({ network }) => network);
     } catch {
       return null;
     }

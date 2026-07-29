@@ -1,9 +1,10 @@
 import { TYPE_DIRECTORIES } from "../../lib/vault.mjs";
+import { ENTITY_TYPES } from "../../lib/entity-meta.mjs";
 import { normalizeSearch } from "../../lib/slug.mjs";
 import { extractMailAddresses } from "../mail/parser.mjs";
 import { emptyMailStats } from "../reach/mails.mjs";
 
-export const VALID_TYPES = new Set(Object.keys(TYPE_DIRECTORIES));
+export const VALID_TYPES = new Set(ENTITY_TYPES);
 
 export function entityMailAddresses(entity) {
   return extractMailAddresses([entity?.meta?.mail, entity?.meta?.mails]);
@@ -51,6 +52,7 @@ export function entityListItem(entity, index, statsByEntity) {
     closeness: entity.meta.closeness ?? null,
     hook: entity.meta.hook ?? null,
     mail_source: entity.meta.mail_source ?? null,
+    tags: Array.isArray(entity.meta.tags) ? entity.meta.tags : null,
     status: entity.meta.status ?? null,
     score: typeof entity.meta.score === "number" ? entity.meta.score : null,
     city: entity.meta.city ?? null,
@@ -139,6 +141,7 @@ export function graph(index, statsByEntity, query) {
       score,
       degree: index.degrees.get(entity.id) ?? 0,
       mail_count: statsByEntity.get(entity.id)?.mail_count ?? 0,
+      tags: Array.isArray(meta.tags) ? meta.tags : null,
     });
   }
   return {

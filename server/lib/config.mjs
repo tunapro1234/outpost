@@ -77,6 +77,11 @@ function trimmed(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function stringList(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map(trimmed).filter(Boolean))];
+}
+
 // A workspace is a line of business; a network is one graph inside it. The
 // relation is 1:N — Probot keeps its big research vault and the small warm
 // vault side by side, and nothing is ever merged across the two (name
@@ -98,6 +103,9 @@ function networkRecord(directory, entry, { id, label, vaultPath } = {}) {
     // A vault Outpost does not own (someone else's live Obsidian vault) is
     // mounted read-only: every write path in the app refuses it.
     readOnly: entry.read_only === true || entry.readOnly === true,
+    // UI-only default visibility. The index still loads and serves every
+    // entity; the graph client decides whether to draw these slugs.
+    hiddenNodes: stringList(entry.hidden_nodes),
     index: null,
   };
 }
@@ -135,6 +143,10 @@ function workspaceRecord(id, directory, config, vaultPath) {
   const mailsOutboxPath = path.resolve(directory, "mails", "outbox.jsonl");
   const networks = workspaceNetworks(directory, config, vaultPath);
   const declaredDefault = trimmed(config.default_network);
+  const declaredUiDefault = trimmed(config.ui_default_network);
+  const defaultNetworkId = networks.some((network) => network.id === declaredDefault)
+    ? declaredDefault
+    : networks[0].id;
   const workspace = {
     id,
     code: typeof config.code === "string" && config.code.trim() ? config.code.trim() : id,
@@ -142,9 +154,12 @@ function workspaceRecord(id, directory, config, vaultPath) {
     directory,
     config,
     networks,
-    defaultNetworkId: networks.some((network) => network.id === declaredDefault)
-      ? declaredDefault
-      : networks[0].id,
+    defaultNetworkId,
+    // Deliberately separate from defaultNetworkId: mailer/reach/DB and all
+    // legacy workspace accessors must keep using the operational default.
+    uiDefaultNetworkId: networks.some((network) => network.id === declaredUiDefault)
+      ? declaredUiDefault
+      : defaultNetworkId,
     mailLogPath,
     mailIngestedPath,
     mailsOutboxPath,
@@ -180,6 +195,8 @@ function workspaceRecord(id, directory, config, vaultPath) {
         adapter: network.adapter.name,
         entities: network.index?.entities.size ?? 0,
         default: network.id === workspace.defaultNetworkId,
+        ui_default: network.id === workspace.uiDefaultNetworkId,
+        hidden_nodes: [...network.hiddenNodes],
       })),
       enumerable: false,
     },

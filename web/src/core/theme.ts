@@ -11,6 +11,7 @@ const TYPE_DARK: Record<EntityType, string> = {
   institution: "#b088c4", // soft mauve
   school: "#6fb58a", // sage green
   channel: "#cf7d97", // dusty rose
+  team: "#d0835e", // muted terracotta
 };
 
 const TYPE_LIGHT: Record<EntityType, string> = {
@@ -19,6 +20,7 @@ const TYPE_LIGHT: Record<EntityType, string> = {
   institution: "#7d4f96",
   school: "#2f7d52",
   channel: "#a13d63",
+  team: "#a94f2b",
 };
 
 export function typeColors(theme: ThemeName): Record<EntityType, string> {
@@ -34,6 +36,16 @@ export const TYPE_LABELS: Record<EntityType, string> = {
   institution: "Institution",
   school: "School",
   channel: "Channel",
+  team: "Team",
+};
+
+export const TYPE_ICONS: Record<EntityType, string> = {
+  person: "◯",
+  company: "◇",
+  institution: "□",
+  school: "△",
+  channel: "◉",
+  team: "⬡",
 };
 
 export const TYPE_ORDER: EntityType[] = [
@@ -42,6 +54,7 @@ export const TYPE_ORDER: EntityType[] = [
   "institution",
   "school",
   "channel",
+  "team",
 ];
 
 export const STATUS_LABELS: Record<Status, string> = {

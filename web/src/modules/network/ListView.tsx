@@ -26,7 +26,15 @@ type ColKey =
 
 type SortKey = "name" | ColKey;
 type GroupKey = "none" | "city" | "subtype" | "status";
-type PresetId = "all" | "company" | "person" | "institution" | "school" | "channel";
+type PresetId =
+  | "all"
+  | "competitor"
+  | "company"
+  | "person"
+  | "institution"
+  | "school"
+  | "channel"
+  | "team";
 
 interface SortSpec {
   key: SortKey;
@@ -47,6 +55,7 @@ const TYPES: EntityType[] = [
   "institution",
   "school",
   "channel",
+  "team",
 ];
 
 // canonical column registry (order used for header + popover)
@@ -66,12 +75,25 @@ const COLUMNS: { key: ColKey; label: string; num?: boolean }[] = [
   { key: "last_mail_date", label: "Last mail" },
   { key: "last_mail_direction", label: "Dir" },
 ];
-const PRESETS: { id: PresetId; label: string; type: EntityType | null; cols: ColKey[] }[] = [
+const PRESETS: {
+  id: PresetId;
+  label: string;
+  type: EntityType | null;
+  tag?: string;
+  cols: ColKey[];
+}[] = [
   {
     id: "all",
     label: "All",
     type: null,
     cols: ["type", "subtype", "status", "score", "city", "degree", "mail_count", "last_mail_date"],
+  },
+  {
+    id: "competitor",
+    label: "Rakipler",
+    type: "company",
+    tag: "rakip",
+    cols: ["subtype", "city", "score", "degree"],
   },
   {
     id: "company",
@@ -81,7 +103,7 @@ const PRESETS: { id: PresetId; label: string; type: EntityType | null; cols: Col
   },
   {
     id: "person",
-    label: "People",
+    label: "Kişiler",
     type: "person",
     cols: ["role", "connected_org", "closeness", "mail_status", "degree"],
   },
@@ -93,7 +115,7 @@ const PRESETS: { id: PresetId; label: string; type: EntityType | null; cols: Col
   },
   {
     id: "school",
-    label: "Schools",
+    label: "Okullar",
     type: "school",
     cols: ["subtype", "city", "score", "mail_status", "mail_count", "last_mail_date", "degree"],
   },
@@ -102,6 +124,12 @@ const PRESETS: { id: PresetId; label: string; type: EntityType | null; cols: Col
     label: "Channels",
     type: "channel",
     cols: ["subtype", "degree"],
+  },
+  {
+    id: "team",
+    label: "Takımlar",
+    type: "team",
+    cols: ["subtype", "city", "degree"],
   },
 ];
 
@@ -267,10 +295,15 @@ export default function ListView({
   };
 
   // preset type filter (list is its own surface; graph filter stays shared)
-  const presetType = PRESETS.find((p) => p.id === preset)!.type;
+  const activePreset = PRESETS.find((p) => p.id === preset) ?? PRESETS[0];
   const filtered = useMemo(
-    () => (presetType ? items.filter((it) => it.type === presetType) : items),
-    [items, presetType]
+    () =>
+      items.filter(
+        (it) =>
+          (!activePreset.type || it.type === activePreset.type) &&
+          (!activePreset.tag || it.tags?.includes(activePreset.tag))
+      ),
+    [items, activePreset]
   );
 
   const sorted = useMemo(() => {

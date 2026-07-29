@@ -1,5 +1,17 @@
 import { promises as fs } from "node:fs";
-import { assertSafeVaultPath, parseMarkdown, serializeMarkdown } from "./vault.mjs";
+import {
+  TYPE_DIRECTORIES,
+  assertSafeVaultPath,
+  parseMarkdown,
+  serializeMarkdown,
+} from "./vault.mjs";
+
+export const ENTITY_TYPES = Object.freeze(Object.keys(TYPE_DIRECTORIES));
+
+export function isEntityType(value) {
+  return typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(TYPE_DIRECTORIES, value);
+}
 
 export async function updateEntityMeta(workspace, entityOrId, patch) {
   const entity = typeof entityOrId === "string"
@@ -8,6 +20,11 @@ export async function updateEntityMeta(workspace, entityOrId, patch) {
   if (!entity) {
     const error = new Error("Entity bulunamadı");
     error.statusCode = 404;
+    throw error;
+  }
+  if (patch.type !== undefined && !isEntityType(patch.type)) {
+    const error = new Error("Geçerli type zorunlu");
+    error.statusCode = 400;
     throw error;
   }
   await assertSafeVaultPath(workspace.vaultPath, entity.filePath);

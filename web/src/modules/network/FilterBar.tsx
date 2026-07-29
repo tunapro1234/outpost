@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { EntityType, Facets, NetworkInfo } from "@/core/types";
 import type { ThemeName } from "@/core/theme";
 import {
@@ -205,12 +205,25 @@ export default function FilterBar(props: Props) {
     .slice(0, 14);
   const mailSourceKeys = Object.keys(facets.mail_sources);
   const maxDeg = facets.degree.max || 1;
+  const orderedNetworks = useMemo(
+    () =>
+      networks
+        .map((item, order) => ({ item, order }))
+        .sort(
+          (left, right) =>
+            Number(Boolean(right.item.ui_default)) -
+              Number(Boolean(left.item.ui_default)) ||
+            left.order - right.order
+        )
+        .map(({ item }) => item),
+    [networks]
+  );
 
   return (
     <div className="filterbar" ref={barRef}>
       {networks.length > 1 && (
         <div className="seg fb-networks" role="tablist" aria-label="Network">
-          {networks.map((n) => (
+          {orderedNetworks.map((n) => (
             <button
               key={n.id}
               role="tab"

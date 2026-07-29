@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GraphNode } from "@/core/types";
+import type { WorkspaceInfo } from "@/core/types";
 import type { ThemeName } from "@/core/theme";
 import { typeColors, TYPE_LABELS } from "@/core/theme";
 import { matchScore } from "@/core/normalize";
@@ -7,6 +8,10 @@ import { IconSearch } from "@/core/icons";
 
 interface Props {
   title: string;
+  workspace: string;
+  workspaces: WorkspaceInfo[];
+  onWorkspaceChange: (id: string) => void;
+  onOpenMenu: () => void;
   showGraphToggle: boolean;
   graphMode: "graph" | "list";
   onGraphMode: (m: "graph" | "list") => void;
@@ -19,6 +24,10 @@ interface Props {
 
 export default function TopBar({
   title,
+  workspace,
+  workspaces,
+  onWorkspaceChange,
+  onOpenMenu,
   showGraphToggle,
   graphMode,
   onGraphMode,
@@ -31,7 +40,9 @@ export default function TopBar({
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
+  const topbarRef = useRef<HTMLDivElement>(null);
   const tc = typeColors(theme);
 
   const results = useMemo(() => {
@@ -49,6 +60,8 @@ export default function TopBar({
     const onDoc = (e: MouseEvent) => {
       if (boxRef.current && !boxRef.current.contains(e.target as Node))
         setOpen(false);
+      if (topbarRef.current && !topbarRef.current.contains(e.target as Node))
+        setMobileActionsOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -62,7 +75,33 @@ export default function TopBar({
   };
 
   return (
-    <div className="topbar">
+    <div className="topbar" ref={topbarRef}>
+      <button
+        className="mobile-menu-btn"
+        onClick={onOpenMenu}
+        title="Open navigation"
+        aria-label="Open navigation menu"
+      >
+        <span />
+        <span />
+        <span />
+      </button>
+
+      <select
+        className="mobile-workspace-select"
+        value={workspace}
+        onChange={(event) => onWorkspaceChange(event.target.value)}
+        aria-label="Workspace"
+      >
+        {workspaces
+          .filter((item) => !item.comingSoon)
+          .map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+      </select>
+
       <div className="hdr-title">{title}</div>
 
       <div className="hdr-center">
@@ -84,7 +123,17 @@ export default function TopBar({
         )}
       </div>
 
-      <div className="hdr-right">
+      <button
+        className={`topbar-more ${mobileActionsOpen ? "on" : ""}`}
+        onClick={() => setMobileActionsOpen((value) => !value)}
+        title="More actions"
+        aria-label="More actions"
+        aria-expanded={mobileActionsOpen}
+      >
+        ⋯
+      </button>
+
+      <div className={`hdr-right ${mobileActionsOpen ? "mobile-open" : ""}`}>
         <div className="search" ref={boxRef}>
           <span className="ico">
             <IconSearch size={16} />

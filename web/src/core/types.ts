@@ -3,7 +3,8 @@ export type EntityType =
   | "company"
   | "institution"
   | "school"
-  | "channel";
+  | "channel"
+  | "team";
 
 export type Status =
   | "aday"
@@ -31,6 +32,7 @@ export interface GraphNode {
   mailSource?: string | null;
   closeness?: number | null;
   hook?: string | null;
+  tags?: string[] | null;
   mail_count?: number;
   last_mail_date?: string | null;
   last_mail_direction?: "out" | "in" | null;
@@ -75,6 +77,7 @@ export interface EntityListItem {
   role?: string | null;
   closeness?: number | null;
   hook?: string | null;
+  tags?: string[] | null;
   mail_source?: string | null;
   connected_org?: string | null;
   connected_org_id?: string | null;
@@ -119,6 +122,11 @@ export interface EntityMeta {
   source_url?: string | null;
   found_date?: string | null;
   tags?: string[] | null;
+  products?: EntityProduct[] | null;
+  awards?: string[] | null;
+  competing_since?: number | string | null;
+  seasons?: Array<number | string> | null;
+  teams?: unknown[] | null;
   // `closeness` is genuinely nullable: a missing warmth reading is NOT the same
   // as a "belirsiz" (0) reading, and the adapters never collapse one into the
   // other. Render "—" for null, "belirsiz" for 0.
@@ -149,6 +157,15 @@ export interface EntityMeta {
   alumni_year?: string | null;
   alumni_dept?: string | null;
   [key: string]: unknown;
+}
+
+export interface EntityProduct {
+  name: string;
+  price?: number | string | null;
+  currency?: string | null;
+  url?: string | null;
+  note?: string | null;
+  top_seller?: boolean;
 }
 
 export interface Entity {
@@ -667,6 +684,8 @@ export interface NetworkInfo {
   adapter?: string;
   read_only?: boolean;
   default?: boolean;
+  ui_default?: boolean;
+  hidden_nodes?: string[];
 }
 
 export interface WorkspaceInfo {

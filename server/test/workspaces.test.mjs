@@ -122,11 +122,77 @@ test("networks tanımlamayan workspace tek varsayılan network'e düşer", async
       adapter: "default",
       entities: 1,
       default: true,
+      ui_default: true,
+      hidden_nodes: [],
     },
   ]);
   // Eski tekil alanlar varsayılan network'ü gösterir.
   assert.equal(workspace.vaultPath, path.resolve(vault));
   assert.equal(workspace.index, workspace.getNetwork("default").index);
+});
+
+test("ui_default_network ve hidden_nodes yalnız network UI metadata'sına parse edilir", async (t) => {
+  const root = await temporaryDirectory("outpost-network-ui-config-");
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, "probot");
+  await fs.mkdir(directory, { recursive: true });
+  await fs.writeFile(
+    path.join(directory, "config.yaml"),
+    [
+      "name: Probot",
+      "networks:",
+      "  - id: research",
+      "    vault_path: research-vault",
+      "  - id: warm",
+      "    vault_path: warm-vault",
+      "    hidden_nodes: [probot, tuna, probot, '']",
+      "default_network: research",
+      "ui_default_network: warm",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  await writeEntity(
+    path.join(directory, "research-vault"),
+    "companies",
+    "research",
+    "---\ntype: company\nname: Research\n---\n",
+  );
+  await writeEntity(
+    path.join(directory, "warm-vault"),
+    "companies",
+    "probot",
+    "---\ntype: company\nname: Probot\n---\n",
+  );
+
+  const registry = await WorkspaceRegistry.load({
+    workspacesPath: root,
+    outpostVault: null,
+    watch: false,
+  });
+  t.after(() => registry.close());
+
+  const workspace = registry.get("probot");
+  assert.equal(workspace.defaultNetworkId, "research");
+  assert.equal(workspace.uiDefaultNetworkId, "warm");
+  assert.equal(workspace.vaultPath, path.join(directory, "research-vault"));
+  assert.deepEqual(
+    workspace.listNetworks().map(({ id, default: operational, ui_default, hidden_nodes }) => ({
+      id,
+      default: operational,
+      ui_default,
+      hidden_nodes,
+    })),
+    [
+      { id: "research", default: true, ui_default: false, hidden_nodes: [] },
+      {
+        id: "warm",
+        default: false,
+        ui_default: true,
+        hidden_nodes: ["probot", "tuna"],
+      },
+    ],
+  );
 });
 
 test("scoped entities listesi frontmatter liste alanlarını ve null varsayılanlarını döndürür", async (t) => {

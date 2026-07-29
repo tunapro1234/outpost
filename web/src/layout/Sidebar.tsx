@@ -14,6 +14,7 @@ interface Props {
   active: NavKey;
   onNavigate: (k: NavKey) => void;
   hidden: boolean;
+  mobileOpen: boolean;
   onClose: () => void;
   width: number;
   resizing: boolean;
@@ -87,6 +88,7 @@ export default function Sidebar({
   active,
   onNavigate,
   hidden,
+  mobileOpen,
   onClose,
   width,
   resizing,
@@ -123,7 +125,9 @@ export default function Sidebar({
 
   return (
     <nav
-      className={`sidebar ${hidden ? "hidden" : ""} ${resizing ? "resizing" : ""}`}
+      className={`sidebar ${hidden ? "hidden" : ""} ${
+        mobileOpen ? "mobile-open" : ""
+      } ${resizing ? "resizing" : ""}`}
       style={style}
       aria-hidden={hidden}
     >

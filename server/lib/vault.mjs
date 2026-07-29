@@ -11,6 +11,7 @@ export const TYPE_DIRECTORIES = {
   institution: "institutions",
   school: "schools",
   channel: "channels",
+  team: "teams",
 };
 
 const DIRECTORY_TYPES = Object.fromEntries(

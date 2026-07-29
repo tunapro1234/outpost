@@ -33,6 +33,7 @@ const TR_TYPES = {
   okul: "school",
   sirket: "company",
   medya: "channel",
+  takim: "team",
   yarisma: "institution",
 };
 

@@ -45,7 +45,7 @@ test("entities, stats, detail ve health endpointleri sözleşme şeklini döndü
   assert.equal(entities.length, 3);
   assert.deepEqual(Object.keys(entities[0]), [
     "id", "name", "type", "subtype", "role", "closeness", "hook", "mail_source",
-    "status", "score", "city", "mail",
+    "tags", "status", "score", "city", "mail",
     // adapter/manual-contact alanları — phone & kimlik_guveni SALT GÖRÜNTÜ,
     // outreach akışlarına lib/outreach-guard.mjs tarafından hiç geçmez.
     "org", "location", "durum", "lead_source",
@@ -84,6 +84,7 @@ test("facets endpoint metadata sayaçlarını ve degree özetini indeksten üret
       institution: { vakif: 1, "bilim-merkezi": 1 },
       school: { kolej: 1, lise: 1, universite: 1 },
       channel: { fuar: 1, topluluk: 1 },
+      team: {},
     },
     statuses: {
       arastirildi: 2,
@@ -255,6 +256,36 @@ test("POST slug çakışmasına -2 ekler, DELETE .trash'a taşır", async (t) =>
     (await app.inject({ url: "/api/entities/bogazici-universitesi" })).statusCode,
     404,
   );
+});
+
+test("team tipi teams dizininde oluşturulur ve graph/facets tarafından taşınır", async (t) => {
+  const vault = await temporaryDirectory();
+  t.after(() => fs.rm(vault, { recursive: true, force: true }));
+  const app = await createApp({ vaultPath: vault, watch: false });
+  t.after(() => app.close());
+
+  const created = await app.inject({
+    method: "POST",
+    url: "/api/entities",
+    payload: {
+      type: "team",
+      name: "Anka Robotics",
+      meta: {
+        subtype: "ftc",
+        awards: ["Finalist"],
+        seasons: [2024, 2025],
+      },
+    },
+  });
+  assert.equal(created.statusCode, 201);
+  assert.equal(created.json().meta.type, "team");
+  assert.deepEqual(created.json().meta.awards, ["Finalist"]);
+  await fs.access(path.join(vault, "teams", "anka-robotics.md"));
+
+  const graph = (await app.inject({ url: "/api/graph?types=team" })).json();
+  assert.deepEqual(graph.nodes.map((node) => node.id), ["anka-robotics"]);
+  const facets = (await app.inject({ url: "/api/facets" })).json();
+  assert.deepEqual(facets.subtypes.team, { ftc: 1 });
 });
 
 test("POST eşzamanlı dosya EEXIST yarışında sınırlı suffix retry yapar", async (t) => {

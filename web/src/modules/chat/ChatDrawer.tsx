@@ -150,6 +150,7 @@ export default function ChatDrawer({
             className="cp-icon-btn"
             onClick={onClose}
             title={closeTitle ?? "Close"}
+            aria-label={closeTitle ?? "Close"}
           >
             <IconClose size={15} />
           </button>

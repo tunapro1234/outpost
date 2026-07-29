@@ -27,6 +27,7 @@ interface Props {
   onOpenFull: (id: string) => void;
   onChanged: () => void;
   onEgo: (id: string) => void;
+  onHide: (id: string) => void;
   egoActive: boolean;
 }
 
@@ -47,6 +48,7 @@ export default function EntityPanel({
   onOpenFull,
   onChanged,
   onEgo,
+  onHide,
   egoActive,
 }: Props) {
   const TYPE_COLORS = typeColors(theme);
@@ -187,6 +189,12 @@ export default function EntityPanel({
               onClick={() => onEgo(entity.id)}
             >
               {egoActive ? "Neighborhood active" : "Show only its neighborhood"}
+            </button>
+            <button
+              className="btn graph-hide-btn"
+              onClick={() => onHide(entity.id)}
+            >
+              Grafikte gizle
             </button>
           </div>
 

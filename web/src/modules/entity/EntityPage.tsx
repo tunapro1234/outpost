@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Entity, GraphData, MailItem, Relation, Status } from "@/core/types";
+import type {
+  Entity,
+  GraphData,
+  MailItem,
+  Relation,
+  Status,
+} from "@/core/types";
 import type { ThemeName } from "@/core/theme";
 import {
   STATUS_LABELS,
   STATUS_ORDER,
+  TYPE_ICONS,
   TYPE_LABELS,
   statusColors,
   typeColors,
@@ -22,16 +29,24 @@ import {
 } from "@/core/icons";
 import EntityMiniGraph from "./EntityMiniGraph";
 import ExclusionBanner from "./ExclusionBanner";
+import {
+  competitionHistory,
+  normalizeProducts,
+  normalizeStringList,
+  wikilinkTarget,
+} from "./structuredMeta";
 
 type Tab = "overview" | "mails" | "activity" | "note";
 
 interface Props {
   id: string;
   theme: ThemeName;
+  onOpenMenu: () => void;
   onToggleTheme: () => void;
   mails: MailItem[] | null;
   graph: GraphData;
   onChanged: () => void;
+  onOpenRelatedPeople: (entityId: string) => void;
 }
 
 function stripFrontmatter(body: string): string {
@@ -83,10 +98,12 @@ function firstParagraph(body: string): string {
 export default function EntityPage({
   id,
   theme,
+  onOpenMenu,
   onToggleTheme,
   mails,
   graph,
   onChanged,
+  onOpenRelatedPeople,
 }: Props) {
   const TYPE_COLORS = typeColors(theme);
   const STATUS_COLORS = statusColors(theme);
@@ -172,6 +189,53 @@ export default function EntityPage({
     return mails.filter((m) => m.entity_id === id || m.person_id === id);
   }, [mails, id]);
 
+  const products = useMemo(
+    () => normalizeProducts(meta?.products),
+    [meta?.products]
+  );
+  const awards = useMemo(
+    () => normalizeStringList(meta?.awards),
+    [meta?.awards]
+  );
+  const history = useMemo(
+    () => competitionHistory(meta ?? {}),
+    [meta]
+  );
+  const connectedPeople = useMemo(() => {
+    const people = new Map<string, Relation>();
+    for (const relation of entity?.relations ?? []) {
+      if (relation.type === "person") people.set(relation.id, relation);
+    }
+    return [...people.values()];
+  }, [entity]);
+  const teams = useMemo(() => {
+    const linked = new Map<
+      string,
+      { id: string | null; name: string; direction?: Relation["direction"] }
+    >();
+    for (const relation of entity?.relations ?? []) {
+      if (relation.type !== "team") continue;
+      linked.set(`id:${relation.id}`, {
+        id: relation.id,
+        name: relation.name,
+        direction: relation.direction,
+      });
+    }
+
+    const teamNodes = graph.nodes.filter((node) => node.type === "team");
+    for (const raw of normalizeStringList(meta?.teams)) {
+      const target = wikilinkTarget(raw);
+      const node = teamNodes.find(
+        (candidate) => candidate.id === target || candidate.name === target
+      );
+      const key = node ? `id:${node.id}` : `name:${target}`;
+      if (!linked.has(key)) {
+        linked.set(key, { id: node?.id ?? null, name: node?.name ?? target });
+      }
+    }
+    return [...linked.values()];
+  }, [entity, graph.nodes, meta?.teams]);
+
   const goto = (nid: string) => navigate(entityPath(nid));
 
   const RelRow = (r: Relation) => (
@@ -190,6 +254,16 @@ export default function EntityPage({
   return (
     <div className="entity-page">
       <div className="ep-topbar">
+        <button
+          className="mobile-menu-btn"
+          onClick={onOpenMenu}
+          title="Open navigation"
+          aria-label="Open navigation menu"
+        >
+          <span />
+          <span />
+          <span />
+        </button>
         <button className="ep-back" onClick={() => navigate("/network")}>
           ← Back
         </button>
@@ -244,6 +318,9 @@ export default function EntityPage({
                       className="swatch"
                       style={{ background: TYPE_COLORS[type] }}
                     />
+                    <span className="ep-type-icon" aria-hidden>
+                      {TYPE_ICONS[type]}
+                    </span>
                     {TYPE_LABELS[type]}
                   </span>
                   <div className="ep-status" style={{ position: "relative" }}>
@@ -374,6 +451,16 @@ export default function EntityPage({
                     </div>
                   </div>
                 )}
+                {(type === "school" || type === "institution") && (
+                  <button
+                    className="ep-metric ep-metric-link"
+                    onClick={() => onOpenRelatedPeople(entity.id)}
+                    title="Bağlı kişileri listele"
+                  >
+                    <span className="k">Kişiler</span>
+                    <span className="v">{connectedPeople.length} kişi</span>
+                  </button>
+                )}
                 <div className="ep-metric">
                   <div className="k">Mails</div>
                   <div className="v">{entityMails.length}</div>
@@ -416,6 +503,114 @@ export default function EntityPage({
                         <p className="ep-muted">No description yet</p>
                       )}
                     </section>
+
+                    {products.length > 0 && (
+                      <section className="ep-sec">
+                        <div className="ep-sec-title">Ürünler</div>
+                        <div className="ep-table-wrap">
+                          <table className="grid ep-products">
+                            <thead>
+                              <tr>
+                                <th>Ad</th>
+                                <th>Fiyat</th>
+                                <th>Para birimi</th>
+                                <th>Bağlantı</th>
+                                <th>Not</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {products.map((product, index) => (
+                                <tr key={`${product.name}-${index}`}>
+                                  <td className="ep-product-name">
+                                    <span>{product.name}</span>
+                                    {product.top_seller && (
+                                      <span className="ep-badge">Çok satan</span>
+                                    )}
+                                  </td>
+                                  <td className="num">{product.price ?? "—"}</td>
+                                  <td>{product.currency ?? "—"}</td>
+                                  <td>
+                                    {product.url ? (
+                                      <a
+                                        href={ext(product.url)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                      >
+                                        Aç ↗
+                                      </a>
+                                    ) : (
+                                      "—"
+                                    )}
+                                  </td>
+                                  <td className="ep-product-note">
+                                    {product.note ?? "—"}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </section>
+                    )}
+
+                    {awards.length > 0 && (
+                      <section className="ep-sec">
+                        <div className="ep-sec-title">Ödüller</div>
+                        <ul className="ep-awards">
+                          {awards.map((award) => (
+                            <li key={award}>{award}</li>
+                          ))}
+                        </ul>
+                      </section>
+                    )}
+
+                    {history && (
+                      <section className="ep-sec">
+                        <div className="ep-sec-title">Yarışma geçmişi</div>
+                        <div className="ep-history">{history}</div>
+                      </section>
+                    )}
+
+                    {teams.length > 0 && (
+                      <section className="ep-sec">
+                        <div className="ep-sec-title">
+                          Takımlar
+                          <span className="ep-sec-count">{teams.length}</span>
+                        </div>
+                        <div className="ep-rels">
+                          {teams.map((team) =>
+                            team.id ? (
+                              <button
+                                key={team.id}
+                                className="rel"
+                                onClick={() => goto(team.id!)}
+                              >
+                                <span className="dir">
+                                  {team.direction === "in" ? "←" : "→"}
+                                </span>
+                                <span
+                                  className="swatch"
+                                  style={{ background: TYPE_COLORS.team }}
+                                />
+                                <span className="r-name">{team.name}</span>
+                              </button>
+                            ) : (
+                              <div
+                                key={team.name}
+                                className="rel ep-team-unresolved"
+                              >
+                                <span className="dir">—</span>
+                                <span
+                                  className="swatch"
+                                  style={{ background: TYPE_COLORS.team }}
+                                />
+                                <span className="r-name">{team.name}</span>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </section>
+                    )}
 
                     <section className="ep-sec">
                       <div className="ep-sec-title">
