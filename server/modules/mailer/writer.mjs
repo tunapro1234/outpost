@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { jsonDelta, updateClaudeUsage } from "../../lib/claude-stream-json.mjs";
 import { codexServiceTierArgs } from "../../lib/codex.mjs";
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
+import { redactForOutreach } from "../../lib/outreach-guard.mjs";
 import {
   badContentNotes,
   createMailDraftStage,
@@ -178,9 +179,12 @@ export async function compileMailContext({ person, company, queueItem, agent, wo
   skillsPath = MAIL_SKILLS,
 } = {}) {
   const probot = await readMailSkills(["context-probot.md"], { skillsPath });
+  // Manual-contact fields (phone / identity confidence) are removed here, not
+  // downstream: the mail writer must never be able to read them. See
+  // lib/outreach-guard.mjs.
   const raw = {
-    person: person.meta,
-    company: company?.meta ?? null,
+    person: redactForOutreach(person.meta),
+    company: redactForOutreach(company?.meta ?? null),
     hooks: person.meta.hooks ?? [],
     queue_score: queueItem.score,
     score_reasons: queueItem.reasons,

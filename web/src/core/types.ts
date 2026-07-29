@@ -78,6 +78,17 @@ export interface EntityListItem {
   mail_source?: string | null;
   connected_org?: string | null;
   connected_org_id?: string | null;
+  org?: string | null;
+  location?: string | null;
+  durum?: string | null;
+  lead_source?: string | null;
+  // Display only — see EntityMeta above; never feed these to an outreach flow.
+  phone?: string | null;
+  phone_source?: "elden" | "ocr" | "web" | null;
+  contact_channel?: string | null;
+  kimlik_guveni?: "iyi" | "orta" | "zayif" | null;
+  gun?: string | null;
+  sira?: number | null;
 }
 
 export interface Relation {
@@ -108,8 +119,32 @@ export interface EntityMeta {
   source_url?: string | null;
   found_date?: string | null;
   tags?: string[] | null;
+  // `closeness` is genuinely nullable: a missing warmth reading is NOT the same
+  // as a "belirsiz" (0) reading, and the adapters never collapse one into the
+  // other. Render "—" for null, "belirsiz" for 0.
   closeness?: number | null;
   role?: string | null;
+  org?: string | null;
+  location?: string | null;
+  // Turkish workflow state carried through verbatim from the source vault:
+  // yeni | yazilacak | ulasildi | konusuldu | referans-verdi | ilgili-pilot |
+  // pasif | ic ("ic" = ekip üyesi; outreach akışının dışında, bilinmeyen değil)
+  durum?: string | null;
+  // `kategori: lead-<kaynak>` -> who opened this lead.
+  lead_source?: string | null;
+  // ---- manual-contact fields — DISPLAY ONLY ------------------------------
+  // These are hand-collected phone numbers. They are stripped from every
+  // outreach path server-side (server/lib/outreach-guard.mjs): no mail writer,
+  // follow-up generator or bulk sender ever receives them. Show them; never
+  // wire them into an automated flow.
+  phone_source?: "elden" | "ocr" | "web" | null;
+  contact_channel?: string | null;
+  // How sure we are the contact details belong to THIS person — the real risk
+  // with a hand-copied number is reaching the wrong human, not a bad number.
+  kimlik_guveni?: "iyi" | "orta" | "zayif" | null;
+  // Planned call day / order, for a future "bugün kimi arayacağım" view.
+  gun?: string | null;
+  sira?: number | null;
   alumni_school?: string | null;
   alumni_year?: string | null;
   alumni_dept?: string | null;
@@ -154,8 +189,8 @@ export interface MailItem {
 // A queue row is always a PERSON with a usable mail address (the server filters
 // out org-type entities and excluded companies). `queue` holds scanned-and-
 // ready people (they carry a priority `score`); `awaitingScan` holds people who
-// still need a scan (no score yet). The pipeline band reads only `counts`; the
-// Calibration target picker reads the row arrays.
+// still need a scan (no score yet). The pipeline band reads only `counts`;
+// the row arrays are there for callers that need the people themselves.
 export interface MailQueuePerson {
   id: string;
   name: string;
@@ -378,59 +413,10 @@ export interface MailDraft {
   followup_stage: 0 | 1 | 2;
   status: "pending";
   // SPEC-MAILCAL §2/§4 — who authored the draft and whether it predates the
-  // author's latest calibration (queued for an automatic rewrite). Optional so
+  // writer's current voice file (queued for an automatic rewrite). Optional so
   // older servers that omit them degrade to "no author / not stale".
   author?: string | null;
   stale?: boolean;
-}
-
-// ---- mail calibration (SPEC-MAILCAL §2) ---------------------------------
-// The caller's personal "mail voice" file. `calibrated_at` is stamped on every
-// write (agent or PUT). Returns null on 404 so the tab shows an empty editor.
-export interface Calibration {
-  content: string;
-  calibrated_at: string | null;
-}
-
-// ---- deterministic person brief (GET /calibration/brief/:personId) ------
-// Built with no LLM from the vault entity + employer edge + score — the same
-// source the writer's context is derived from, so what the card shows, the
-// writer knows. Shown above the draft in the Studio.
-export type BriefConfidence = "verified" | "scan" | "unverified";
-
-export interface BriefKnown {
-  label: string;
-  text: string;
-  confidence: BriefConfidence | null;
-}
-
-export interface BriefFinding {
-  text: string;
-  urls: string[];
-}
-
-export interface PersonBrief {
-  person: {
-    id: string;
-    name: string;
-    role: string | null;
-    mail: string | null;
-    mail_probe: string;
-    mail_state: string;
-    scan_state: string;
-    scan_depth: number | null;
-  };
-  employer: {
-    id: string;
-    name: string;
-    type: string;
-    relation: string | null;
-    meaning: string | null;
-  } | null;
-  hooks: string[];
-  score: { value: number; reasons: string[] };
-  known: BriefKnown[];
-  findings: BriefFinding[];
 }
 
 // ---- mail agent model config (SPEC-MAILCAL §11) -------------------------
@@ -443,21 +429,6 @@ export type MailAgentModel =
 
 export interface MailAgentConfig {
   model: MailAgentModel;
-}
-
-// ---- user mail skills (SPEC-MAILCAL §10) --------------------------------
-// GET (list+content) / PUT / DELETE /api/ws/:ws/calibration/skills[/:name].
-// name is a "<slug>.md" file ([a-z0-9-]+\.md), content max 64KB.
-export interface CalibrationSkill {
-  name: string;
-  content: string;
-}
-
-// ---- calibration studio feedback (SPEC-MAILCAL §9) ----------------------
-export interface CalibrationFeedback {
-  rating: number; // 1..5
-  liked: string;
-  disliked: string;
 }
 
 // ---- workspace user stats (SPEC-MAILCAL §3, GET /users/stats) -----------
@@ -687,6 +658,17 @@ export interface Profile {
 }
 
 // ---- workspaces (global /api/workspaces) --------------------------------
+// One graph inside a workspace. Workspaces hold 1..N of these; the app shows
+// exactly one at a time and never merges records across them.
+export interface NetworkInfo {
+  id: string;
+  label: string;
+  entities?: number;
+  adapter?: string;
+  read_only?: boolean;
+  default?: boolean;
+}
+
 export interface WorkspaceInfo {
   id: string;
   name: string;

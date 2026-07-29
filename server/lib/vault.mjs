@@ -30,7 +30,33 @@ function unsafeVaultPath(message) {
   return error;
 }
 
-export async function assertSafeVaultPath(vaultPath, filePath, { allowMissing = false } = {}) {
+// Vaults mounted in place (an Obsidian vault another tool owns) are registered
+// here so every write path in the app fails loudly instead of touching them.
+const READ_ONLY_VAULTS = new Set();
+
+export function setVaultReadOnly(vaultPath, readOnly = true) {
+  const resolved = path.resolve(vaultPath);
+  if (readOnly) READ_ONLY_VAULTS.add(resolved);
+  else READ_ONLY_VAULTS.delete(resolved);
+}
+
+export function isVaultReadOnly(vaultPath) {
+  return READ_ONLY_VAULTS.has(path.resolve(vaultPath));
+}
+
+export function assertVaultWritable(vaultPath) {
+  if (!isVaultReadOnly(vaultPath)) return;
+  const error = new Error("Vault salt-okunur bağlandı; yazma reddedildi");
+  error.statusCode = 403;
+  throw error;
+}
+
+export async function assertSafeVaultPath(
+  vaultPath,
+  filePath,
+  { allowMissing = false, intent = "write" } = {},
+) {
+  if (intent !== "read") assertVaultWritable(vaultPath);
   const lexicalRoot = path.resolve(vaultPath);
   const lexicalTarget = path.resolve(filePath);
   if (outsideRoot(lexicalRoot, lexicalTarget)) {
@@ -68,16 +94,21 @@ export async function assertSafeVaultPath(vaultPath, filePath, { allowMissing = 
   return lexicalTarget;
 }
 
-function cleanWikilink(raw) {
+export function cleanWikilink(raw) {
   return raw.split("|", 1)[0].split("#", 1)[0].trim();
 }
 
-function relationSections(body) {
-  const lines = body.split(/\r?\n/);
+/**
+ * Split a markdown body into the line ranges covered by every heading matching
+ * `headingPattern`. Exported so vault adapters can reuse the same section logic
+ * with their own heading vocabulary.
+ */
+export function headingSections(body, headingPattern) {
+  const lines = String(body ?? "").split(/\r?\n/);
   const sections = [];
 
   for (let index = 0; index < lines.length; index += 1) {
-    const heading = /^(#{2,6})\s+İlişkiler\s*$/iu.exec(lines[index].trim());
+    const heading = headingPattern.exec(lines[index].trim());
     if (!heading) continue;
 
     const level = heading[1].length;
@@ -93,6 +124,10 @@ function relationSections(body) {
     index = end - 1;
   }
   return { lines, sections };
+}
+
+function relationSections(body) {
+  return headingSections(body, /^(#{2,6})\s+İlişkiler\s*$/iu);
 }
 
 export function extractMails(body) {
@@ -183,7 +218,7 @@ export function serializeMarkdown(body, meta) {
   return matter.stringify(String(body ?? ""), meta);
 }
 
-async function markdownFiles(directory) {
+export async function markdownFiles(directory) {
   try {
     return (await fs.readdir(directory, { withFileTypes: true }))
       .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".md"))
@@ -195,9 +230,37 @@ async function markdownFiles(directory) {
   }
 }
 
+/**
+ * The built-in vault layout: `<vault>/<type-directory>/<slug>.md`, English
+ * frontmatter, no translation. Every other layout is expressed as an adapter
+ * with the same three hooks so `VaultIndex` stays layout-agnostic.
+ *
+ *   listFiles(vaultPath) -> absolute .md paths to index
+ *   accepts(vaultPath, absolutePath) -> is this file ours?
+ *   normalize(parsedEntity) -> entity to index, or null to skip silently
+ */
+export const DEFAULT_VAULT_ADAPTER = {
+  name: "default",
+  async listFiles(vaultPath) {
+    const files = [];
+    for (const directory of Object.values(TYPE_DIRECTORIES)) {
+      files.push(...await markdownFiles(path.join(vaultPath, directory)));
+    }
+    return files;
+  },
+  accepts(vaultPath, absolutePath) {
+    const relative = path.relative(vaultPath, absolutePath);
+    return Boolean(DIRECTORY_TYPES[relative.split(path.sep)[0]]);
+  },
+  normalize: (entity) => entity,
+};
+
 export class VaultIndex {
-  constructor(vaultPath) {
+  constructor(vaultPath, { adapter = DEFAULT_VAULT_ADAPTER, readOnly = false } = {}) {
     this.vaultPath = path.resolve(vaultPath);
+    this.adapter = adapter ?? DEFAULT_VAULT_ADAPTER;
+    this.readOnly = Boolean(readOnly);
+    if (this.readOnly) setVaultReadOnly(this.vaultPath, true);
     this.entities = new Map();
     this.pathToId = new Map();
     this.edges = [];
@@ -214,10 +277,8 @@ export class VaultIndex {
     this.entities.clear();
     this.pathToId.clear();
     this.warnings = [];
-    for (const directory of Object.values(TYPE_DIRECTORIES)) {
-      for (const filePath of await markdownFiles(path.join(this.vaultPath, directory))) {
-        await this.loadFile(filePath, false);
-      }
+    for (const filePath of await this.adapter.listFiles(this.vaultPath)) {
+      await this.loadFile(filePath, false);
     }
     this.rebuildGraph();
     return this;
@@ -226,13 +287,23 @@ export class VaultIndex {
   async loadFile(filePath, rebuild = true) {
     const absolutePath = path.resolve(filePath);
     const relative = path.relative(this.vaultPath, absolutePath);
-    const directory = relative.split(path.sep)[0];
-    if (!DIRECTORY_TYPES[directory] || !absolutePath.toLowerCase().endsWith(".md")) return;
+    if (!absolutePath.toLowerCase().endsWith(".md")) return;
+    if (!this.adapter.accepts(this.vaultPath, absolutePath)) return;
 
     const previousId = this.pathToId.get(absolutePath);
     try {
-      await assertSafeVaultPath(this.vaultPath, absolutePath);
-      const entity = parseMarkdown(await fs.readFile(absolutePath, "utf8"), absolutePath);
+      await assertSafeVaultPath(this.vaultPath, absolutePath, { intent: "read" });
+      const source = await fs.readFile(absolutePath, "utf8");
+      const parsed = (this.adapter.parse ?? parseMarkdown)(source, absolutePath);
+      if (parsed?.parseWarning) this.warnings.push(`${relative}: ${parsed.parseWarning}`);
+      const entity = this.adapter.normalize(parsed);
+      if (!entity) {
+        // The adapter deliberately skips this file (index/MOC page, note, …).
+        if (previousId) this.entities.delete(previousId);
+        this.pathToId.delete(absolutePath);
+        if (rebuild) this.rebuildGraph();
+        return;
+      }
       if (!entity.meta || typeof entity.meta !== "object") {
         throw new Error("frontmatter bulunamadı");
       }

@@ -2,7 +2,12 @@ import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { parseMarkdown, serializeMarkdown, TYPE_DIRECTORIES } from "../../lib/vault.mjs";
+import {
+  assertVaultWritable,
+  parseMarkdown,
+  serializeMarkdown,
+  TYPE_DIRECTORIES,
+} from "../../lib/vault.mjs";
 import { slugify } from "../../lib/slug.mjs";
 import { GATHER_KINDS } from "./registry.mjs";
 
@@ -198,6 +203,7 @@ export async function writeStageProposal(workspace, {
 }
 
 async function defaultGitCommit(workspace, filePath, entityName) {
+  assertVaultWritable(workspace.vaultPath);
   const relative = path.relative(workspace.vaultPath, filePath);
   await execFileAsync("git", ["-C", workspace.vaultPath, "rev-parse", "--is-inside-work-tree"]);
   await execFileAsync("git", ["-C", workspace.vaultPath, "add", "--", relative]);
@@ -310,6 +316,7 @@ export async function decideStage(workspace, {
     (proposal.meta.entity_id && index.entities.get(proposal.meta.entity_id)) ||
     [...index.entities.values()].find((entity) =>
       slugify(entity.meta.name) === slugify(proposal.meta.name));
+  assertVaultWritable(index.vaultPath);
   const meta = acceptedMeta(proposal.meta);
   if (!TYPE_DIRECTORIES[meta.type] || typeof meta.name !== "string" || !meta.name.trim()) {
     const error = new Error("Stage önerisinde geçerli type ve name zorunlu");

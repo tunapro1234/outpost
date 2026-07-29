@@ -14,9 +14,9 @@ import AgentSpeed from "./AgentSpeed";
 import PipelineFlow from "./PipelineFlow";
 
 interface GatherViewProps {
-  // "Open chat" targets for the caller's personal agents.
+  // Where each personal agent card's action button lands.
   onOpenAssistant: () => void;
-  onOpenMailCalibration: () => void;
+  onOpenMail: () => void;
 }
 
 // ---- personal agents (SPEC-MAILCAL §5) ----------------------------------
@@ -31,25 +31,25 @@ const PERSONAL_META: Record<
   },
   mail: {
     label: "Mail writer",
-    desc: "Writes your outreach in your voice. Calibrate its style in Mail.",
-    cta: "Open chat",
+    desc: "Writes your outreach in your voice. Review its drafts in Mail.",
+    cta: "Open Mail",
   },
 };
 
 function PersonalAgents({
   agents,
   onOpenAssistant,
-  onOpenMailCalibration,
+  onOpenMail,
 }: {
   agents: PersonalAgent[];
   onOpenAssistant: () => void;
-  onOpenMailCalibration: () => void;
+  onOpenMail: () => void;
 }) {
   return (
     <div className="g-agent-grid">
       {agents.map((a) => {
         const meta = PERSONAL_META[a.kind];
-        const open = a.kind === "mail" ? onOpenMailCalibration : onOpenAssistant;
+        const open = a.kind === "mail" ? onOpenMail : onOpenAssistant;
         return (
           <div key={a.kind} className="g-agent personal">
             <div className="g-agent-top">
@@ -281,7 +281,7 @@ function AgentCard({
 
 export default function GatherView({
   onOpenAssistant,
-  onOpenMailCalibration,
+  onOpenMail,
 }: GatherViewProps) {
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [stage, setStage] = useState<StageItem[] | null>(null);
@@ -627,7 +627,7 @@ export default function GatherView({
           <PersonalAgents
             agents={personal}
             onOpenAssistant={onOpenAssistant}
-            onOpenMailCalibration={onOpenMailCalibration}
+            onOpenMail={onOpenMail}
           />
         </div>
       )}

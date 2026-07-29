@@ -144,7 +144,7 @@ export default function DraftCard({
           {draft.stale && (
             <span
               className="md-stale"
-              title="This draft is from before your latest calibration, so it will be rewritten automatically."
+              title="This draft predates the mail writer's current voice, so it will be rewritten automatically."
             >
               outdated, queued for rewrite
             </span>

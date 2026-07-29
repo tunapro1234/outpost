@@ -24,13 +24,18 @@ import OverviewView from "@/modules/overview/OverviewView";
 import AssistantDrawer from "@/modules/assistant/AssistantDrawer";
 import ControlToast from "@/components/ControlToast";
 import { connectControl, type ControlCommand } from "@/core/control";
-import { api, setWorkspace as configureWorkspace } from "@/core/api";
+import {
+  api,
+  setWorkspace as configureWorkspace,
+  setNetwork as configureNetwork,
+} from "@/core/api";
 import type {
   EntityListItem,
   Facets,
   GraphData,
   GraphNode,
   MailItem,
+  NetworkInfo,
   ReachStats,
   WorkspaceInfo,
 } from "@/core/types";
@@ -48,16 +53,13 @@ import {
 } from "@/core/filters";
 import type { Physics } from "@/core/physics";
 import { loadPhysics, savePhysics } from "@/core/physics";
-import {
-  useRoute,
-  navigate,
-  entityPath,
-  viewPath,
-  MAIL_CALIBRATION_PATH,
-} from "@/core/router";
+import { useRoute, navigate, entityPath, viewPath } from "@/core/router";
 
 const EMPTY: GraphData = { nodes: [], edges: [] };
 const WORKSPACE_STORAGE_KEY = "outpost.workspace";
+// The chosen network is remembered per workspace, same pattern as the
+// workspace choice itself.
+const networkStorageKey = (ws: string) => `outpost.network.${ws}`;
 const SIDEBAR_MIN = 180;
 const SIDEBAR_MAX = 360;
 const SIDEBAR_DEFAULT = 208;
@@ -113,6 +115,10 @@ export default function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [workspace, setWorkspaceState] = useState<string | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
+  // Networks = the separate graphs inside the active workspace. Exactly one is
+  // shown at a time; they are never merged (see server/lib/config.mjs).
+  const [network, setNetworkState] = useState<string | null>(null);
+  const [networks, setNetworks] = useState<NetworkInfo[]>([]);
   const [controlToast, setControlToast] = useState<string | null>(null);
   const controlToastTimer = useRef<number | null>(null);
   const controlHandler = useRef<(command: ControlCommand) => void>(() => {});
@@ -149,8 +155,11 @@ export default function App() {
       }
 
       configureWorkspace(chosen.id);
+      configureNetwork(null);
       localStorage.setItem(WORKSPACE_STORAGE_KEY, chosen.id);
       setWorkspaces(all);
+      setNetworks([]);
+      setNetworkState(null);
       setWorkspaceState(chosen.id);
     });
     return () => {
@@ -216,6 +225,11 @@ export default function App() {
       const next = workspaces.find((w) => w.id === id && !w.comingSoon);
       if (!next) return false;
       configureWorkspace(next.id);
+      // Drop the previous workspace's network before any scoped request goes
+      // out; the effect below picks this workspace's own network.
+      configureNetwork(null);
+      setNetworks([]);
+      setNetworkState(null);
       localStorage.setItem(WORKSPACE_STORAGE_KEY, next.id);
       setAssistantOpen(false);
       setSelectedId(null);
@@ -313,9 +327,47 @@ export default function App() {
     }
   }, []);
 
-  // ---- load full data once (+ on refresh) ----
+  // Resolve the workspace's networks before any graph request: a persisted
+  // choice wins while it still exists, else the server's default, else the
+  // first. Servers without the endpoint report a single implicit network.
   useEffect(() => {
     if (!workspace) return;
+    let alive = true;
+    api.networks().then((list) => {
+      if (!alive) return;
+      const all = list ?? [];
+      const stored = localStorage.getItem(networkStorageKey(workspace));
+      const chosen =
+        all.find((n) => n.id === stored) ??
+        all.find((n) => n.default) ??
+        all[0] ??
+        null;
+      setNetworks(all);
+      configureNetwork(chosen?.id ?? null);
+      setNetworkState(chosen?.id ?? "");
+    });
+    return () => {
+      alive = false;
+    };
+  }, [workspace]);
+
+  const changeNetwork = useCallback(
+    (id: string) => {
+      if (!workspace || id === network) return;
+      if (!networks.some((n) => n.id === id)) return;
+      configureNetwork(id);
+      localStorage.setItem(networkStorageKey(workspace), id);
+      setSelectedId(null);
+      setFocusNodeId(null);
+      setFiltersState((f) => ({ ...f, egoId: null, hubThreshold: null }));
+      setNetworkState(id);
+    },
+    [workspace, network, networks]
+  );
+
+  // ---- load full data once (+ on refresh) ----
+  useEffect(() => {
+    if (!workspace || network === null) return;
     let alive = true;
     setLoaded(false);
     setFull(EMPTY);
@@ -360,7 +412,7 @@ export default function App() {
     return () => {
       alive = false;
     };
-  }, [workspace, refreshKey]);
+  }, [workspace, network, refreshKey]);
 
   useEffect(() => {
     if (!workspace) return;
@@ -657,6 +709,9 @@ export default function App() {
         {isNetwork && (
           <FilterBar
             theme={theme}
+            networks={networks}
+            network={network}
+            onNetworkChange={changeNetwork}
             filters={filters}
             setFilters={setFilters}
             facets={facets}
@@ -791,15 +846,12 @@ export default function App() {
               stats={reachStats}
               entities={entityList}
               onOpenEntity={openFull}
-              showCalibration={route.name === "view" && route.sub === "calibration"}
-              onOpenCalibration={() => navigate(MAIL_CALIBRATION_PATH)}
-              onCloseCalibration={() => navigate(viewPath("mail"))}
             />
           )}
           {view === "agents" && (
             <GatherView
               onOpenAssistant={openAssistant}
-              onOpenMailCalibration={() => navigate(MAIL_CALIBRATION_PATH)}
+              onOpenMail={() => navigate(viewPath("mail"))}
             />
           )}
           {view === "workspace" && (

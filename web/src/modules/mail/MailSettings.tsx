@@ -4,8 +4,8 @@ import { api } from "@/core/api";
 import { useMailSettings } from "./useMailSettings";
 
 // Mail → Settings. Workspace outreach controls (approval threshold, daily cap,
-// follow-up gap), a read-only dispatch-mode status, plus calibration reset and a
-// JSON mail import. Each field commits on blur, sending only the changed value.
+// follow-up gap), a read-only dispatch-mode status, plus a JSON mail import.
+// Each field commits on blur, sending only the changed value.
 export default function MailSettings() {
   const s = useMailSettings();
   const { settings, notice, dismissNotice } = s;
@@ -85,11 +85,6 @@ export default function MailSettings() {
           </div>
         </div>
       </section>
-
-      <CalibrationResetCard
-        onDone={() => s.showNotice("Kalibrasyon sıfırlandı")}
-        onError={(m) => s.showNotice(m)}
-      />
 
       <ImportCard
         onDone={(r) =>
@@ -185,53 +180,6 @@ function NumberRow({
         {suffix ? <span className="ms-suffix">{suffix}</span> : null}
       </div>
     </div>
-  );
-}
-
-function CalibrationResetCard({
-  onDone,
-  onError,
-}: {
-  onDone: () => void;
-  onError: (msg: string) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-
-  const reset = async () => {
-    if (
-      !window.confirm(
-        "Mail sesi kalibrasyonun sıfırlanacak. Bu işlem geri alınamaz. Devam?"
-      )
-    )
-      return;
-    setBusy(true);
-    try {
-      await api.resetMailCalibration();
-      onDone();
-    } catch (e) {
-      onError((e as Error)?.message ?? "Sıfırlama başarısız");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="ms-card">
-      <div className="ms-card-title">Kalibrasyon</div>
-      <div className="ms-row">
-        <div className="ms-row-main">
-          <div className="ms-label">Kalibrasyonu sıfırla</div>
-          <div className="ms-help">
-            Öğrenilmiş mail ses dosyanı temizler; yazar sıfırdan öğrenmeye başlar.
-          </div>
-        </div>
-        <div className="ms-row-ctrl">
-          <button className="btn ghost sm" disabled={busy} onClick={reset}>
-            {busy ? "Sıfırlanıyor…" : "Sıfırla"}
-          </button>
-        </div>
-      </div>
-    </section>
   );
 }
 

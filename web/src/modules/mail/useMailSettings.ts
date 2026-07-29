@@ -8,7 +8,7 @@ export interface UseMailSettings {
   loading: boolean;
   saving: boolean;
   error: string | null;
-  /** Transient confirmation surfaced after a save/import/reset. */
+  /** Transient confirmation surfaced after a save/import. */
   notice: string | null;
   showNotice: (msg: string) => void;
   dismissNotice: () => void;
@@ -20,7 +20,7 @@ export interface UseMailSettings {
 /**
  * Loader + saver for the Mail → Settings tab. Mirrors useMailDrafts: a single
  * fetch with a null-on-404 fallback, plus a small self-clearing notice used for
- * "saved" / import-count / calibration-reset confirmations.
+ * "saved" / import-count confirmations.
  */
 export function useMailSettings(): UseMailSettings {
   const [settings, setSettings] = useState<MailSettings | null>(null);

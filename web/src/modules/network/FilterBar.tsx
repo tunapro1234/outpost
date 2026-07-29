@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { EntityType, Facets } from "@/core/types";
+import type { EntityType, Facets, NetworkInfo } from "@/core/types";
 import type { ThemeName } from "@/core/theme";
 import {
   STATUS_LABELS,
@@ -19,6 +19,11 @@ import {
 
 interface Props {
   theme: ThemeName;
+  // The workspace's networks. One is shown at a time — switching swaps the
+  // whole graph; nothing is ever displayed side by side or merged.
+  networks: NetworkInfo[];
+  network: string | null;
+  onNetworkChange: (id: string) => void;
   filters: FilterState;
   setFilters: (f: FilterState) => void;
   facets: Facets;
@@ -43,6 +48,9 @@ function toggle<T>(arr: T[], v: T): T[] {
 export default function FilterBar(props: Props) {
   const {
     theme,
+    networks,
+    network,
+    onNetworkChange,
     filters: f,
     setFilters,
     facets,
@@ -200,6 +208,26 @@ export default function FilterBar(props: Props) {
 
   return (
     <div className="filterbar" ref={barRef}>
+      {networks.length > 1 && (
+        <div className="seg fb-networks" role="tablist" aria-label="Network">
+          {networks.map((n) => (
+            <button
+              key={n.id}
+              role="tab"
+              aria-selected={n.id === network}
+              className={n.id === network ? "on" : ""}
+              title={
+                n.read_only
+                  ? `${n.label} — read-only${n.entities ? `, ${n.entities} records` : ""}`
+                  : `${n.label}${n.entities ? ` — ${n.entities} records` : ""}`
+              }
+              onClick={() => onNetworkChange(n.id)}
+            >
+              {n.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="fb-search">
         <span className="fb-funnel">⧩</span>
         <input

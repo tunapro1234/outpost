@@ -30,8 +30,8 @@ export interface UseChatEngineOptions {
   onReplyComplete?: (threadId?: string) => void;
 }
 
-// The shared conversation engine behind every chat surface (the right-rail
-// Assistant drawer and the in-page mail-calibration panel). It owns the thread
+// The shared conversation engine behind every chat surface (today the
+// right-rail Assistant drawer). It owns the thread
 // list, per-thread SSE streaming, local persistence and the scroll refs; the
 // surfaces only render its state and wire its handlers to their own chrome.
 export function useChatEngine({

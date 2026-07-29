@@ -1,8 +1,6 @@
 import type {
   Agent,
   AgentRun,
-  Calibration,
-  CalibrationSkill,
   MailAgentConfig,
   MailAgentModel,
   Entity,
@@ -26,7 +24,6 @@ import type {
   MailAnalytics,
   MailRejectPayload,
   MailRejectResult,
-  PersonBrief,
   PersonalAgent,
   ReachStats,
   Metrics,
@@ -35,6 +32,7 @@ import type {
   StageItem,
   Status,
   UserStat,
+  NetworkInfo,
   WorkspaceInfo,
 } from "./types";
 import { trNormalize } from "./normalize";
@@ -55,6 +53,27 @@ export function getWorkspace(): string {
 
 export function workspaceBase(): string {
   return `/api/ws/${encodeURIComponent(getWorkspace())}`;
+}
+
+// ---- network selection -------------------------------------------------
+// A workspace is a line of business; it holds one or more networks (separate
+// graphs, never merged). Graph/entity endpoints take `?network=<id>`; leaving
+// it unset asks the server for the workspace's default network.
+let activeNetwork: string | null = null;
+
+export function setNetwork(id: string | null): void {
+  activeNetwork = id;
+}
+
+export function getNetwork(): string | null {
+  return activeNetwork;
+}
+
+function netUrl(url: string, params?: URLSearchParams): string {
+  const p = params ?? new URLSearchParams();
+  if (activeNetwork) p.set("network", activeNetwork);
+  const q = p.toString();
+  return q ? `${url}?${q}` : url;
 }
 
 // ---- mock data (bundled) ----
@@ -222,14 +241,14 @@ export const api = {
   // Full unfiltered graph — v2 loads this once and filters client-side.
   async fullGraph(): Promise<GraphData> {
     if (MOCK) return { nodes: mockGraph.nodes, edges: mockGraph.edges };
-    return json<GraphData>(`${workspaceBase()}/graph`);
+    return json<GraphData>(netUrl(`${workspaceBase()}/graph`));
   },
 
   // Server-provided facets. Returns null on 404 so the caller derives them.
   async facets(): Promise<Facets | null> {
     if (MOCK) return null;
     try {
-      const res = await fetch(`${workspaceBase()}/facets`);
+      const res = await fetch(netUrl(`${workspaceBase()}/facets`));
       if (!res.ok) return null;
       return (await res.json()) as Facets;
     } catch {
@@ -451,13 +470,6 @@ export const api = {
     });
   },
 
-  // Reset the caller's mail-voice calibration. Throws Error(message) on failure.
-  async resetMailCalibration(): Promise<{ reset: boolean }> {
-    return json<{ reset: boolean }>(`${workspaceBase()}/calibration/reset`, {
-      method: "POST",
-    });
-  },
-
   // Import a batch of past mails (owner-only). Returns match/skip counts;
   // throws Error(message) on failure so the Settings tab can surface it.
   async importMails(payload: {
@@ -471,46 +483,8 @@ export const api = {
     });
   },
 
-  // ---- mail calibration (SPEC-MAILCAL §2) --------------------------------
-  // The caller's personal mail-voice file. Returns null on 404 / error so the
-  // Calibration tab renders an empty editor while the endpoint is still shipping.
-  async calibration(): Promise<Calibration | null> {
-    if (MOCK) return { content: "", calibrated_at: null };
-    try {
-      const res = await fetch(`${workspaceBase()}/calibration`);
-      if (!res.ok) return null;
-      return (await res.json()) as Calibration;
-    } catch {
-      return null;
-    }
-  },
-
-  // Persist the calibration file; the server stamps a fresh calibrated_at.
-  // Throws Error(message) on failure so the editor can surface it.
-  async saveCalibration(content: string): Promise<Calibration> {
-    return json<Calibration>(`${workspaceBase()}/calibration`, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ content }),
-    });
-  },
-
-  // Deterministic person brief for the Studio card (GET .../calibration/brief/
-  // :id). Null on 404 / error so the card simply doesn't render.
-  async calibrationBrief(personId: string): Promise<PersonBrief | null> {
-    try {
-      const res = await fetch(
-        `${workspaceBase()}/calibration/brief/${encodeURIComponent(personId)}`,
-      );
-      if (!res.ok) return null;
-      return (await res.json()) as PersonBrief;
-    } catch {
-      return null;
-    }
-  },
-
   // ---- mail agent model config (SPEC-MAILCAL §11) ------------------------
-  // Returns null on 404 / error so the studio falls back to the default model.
+  // Returns null on 404 / error so callers fall back to the default model.
   async mailAgentConfig(): Promise<MailAgentConfig | null> {
     if (MOCK) return { model: "claude-opus-4-8" };
     try {
@@ -530,61 +504,6 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ model }),
     });
-  },
-
-  // ---- user mail skills (SPEC-MAILCAL §10) -------------------------------
-  // Uploaded md files that feed the writer/calibration prompt. Returns null on
-  // 404 / error so the Skills panel hides gracefully.
-  async calibrationSkills(): Promise<CalibrationSkill[] | null> {
-    if (MOCK) return [];
-    try {
-      const res = await fetch(`${workspaceBase()}/calibration/skills`);
-      if (!res.ok) return null;
-      const body = (await res.json()) as
-        | { skills?: CalibrationSkill[] }
-        | CalibrationSkill[];
-      return Array.isArray(body) ? body : body.skills ?? [];
-    } catch {
-      return null;
-    }
-  },
-
-  // Create/overwrite a skill file. name must match [a-z0-9-]+\.md, ≤64KB.
-  // Throws Error(message) on failure so the panel can surface it.
-  async saveCalibrationSkill(
-    name: string,
-    content: string
-  ): Promise<CalibrationSkill> {
-    return json<CalibrationSkill>(
-      `${workspaceBase()}/calibration/skills/${encodeURIComponent(name)}`,
-      {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ content }),
-      }
-    );
-  },
-
-  async deleteCalibrationSkill(name: string): Promise<{ ok: boolean }> {
-    const res = await fetch(
-      `${workspaceBase()}/calibration/skills/${encodeURIComponent(name)}`,
-      { method: "DELETE" }
-    );
-    if (!res.ok) {
-      let msg = `HTTP ${res.status}`;
-      try {
-        const b = await res.json();
-        if (b?.error) msg = b.error;
-      } catch {
-        /* ignore */
-      }
-      throw new Error(msg);
-    }
-    try {
-      return (await res.json()) as { ok: boolean };
-    } catch {
-      return { ok: true };
-    }
   },
 
   // ---- workspace user stats (SPEC-MAILCAL §3) ----------------------------
@@ -641,15 +560,12 @@ export const api = {
     if (params.q) p.set("q", params.q);
     if (params.sort) p.set("sort", params.sort);
     if (params.order) p.set("order", params.order);
-    const s = p.toString();
-    return json<EntityListItem[]>(
-      `${workspaceBase()}/entities${s ? `?${s}` : ""}`
-    );
+    return json<EntityListItem[]>(netUrl(`${workspaceBase()}/entities`, p));
   },
 
   async entity(id: string): Promise<Entity> {
     if (MOCK) return mockEntities[id] ?? fallbackEntity(id);
-    return json<Entity>(`${workspaceBase()}/entities/${encodeURIComponent(id)}`);
+    return json<Entity>(netUrl(`${workspaceBase()}/entities/${encodeURIComponent(id)}`));
   },
 
   async patchEntity(
@@ -674,7 +590,7 @@ export const api = {
       mockEntities[id] = next;
       return next;
     }
-    return json<Entity>(`${workspaceBase()}/entities/${encodeURIComponent(id)}`, {
+    return json<Entity>(netUrl(`${workspaceBase()}/entities/${encodeURIComponent(id)}`), {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(patch),
@@ -710,7 +626,7 @@ export const api = {
       }
       return ent;
     }
-    return json<Entity>(`${workspaceBase()}/entities`, {
+    return json<Entity>(netUrl(`${workspaceBase()}/entities`), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -850,6 +766,20 @@ export const api = {
       const res = await fetch(`/api/workspaces`);
       if (!res.ok) return null;
       return (await res.json()) as WorkspaceInfo[];
+    } catch {
+      return null;
+    }
+  },
+
+  // Networks (separate graphs) inside the active workspace. Older servers
+  // have no such endpoint — null means "assume a single, default network".
+  async networks(): Promise<NetworkInfo[] | null> {
+    if (MOCK) return null;
+    try {
+      const res = await fetch(`${workspaceBase()}/networks`);
+      if (!res.ok) return null;
+      const list = (await res.json()) as NetworkInfo[];
+      return Array.isArray(list) ? list : null;
     } catch {
       return null;
     }

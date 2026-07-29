@@ -1,4 +1,5 @@
 import { updateEntityMeta } from "../../lib/entity-meta.mjs";
+import { redactForOutreach } from "../../lib/outreach-guard.mjs";
 import { workspaceMails } from "../reach/mails.mjs";
 import { createMailDraftStage, listMailDraftRecords } from "./drafts.mjs";
 import { approvedMails } from "./store.mjs";
@@ -50,8 +51,8 @@ export function followUpDecision({ person, outbound, now = new Date() }) {
 
 function followupContext(person, company, outbound, stage) {
   return JSON.stringify({
-    person: person.meta,
-    company: company?.meta ?? null,
+    person: redactForOutreach(person.meta),
+    company: redactForOutreach(company?.meta ?? null),
     previous_mail: {
       subject: outbound.subject ?? outbound.summary ?? null,
       date: outbound.date,
