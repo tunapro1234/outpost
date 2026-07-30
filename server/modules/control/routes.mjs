@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import { ControlRegistry } from "./registry.mjs";
 
 const ACTIONS = new Set([
@@ -6,9 +8,20 @@ const ACTIONS = new Set([
   "open-entity",
   "set-workspace",
   "set-theme",
+  "set-network",
+  "set-view",
+  "set-filters",
+  "set-color-mode",
   "toast",
 ]);
 const LOCAL_BASE = "http://localhost";
+const PAGE_TYPES = new Map([
+  [".html", "text/html; charset=utf-8"],
+  [".css", "text/css; charset=utf-8"],
+  [".js", "text/javascript; charset=utf-8"],
+  [".png", "image/png"],
+  [".svg", "image/svg+xml"],
+]);
 
 function fail(statusCode, message) {
   const error = new Error(message);
@@ -20,6 +33,11 @@ function nonEmptyString(value, field) {
   if (typeof value !== "string" || value.trim() === "") {
     fail(400, `${field} must be a non-empty string`);
   }
+  return value;
+}
+
+function filterString(value, field) {
+  if (typeof value !== "string") fail(400, `${field} must be a string`);
   return value;
 }
 
@@ -80,6 +98,36 @@ export function validateCommand(payload) {
         fail(400, "theme must be dark or light");
       }
       return { action: payload.action, theme: payload.theme };
+    case "set-network":
+      return {
+        action: payload.action,
+        network: nonEmptyString(payload.network, "network"),
+      };
+    case "set-view":
+      if (payload.view !== "graph" && payload.view !== "list") {
+        fail(400, "view must be graph or list");
+      }
+      return { action: payload.action, view: payload.view };
+    case "set-filters": {
+      const command = { action: payload.action };
+      for (const field of ["q", "type", "tag", "preset"]) {
+        if (payload[field] !== undefined) {
+          command[field] = filterString(payload[field], field);
+        }
+      }
+      if (payload.state !== undefined) {
+        if (!Number.isInteger(payload.state) || payload.state < 0 || payload.state > 5) {
+          fail(400, "state must be an integer from 0 to 5");
+        }
+        command.state = payload.state;
+      }
+      return command;
+    }
+    case "set-color-mode":
+      if (payload.mode !== "type" && payload.mode !== "state") {
+        fail(400, "mode must be type or state");
+      }
+      return { action: payload.action, mode: payload.mode };
     case "toast":
       return {
         action: payload.action,
@@ -129,5 +177,56 @@ export async function controlRoutes(app, options = {}) {
     request.log.info({ username, target, action: command.action, delivered },
       "Control command delivered");
     return { delivered };
+  });
+}
+
+function outside(root, target) {
+  const relative = path.relative(root, target);
+  return relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative);
+}
+
+async function pageFile(workspace, requested) {
+  if (
+    typeof requested !== "string" ||
+    !requested ||
+    requested.includes("\0") ||
+    requested.includes("\\") ||
+    requested.split("/").includes("..") ||
+    path.isAbsolute(requested)
+  ) {
+    fail(400, "Geçersiz sayfa yolu");
+  }
+  const extension = path.extname(requested).toLowerCase();
+  if (!PAGE_TYPES.has(extension)) fail(400, "Desteklenmeyen sayfa dosyası");
+
+  const workspaceRoot = await fs.realpath(workspace.directory).catch((error) => {
+    if (error.code === "ENOENT") fail(404, "Workspace dizini bulunamadı");
+    throw error;
+  });
+  const root = path.join(workspace.directory, "pages");
+  const canonicalRoot = await fs.realpath(root).catch((error) => {
+    if (error.code === "ENOENT") fail(404, "Sayfa bulunamadı");
+    throw error;
+  });
+  if (outside(workspaceRoot, canonicalRoot)) fail(400, "Sayfa kökü workspace dışında");
+
+  const target = path.resolve(root, requested);
+  if (outside(root, target)) fail(400, "Geçersiz sayfa yolu");
+  const canonicalTarget = await fs.realpath(target).catch((error) => {
+    if (error.code === "ENOENT") fail(404, "Sayfa bulunamadı");
+    throw error;
+  });
+  if (outside(canonicalRoot, canonicalTarget)) fail(400, "Sayfa yolu workspace dışında");
+  const stat = await fs.stat(canonicalTarget);
+  if (!stat.isFile()) fail(404, "Sayfa bulunamadı");
+  return { path: canonicalTarget, type: PAGE_TYPES.get(extension) };
+}
+
+export async function workspacePageRoutes(app, { resolveWorkspace }) {
+  app.get("/pages/*", async (request, reply) => {
+    const file = await pageFile(resolveWorkspace(request), request.params["*"]);
+    return reply.type(file.type).send(await fs.readFile(file.path));
   });
 }

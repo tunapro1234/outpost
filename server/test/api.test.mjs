@@ -52,11 +52,15 @@ test("entities, stats, detail ve health endpointleri sözleşme şeklini döndü
     "phone", "phone_source", "contact_channel", "kimlik_guveni", "gun", "sira",
     "degree",
     "mail_count", "last_mail_date", "last_mail_direction", "last_mail_from",
+    "state", "state_source", "research_status", "flags",
   ]);
   assert.ok(entities[0].score >= entities[1].score);
 
   const detail = (await app.inject({ url: "/api/entities/arda-gokcizgi" })).json();
-  assert.deepEqual(Object.keys(detail), ["id", "meta", "body", "relations", "unresolved"]);
+  assert.deepEqual(Object.keys(detail), [
+    "id", "meta", "body", "relations", "unresolved",
+    "state", "state_source", "research_status", "flags",
+  ]);
   assert.ok(detail.relations.some((relation) => relation.direction === "out"));
 
   const stats = (await app.inject({ url: "/api/stats" })).json();

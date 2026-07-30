@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp } from "../../../app.mjs";
+import { temporaryDirectory } from "../../../test-support/helpers.mjs";
 import { ControlRegistry } from "../registry.mjs";
 import { isInternalPath, validateCommand } from "../routes.mjs";
 
@@ -106,6 +108,12 @@ test("aksiyon allowlist'i yalnız geçerli v1 komutlarını kabul eder", async (
     { action: "open-entity", id: "" },
     { action: "set-workspace", ws: 42 },
     { action: "set-theme", theme: "system" },
+    { action: "set-network", network: "" },
+    { action: "set-view", view: "cards" },
+    { action: "set-filters", q: 4 },
+    { action: "set-filters", state: "2" },
+    { action: "set-filters", state: 7 },
+    { action: "set-color-mode", mode: "status" },
     { action: "toast", message: "" },
   ];
   for (const payload of invalid) {
@@ -123,6 +131,17 @@ test("aksiyon allowlist'i yalnız geçerli v1 komutlarını kabul eder", async (
     { action: "open-entity", id: "entity-1", ws: "main" },
     { action: "set-workspace", ws: "main" },
     { action: "set-theme", theme: "light" },
+    { action: "set-network", network: "warm" },
+    { action: "set-view", view: "list" },
+    {
+      action: "set-filters",
+      q: "",
+      type: "person",
+      tag: "mentor",
+      state: 2,
+      preset: "teachers",
+    },
+    { action: "set-color-mode", mode: "state" },
     { action: "toast", message: "done" },
   ];
   for (const payload of valid) assert.doesNotThrow(() => validateCommand(payload));
@@ -167,4 +186,32 @@ test("target yalnız localhost'tan kabul edilir ve teslimat sayısı hedef kulla
   assert.equal(event.theme, "dark");
   assert.equal(typeof event.id, "string");
   assert.equal(Object.hasOwn(event, "target"), false);
+});
+
+test("workspace pages izinli dosyaları sunar, traversal ve symlink kaçışını reddeder", async (t) => {
+  const vault = await temporaryDirectory("outpost-pages-");
+  const outside = await temporaryDirectory("outpost-pages-outside-");
+  t.after(() => fs.rm(vault, { recursive: true, force: true }));
+  t.after(() => fs.rm(outside, { recursive: true, force: true }));
+  await fs.mkdir(path.join(vault, "pages"), { recursive: true });
+  await fs.writeFile(path.join(vault, "pages", "panel.html"), "<h1>Panel</h1>", "utf8");
+  await fs.writeFile(path.join(vault, "secret.html"), "secret", "utf8");
+  await fs.writeFile(path.join(outside, "outside.html"), "outside", "utf8");
+  await fs.symlink(path.join(outside, "outside.html"), path.join(vault, "pages", "linked.html"));
+
+  const app = await createApp({ vaultPath: vault, watch: false });
+  t.after(() => app.close());
+
+  const page = await app.inject({ url: "/api/ws/default/pages/panel.html" });
+  assert.equal(page.statusCode, 200);
+  assert.match(page.headers["content-type"], /^text\/html/);
+  assert.equal(page.body, "<h1>Panel</h1>");
+
+  for (const url of [
+    "/api/ws/default/pages/%2e%2e%2fsecret.html",
+    "/api/ws/default/pages/linked.html",
+    "/api/ws/default/pages/panel.json",
+  ]) {
+    assert.notEqual((await app.inject({ url })).statusCode, 200, url);
+  }
 });

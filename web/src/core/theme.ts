@@ -1,4 +1,4 @@
-import type { EntityType, Status } from "./types";
+import type { EntityType, OutreachState, Status } from "./types";
 
 export type ThemeName = "dark" | "light";
 
@@ -112,3 +112,38 @@ export function statusColors(theme: ThemeName): Record<Status, string> {
 }
 
 export const STATUS_COLORS = STATUS_DARK;
+
+export const OUTREACH_STATE_ORDER: OutreachState[] = [0, 1, 2, 3, 4, 5];
+
+export const OUTREACH_STATE_LABELS: Record<OutreachState, string> = {
+  0: "Sadece bilgi",
+  1: "Mesaj atılabilir",
+  2: "Mesaj atılmış",
+  3: "Cevap alınmış",
+  4: "Görüşme bekliyor",
+  5: "Görüşme yapılmış",
+};
+
+const OUTREACH_DARK: Record<OutreachState, string> = {
+  0: "#788492",
+  1: "#5e91c4",
+  2: "#498ead",
+  3: "#4aa482",
+  4: "#d39a43",
+  5: "#db684f",
+};
+
+const OUTREACH_LIGHT: Record<OutreachState, string> = {
+  0: "#5f6c79",
+  1: "#3974aa",
+  2: "#24758f",
+  3: "#23805f",
+  4: "#a96c13",
+  5: "#b94431",
+};
+
+export function outreachStateColors(
+  theme: ThemeName
+): Record<OutreachState, string> {
+  return theme === "light" ? OUTREACH_LIGHT : OUTREACH_DARK;
+}

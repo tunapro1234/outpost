@@ -7,7 +7,7 @@ import { assistantRoutes } from "./modules/assistant/routes.mjs";
 import { copilotRoutes } from "./modules/copilot/routes.mjs";
 import { runClaude } from "./modules/copilot/runner.mjs";
 import { ControlRegistry } from "./modules/control/registry.mjs";
-import { controlRoutes } from "./modules/control/routes.mjs";
+import { controlRoutes, workspacePageRoutes } from "./modules/control/routes.mjs";
 import { dashboardRoutes } from "./modules/dashboard/routes.mjs";
 import { gatherRoutes } from "./modules/gather/routes.mjs";
 import { GatherRunner } from "./modules/gather/runner.mjs";
@@ -20,6 +20,8 @@ import { closeWorkspaceDb } from "./lib/db.mjs";
 import { dispatchDueSends } from "./modules/mailer/dispatch.mjs";
 import { mailAgentRoutes } from "./modules/mailer/agent-routes.mjs";
 import { FollowUpScheduler } from "./modules/mailer/scheduler.mjs";
+import { FleetService } from "./modules/fleet/service.mjs";
+import { fleetRoutes } from "./modules/fleet/routes.mjs";
 import {
   DEFAULT_MAIL_DATA,
   DEFAULT_MAIL_INTERVAL_MS,
@@ -112,6 +114,12 @@ export async function createApp({
   mailAgentBuildBrief,
   mailAgentContextAgent,
   metricsNow,
+  fleetExec,
+  fleetFileSystem,
+  fleetNow,
+  fleetCacheMs,
+  fleetBpPath,
+  fleetAgentbookPath,
   usersPath,
   htpasswdPath,
   defaultUser = process.env.OUTPOST_DEFAULT_USER,
@@ -158,6 +166,14 @@ export async function createApp({
   app.decorate("gatherRunner", gatherRunner);
   app.decorate("copilotRunner", copilotRunner);
   const controls = controlRegistry ?? new ControlRegistry();
+  const fleetService = new FleetService({
+    ...(fleetExec ? { exec: fleetExec } : {}),
+    ...(fleetFileSystem ? { fileSystem: fleetFileSystem } : {}),
+    ...(fleetNow ? { now: fleetNow } : {}),
+    ...(fleetCacheMs !== undefined ? { cacheMs: fleetCacheMs } : {}),
+    ...(fleetBpPath ? { bpPath: fleetBpPath } : {}),
+    ...(fleetAgentbookPath ? { agentbookPath: fleetAgentbookPath } : {}),
+  });
   app.decorate("controlRegistry", controls);
   const gatherScheduler = new GatherScheduler(registry, gatherRunner, {
     onError: (error) => app.log.warn({ err: error }, "Gather scheduler error"),
@@ -216,6 +232,15 @@ export async function createApp({
     registry: controls,
   });
   const resolveScopedWorkspace = scopedResolver(registry);
+  await app.register(workspacePageRoutes, {
+    prefix: "/api/ws/:ws",
+    resolveWorkspace: resolveScopedWorkspace,
+  });
+  await app.register(fleetRoutes, {
+    prefix: "/api/ws/:ws",
+    resolveWorkspace: resolveScopedWorkspace,
+    service: fleetService,
+  });
   await mountApi(app, "/api/ws/:ws", resolveScopedWorkspace, {
     gatherRunner,
     metricsNow,

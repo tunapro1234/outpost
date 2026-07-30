@@ -3,6 +3,18 @@ export type ControlCommand =
   | { id: string; action: "open-entity"; ws?: string }
   | { id: string; action: "set-workspace"; ws: string }
   | { id: string; action: "set-theme"; theme: "dark" | "light" }
+  | { id: string; action: "set-network"; network: string }
+  | { id: string; action: "set-view"; view: "graph" | "list" }
+  | {
+      id: string;
+      action: "set-filters";
+      q?: string;
+      type?: string;
+      tag?: string;
+      state?: number;
+      preset?: string;
+    }
+  | { id: string; action: "set-color-mode"; mode: "type" | "state" }
   | { id: string; action: "toast"; message: string };
 
 const INITIAL_RECONNECT_MS = 1_000;
@@ -48,6 +60,40 @@ export function parseControlCommand(value: unknown): ControlCommand | null {
     case "set-theme":
       return command.theme === "dark" || command.theme === "light"
         ? { id: command.id, action: command.action, theme: command.theme }
+        : null;
+    case "set-network":
+      return nonEmptyString(command.network)
+        ? { id: command.id, action: command.action, network: command.network }
+        : null;
+    case "set-view":
+      return command.view === "graph" || command.view === "list"
+        ? { id: command.id, action: command.action, view: command.view }
+        : null;
+    case "set-filters": {
+      const result: Extract<ControlCommand, { action: "set-filters" }> = {
+        id: command.id,
+        action: command.action,
+      };
+      for (const field of ["q", "type", "tag", "preset"] as const) {
+        const value = command[field];
+        if (value !== undefined && typeof value !== "string") return null;
+        if (typeof value === "string") result[field] = value;
+      }
+      if (command.state !== undefined) {
+        if (
+          !Number.isInteger(command.state) ||
+          Number(command.state) < 0 ||
+          Number(command.state) > 5
+        ) {
+          return null;
+        }
+        result.state = Number(command.state);
+      }
+      return result;
+    }
+    case "set-color-mode":
+      return command.mode === "type" || command.mode === "state"
+        ? { id: command.id, action: command.action, mode: command.mode }
         : null;
     case "toast":
       return nonEmptyString(command.message)

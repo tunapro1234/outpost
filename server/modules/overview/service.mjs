@@ -1,9 +1,12 @@
 import { networkStats } from "../network/service.mjs";
+import { entityStateMap, workspaceNetworkId } from "../network/service.mjs";
 import { reachStats, workspaceTrafficMails } from "../reach/mails.mjs";
 import { hasMail, mailAddresses, reachCandidateEntities } from "../reach/service.mjs";
 import { listRuns } from "../gather/journal.mjs";
 import { GATHER_KINDS, readAgentRegistry } from "../gather/registry.mjs";
 import { stageStats } from "../gather/stage.mjs";
+import { openWorkspaceDb } from "../../lib/db.mjs";
+import { workspaceNetworkView } from "../../lib/config.mjs";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAILY_DAYS = 30;
@@ -106,16 +109,136 @@ function totalMetrics(index) {
   };
 }
 
+const CHANNEL_TITLES = {
+  whatsapp: "WhatsApp mesajı",
+  mail: "Mail",
+  telefon: "Telefon görüşmesi",
+  yuzyuze: "Yüz yüze görüşme",
+  diger: "Temas",
+};
+
+function realTimestamp(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  return Number.isFinite(Date.parse(value)) ? value : null;
+}
+
+function entityName(workspace, entityId, fallback = null) {
+  return workspace.index.entities.get(entityId)?.meta?.name ?? fallback ?? entityId;
+}
+
+async function recentActivity(workspace) {
+  const db = openWorkspaceDb(workspace);
+  const network = workspaceNetworkId(workspace);
+  const items = [];
+
+  for (const row of db.prepare(
+    `SELECT entity_id, channel, direction, at
+     FROM interaction
+     WHERE workspace = ? AND network = ?`,
+  ).all(workspace.id, network)) {
+    const at = realTimestamp(row.at);
+    if (!at) continue;
+    const name = entityName(workspace, row.entity_id);
+    items.push({
+      kind: "interaction",
+      at,
+      title: `${CHANNEL_TITLES[row.channel]} — ${name}${row.direction === "in" ? "'ten" : "'e"}`,
+      entity_id: row.entity_id,
+      channel: row.channel,
+    });
+  }
+
+  for (const row of db.prepare(
+    `SELECT s.sent_at, m.person_id, m.company_id, m.to_addr
+     FROM mail_send AS s
+     JOIN mail AS m ON m.id = s.mail_id
+     WHERE s.status = 'sent'`,
+  ).all()) {
+    const at = realTimestamp(row.sent_at);
+    if (!at) continue;
+    const entityId = row.person_id ?? row.company_id ?? null;
+    const name = entityId
+      ? entityName(workspace, entityId, row.to_addr)
+      : row.to_addr ?? "bilinmeyen alıcı";
+    items.push({
+      kind: "mail_send",
+      at,
+      title: `Mail gönderildi — ${name}'e`,
+      ...(entityId ? { entity_id: entityId } : {}),
+      channel: "mail",
+    });
+  }
+
+  for (const run of await listRuns(workspace)) {
+    const at = realTimestamp(run.ended);
+    if (!at) continue;
+    items.push({
+      kind: "gather_run",
+      at,
+      title: `Toplama tamamlandı — ${run.agent_id}`,
+    });
+  }
+
+  for (const row of db.prepare(
+    `SELECT entity_id, updated_at
+     FROM entity_status
+     WHERE workspace = ? AND network = ? AND state_source = 'manual'`,
+  ).all(workspace.id, network)) {
+    const at = realTimestamp(row.updated_at);
+    if (!at) continue;
+    items.push({
+      kind: "entity_status",
+      at,
+      title: `Durum güncellendi — ${entityName(workspace, row.entity_id)}`,
+      entity_id: row.entity_id,
+    });
+  }
+
+  return items
+    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
+    .slice(0, 20);
+}
+
 export async function overviewMetrics(workspace, { now } = {}) {
   const [mails, gather] = await Promise.all([
     workspaceTrafficMails(workspace),
     gatherMetrics(workspace),
   ]);
+  const networkViews = !workspace.networkId && Array.isArray(workspace.networks)
+    ? workspace.networks.map((network) => workspaceNetworkView(workspace, network))
+    : [workspace];
+  const stateByEntity = new Map();
+  for (const networkWorkspace of networkViews) {
+    for (const [entityId, entityState] of entityStateMap(networkWorkspace, mails)) {
+      const current = stateByEntity.get(entityId);
+      if (
+        !current ||
+        (Number.isInteger(entityState.state) &&
+          (!Number.isInteger(current.state) || entityState.state > current.state))
+      ) {
+        stateByEntity.set(entityId, entityState);
+      }
+    }
+  }
+  const stateHistogram = Object.fromEntries(
+    Array.from({ length: 6 }, (_, state) => [state, 0]),
+  );
+  let reached = 0;
+  for (const { state } of stateByEntity.values()) {
+    if (Number.isInteger(state) && state >= 0 && state <= 5) stateHistogram[state] += 1;
+    if (Number.isInteger(state) && state >= 2) reached += 1;
+  }
   const candidates = reachCandidateEntities(workspace.index, mails).length;
+  const outreach = outreachMetrics(mails, { ...(now ? { now } : {}) });
   return {
     totals: totalMetrics(workspace.index),
-    outreach: outreachMetrics(mails, { ...(now ? { now } : {}) }),
+    outreach: {
+      ...outreach,
+      reached,
+      stateHistogram,
+    },
     gather,
     reach: { candidates },
+    recentActivity: await recentActivity(workspace),
   };
 }

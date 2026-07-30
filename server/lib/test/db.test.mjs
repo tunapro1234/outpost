@@ -22,15 +22,33 @@ test("migrations create all tables and set user_version", async () => {
     "mail_send",
     "mail_event",
     "followup",
+    "interaction",
+    "entity_status",
   ]) {
     assert.ok(names.includes(expected), `missing table ${expected}`);
   }
   const version = db.prepare("PRAGMA user_version").get().user_version;
-  assert.equal(Number(version), 2);
+  assert.equal(Number(version), 3);
   // Migration 1: mail.source + mail.authored_by kolonları eklendi.
   const mailCols = db.prepare("PRAGMA table_info(mail)").all().map((c) => c.name);
   assert.ok(mailCols.includes("source"));
   assert.ok(mailCols.includes("authored_by"));
+  assert.throws(
+    () => db.prepare(
+      `INSERT INTO entity_status
+       (workspace, network, entity_id, outreach_state)
+       VALUES ('fixture', 'default', 'ada', 7)`,
+    ).run(),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () => db.prepare(
+      `INSERT INTO interaction
+       (workspace, network, entity_id, channel, direction, at)
+       VALUES ('fixture', 'default', 'ada', 'telegram', 'out', '2026-07-30')`,
+    ).run(),
+    /CHECK constraint failed/,
+  );
   closeWorkspaceDb(workspace);
 });
 
@@ -57,7 +75,7 @@ test("migrations are idempotent on reopen", async () => {
   // Reopen: should not error, should preserve data, version stays at migration count.
   const db2 = openWorkspaceDb(workspace);
   const version = db2.prepare("PRAGMA user_version").get().user_version;
-  assert.equal(Number(version), 2);
+  assert.equal(Number(version), 3);
   const row = db2.prepare("SELECT name FROM entity WHERE id = ?").get("e1");
   assert.equal(row.name, "Ada");
   closeWorkspaceDb(workspace);

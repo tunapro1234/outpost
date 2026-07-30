@@ -10,7 +10,9 @@ import Sidebar, { NavKey } from "@/layout/Sidebar";
 import TopBar from "@/layout/TopBar";
 import FilterBar from "@/modules/network/FilterBar";
 import GraphView from "@/modules/network/GraphView";
-import ListView from "@/modules/network/ListView";
+import ListView, {
+  type ListPresetId,
+} from "@/modules/network/ListView";
 import EntityPanel from "@/modules/network/EntityPanel";
 import PhysicsPanel from "@/modules/network/PhysicsPanel";
 import LegendOverlay from "@/modules/network/LegendOverlay";
@@ -32,11 +34,13 @@ import {
 } from "@/core/api";
 import type {
   EntityListItem,
+  EntityType,
   Facets,
   GraphData,
   GraphNode,
   MailItem,
   NetworkInfo,
+  OutreachState,
   ReachStats,
   WorkspaceInfo,
 } from "@/core/types";
@@ -68,15 +72,36 @@ const SIDEBAR_MIN = 180;
 const SIDEBAR_MAX = 360;
 const SIDEBAR_DEFAULT = 208;
 const MOBILE_MEDIA = "(max-width: 768px)";
+const ENTITY_TYPES: EntityType[] = [
+  "person",
+  "company",
+  "institution",
+  "school",
+  "channel",
+  "team",
+];
 
 const TITLES: Record<NavKey, string> = {
   overview: "Overview",
   network: "Network",
+  schools: "Okullar",
+  institutions: "Kurumlar",
+  teams: "Takımlar",
+  teachers: "Öğretmenler",
+  competitors: "Rakipler",
   mail: "Mail",
   agents: "Agents",
   workspace: "Workspace",
   integrations: "Integrations",
   profile: "Profile",
+};
+
+const LIST_NAV_PRESETS: Partial<Record<NavKey, ListPresetId>> = {
+  schools: "school",
+  institutions: "institution",
+  teams: "team",
+  teachers: "teacher",
+  competitors: "competitor",
 };
 
 function loadTheme(): ThemeName {
@@ -107,6 +132,9 @@ function graphEndpointId(endpoint: string | GraphNode): string {
 export default function App() {
   const [theme, setTheme] = useState<ThemeName>(loadTheme);
   const [graphMode, setGraphMode] = useState<"graph" | "list">("graph");
+  const [colorMode, setColorMode] = useState<"type" | "state">(() =>
+    localStorage.getItem("outpost.graph.colorMode") === "state" ? "state" : "type"
+  );
   const [isMobile, setIsMobile] = useState(
     () => window.matchMedia(MOBILE_MEDIA).matches
   );
@@ -176,6 +204,7 @@ export default function App() {
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const [fitSignal, setFitSignal] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
+  const appliedListRoute = useRef<NavKey | null>(null);
 
   // Choose the workspace before issuing any scoped API request. A persisted
   // choice wins only while it still exists; otherwise use the backend default
@@ -302,42 +331,6 @@ export default function App() {
     }
   }, []);
 
-  const applyControlCommand = useCallback((command: ControlCommand) => {
-    switch (command.action) {
-      case "navigate":
-        navigate(command.path);
-        showControlToast(`⌁ agent: opened ${command.path}`);
-        break;
-      case "open-entity":
-        if (command.ws && !changeWorkspace(command.ws)) {
-          showControlToast(`⌁ agent: workspace ${command.ws} is unavailable`);
-          break;
-        }
-        navigate(entityPath(command.id));
-        showControlToast(`⌁ agent: opened ${entityPath(command.id)}`);
-        break;
-      case "set-workspace":
-        showControlToast(changeWorkspace(command.ws)
-          ? `⌁ agent: selected workspace ${command.ws}`
-          : `⌁ agent: workspace ${command.ws} is unavailable`);
-        break;
-      case "set-theme":
-        setTheme(command.theme);
-        showControlToast(`⌁ agent: set theme ${command.theme}`);
-        break;
-      case "toast":
-        showControlToast(`⌁ agent: ${command.message}`);
-        break;
-    }
-  }, [changeWorkspace, showControlToast]);
-  controlHandler.current = applyControlCommand;
-
-  const controlReady = workspace !== null;
-  useEffect(() => {
-    if (!controlReady) return;
-    return connectControl((command) => controlHandler.current(command));
-  }, [controlReady]);
-
   // ---- persistence side-effects ----
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -352,6 +345,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("outpost.physicsOpen", physicsOpen ? "1" : "0");
   }, [physicsOpen]);
+  useEffect(() => {
+    localStorage.setItem("outpost.graph.colorMode", colorMode);
+  }, [colorMode]);
 
   const setFilters = useCallback((f: FilterState) => {
     setFiltersState(f);
@@ -404,18 +400,110 @@ export default function App() {
   }, [workspace, network]);
 
   const changeNetwork = useCallback(
-    (id: string) => {
-      if (!workspace || id === network) return;
-      if (!networks.some((n) => n.id === id)) return;
+    (id: string): boolean => {
+      if (!workspace) return false;
+      if (id === network) return true;
+      if (!networks.some((n) => n.id === id)) return false;
       configureNetwork(id);
       localStorage.setItem(networkStorageKey(workspace), id);
       setSelectedId(null);
       setFocusNodeId(null);
       setFiltersState((f) => ({ ...f, egoId: null, hubThreshold: null }));
       setNetworkState(id);
+      return true;
     },
     [workspace, network, networks]
   );
+
+  const applyControlCommand = useCallback(
+    (command: ControlCommand) => {
+      switch (command.action) {
+        case "navigate":
+          navigate(command.path);
+          showControlToast(`⌁ agent: opened ${command.path}`);
+          break;
+        case "open-entity":
+          if (command.ws && !changeWorkspace(command.ws)) {
+            showControlToast(`⌁ agent: workspace ${command.ws} is unavailable`);
+            break;
+          }
+          navigate(entityPath(command.id));
+          showControlToast(`⌁ agent: opened ${entityPath(command.id)}`);
+          break;
+        case "set-workspace":
+          showControlToast(
+            changeWorkspace(command.ws)
+              ? `⌁ agent: selected workspace ${command.ws}`
+              : `⌁ agent: workspace ${command.ws} is unavailable`
+          );
+          break;
+        case "set-theme":
+          setTheme(command.theme);
+          showControlToast(`⌁ agent: set theme ${command.theme}`);
+          break;
+        case "set-network":
+          showControlToast(
+            changeNetwork(command.network)
+              ? `⌁ agent: selected network ${command.network}`
+              : `⌁ agent: network ${command.network} is unavailable`
+          );
+          break;
+        case "set-view":
+          setGraphMode(command.view);
+          navigate(viewPath("network"));
+          showControlToast(`⌁ agent: set network view ${command.view}`);
+          break;
+        case "set-filters": {
+          let next = { ...filters };
+          if (command.preset !== undefined) {
+            const wanted = command.preset.trim().toLocaleLowerCase("tr");
+            const preset = presets.find(
+              (item) => item.name.toLocaleLowerCase("tr") === wanted
+            );
+            if (preset) next = applyPreset(next, preset);
+          }
+          if (command.q !== undefined) next.q = command.q;
+          if (command.type !== undefined) {
+            next.types = ENTITY_TYPES.includes(command.type as EntityType)
+              ? [command.type as EntityType]
+              : [];
+          }
+          if (command.tag !== undefined) {
+            next.tags = command.tag.trim() ? [command.tag.trim()] : [];
+          }
+          if (command.state !== undefined) {
+            next.outreachStates = [command.state as OutreachState];
+          }
+          setFilters(next);
+          navigate(viewPath("network"));
+          showControlToast("⌁ agent: updated network filters");
+          break;
+        }
+        case "set-color-mode":
+          setColorMode(command.mode);
+          showControlToast(`⌁ agent: set graph colors by ${command.mode}`);
+          break;
+        case "toast":
+          showControlToast(`⌁ agent: ${command.message}`);
+          break;
+      }
+    },
+    [
+      changeNetwork,
+      changeWorkspace,
+      filters,
+      presets,
+      setFilters,
+      showControlToast,
+    ]
+  );
+  controlHandler.current = applyControlCommand;
+
+  const controlReady = workspace !== null;
+  useEffect(() => {
+    if (!controlReady) return;
+    return connectControl((command) => controlHandler.current(command));
+  }, [controlReady]);
 
   // ---- load full data once (+ on refresh) ----
   useEffect(() => {
@@ -532,6 +620,14 @@ export default function App() {
       ),
     };
   }, [filteredData, effectiveHiddenNodes]);
+  const graphStateCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const node of graphData.nodes) {
+      const state = node.state ?? 0;
+      counts[state] = (counts[state] ?? 0) + 1;
+    }
+    return counts;
+  }, [graphData.nodes]);
   const hiddenNodeItems = useMemo(
     () =>
       full.nodes
@@ -614,10 +710,10 @@ export default function App() {
         searchRef.current?.focus();
       } else if (e.key === "Escape") {
         if (mobileSidebarOpen) setMobileSidebarOpen(false);
-        else if (assistantOpen) setAssistantOpen(false);
-        else if (!typing) {
+        if (assistantOpen) setAssistantOpen(false);
+        if (!typing) {
           if (filters.egoId) setFilters({ ...filters, egoId: null });
-          else if (selectedId) setSelectedId(null);
+          if (selectedId) setSelectedId(null);
         }
       }
     };
@@ -641,6 +737,31 @@ export default function App() {
   }, []);
 
   const onDataChanged = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  const onEntityStateChange = useCallback(
+    (
+      id: string,
+      state: OutreachState | null,
+      source: "manual" | "derived" = "manual"
+    ) => {
+      setFull((current) => ({
+        ...current,
+        nodes: current.nodes.map((node) =>
+          node.id === id
+            ? { ...node, state, state_source: source }
+            : node
+        ),
+      }));
+      setEntityList((current) =>
+        current.map((item) =>
+          item.id === id
+            ? { ...item, state, state_source: source }
+            : item
+        )
+      );
+    },
+    []
+  );
 
   const onApplyPreset = useCallback(
     (p: Preset) => setFilters(applyPreset(filters, p)),
@@ -730,6 +851,10 @@ export default function App() {
           hook: n.hook ?? null,
           tags: n.tags ?? null,
           mail_source: n.mailSource ?? null,
+          state: n.state ?? null,
+          state_source: n.state_source,
+          research_status: n.research_status,
+          flags: n.flags,
           connected_org: org?.name ?? null,
           connected_org_id: org?.id ?? null,
         };
@@ -745,7 +870,37 @@ export default function App() {
     ? full.nodes.find((n) => n.id === filters.egoId)
     : null;
 
-  const isNetwork = view === "network";
+  const listPreset = LIST_NAV_PRESETS[view] ?? null;
+  const isNetwork = view === "network" || listPreset !== null;
+
+  // Sidebar list routes are durable deep links: each one owns the Intel
+  // network and an existing ListView preset. Clear stale graph filters once
+  // per route so a bookmark cannot silently inherit an unrelated old filter.
+  useEffect(() => {
+    if (!listPreset) {
+      appliedListRoute.current = null;
+      return;
+    }
+    setGraphMode("list");
+    if (appliedListRoute.current !== view) {
+      appliedListRoute.current = view;
+      setFilters({
+        ...DEFAULT_FILTERS,
+        hubThreshold: facets.degree.p99 || null,
+      });
+    }
+    if (network !== "intel" && networks.some((item) => item.id === "intel")) {
+      changeNetwork("intel");
+    }
+  }, [
+    changeNetwork,
+    facets.degree.p99,
+    listPreset,
+    network,
+    networks,
+    setFilters,
+    view,
+  ]);
 
   const navigateHome = useCallback((k: NavKey) => {
     navigate(viewPath(k));
@@ -753,10 +908,20 @@ export default function App() {
 
   const navigateFromSidebar = useCallback(
     (k: NavKey) => {
+      if (k === "network") setGraphMode("graph");
+      else if (LIST_NAV_PRESETS[k]) setGraphMode("list");
       navigateHome(k);
       setMobileSidebarOpen(false);
     },
     [navigateHome]
+  );
+
+  const changeGraphMode = useCallback(
+    (mode: "graph" | "list") => {
+      setGraphMode(mode);
+      if (mode === "graph" && listPreset) navigate(viewPath("network"));
+    },
+    [listPreset]
   );
 
   const changeWorkspaceFromSidebar = useCallback(
@@ -803,6 +968,9 @@ export default function App() {
           title="Show sidebar (⌘B)"
           aria-label="Show sidebar"
         >
+          <span className="sidebar-reveal-arrow" aria-hidden="true">
+            »
+          </span>
           <span className="sidebar-reveal-label">Menu</span>
         </button>
       )}
@@ -897,7 +1065,7 @@ export default function App() {
           onOpenMenu={() => setMobileSidebarOpen(true)}
           showGraphToggle={isNetwork}
           graphMode={graphMode}
-          onGraphMode={setGraphMode}
+          onGraphMode={changeGraphMode}
           nodes={full.nodes}
           onPick={gotoNode}
           searchRef={searchRef}
@@ -930,6 +1098,21 @@ export default function App() {
           <div className={`net-stage ${isNetwork ? "" : "hidden"}`}>
             {isNetwork && graphMode === "graph" && (
               <div className="stage-tools right">
+                <div className="seg color-mode-toggle" aria-label="Graf renk modu">
+                  <span>Renk:</span>
+                  <button
+                    className={colorMode === "type" ? "on" : ""}
+                    onClick={() => setColorMode("type")}
+                  >
+                    Tip
+                  </button>
+                  <button
+                    className={colorMode === "state" ? "on" : ""}
+                    onClick={() => setColorMode("state")}
+                  >
+                    Durum
+                  </button>
+                </div>
                 <HiddenNodesMenu
                   key={`${workspace}:${network}`}
                   nodes={hiddenNodeItems}
@@ -1003,11 +1186,14 @@ export default function App() {
                   physics={physics}
                   hubSet={result.hubSet}
                   hubThreshold={filters.hubThreshold}
+                  colorMode={colorMode}
                 />
               )
             ) : (
               <ListView
                 items={listItems}
+                network={network}
+                requestedPreset={listPreset}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
                 onOpenFull={openFull}
@@ -1023,6 +1209,8 @@ export default function App() {
                 totalNodes={full.nodes.length}
                 visibleEdges={graphData.edges.length}
                 mentionOff={!filters.showMention}
+                colorMode={colorMode}
+                stateCounts={graphStateCounts}
               />
             )}
 
@@ -1048,7 +1236,6 @@ export default function App() {
           {view === "overview" && (
             <OverviewView
               theme={theme}
-              mails={mails}
               onOpenEntity={openFull}
               onNavigate={navigateHome}
               onAssistantSubmit={submitAssistant}
@@ -1086,6 +1273,7 @@ export default function App() {
               onEgo={onEgo}
               onHide={hideGraphNode}
               egoActive={result.egoActive && filters.egoId === selectedId}
+              onStateChange={onEntityStateChange}
             />
           )}
         </div>

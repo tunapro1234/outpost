@@ -2,7 +2,11 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import ForceGraph2D, { ForceGraphMethods } from "react-force-graph-2d";
 import type { EntityType, GraphData, GraphNode, Status } from "@/core/types";
 import type { ThemeName } from "@/core/theme";
-import { typeColors, statusColors } from "@/core/theme";
+import {
+  outreachStateColors,
+  typeColors,
+  statusColors,
+} from "@/core/theme";
 import type { Physics } from "@/core/physics";
 
 interface Link {
@@ -22,6 +26,7 @@ interface Props {
   physics: Physics;
   hubSet: Set<string>;
   hubThreshold: number | null;
+  colorMode: "type" | "state";
 }
 
 function id(n: string | GraphNode): string {
@@ -52,11 +57,13 @@ export default function GraphView({
   physics,
   hubSet,
   hubThreshold,
+  colorMode,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const fgRef = useRef<ForceGraphMethods<GraphNode, Link> | undefined>(undefined);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [, setPulseTick] = useState(0);
   const hoverInTimer = useRef<number | null>(null);
   const hoverOutTimer = useRef<number | null>(null);
   const pendingHover = useRef<string | null>(null);
@@ -64,6 +71,7 @@ export default function GraphView({
 
   const tc = useMemo(() => typeColors(theme), [theme]);
   const sc = useMemo(() => statusColors(theme), [theme]);
+  const oc = useMemo(() => outreachStateColors(theme), [theme]);
   const canvasBg = theme === "light" ? CANVAS_LIGHT : CANVAS_DARK;
 
   // resize observer
@@ -140,6 +148,19 @@ export default function GraphView({
     for (const nb of neighbors.get(focusId) ?? []) s.add(nb);
     return s;
   }, [focusId, neighbors]);
+
+  const hasActiveResearch = useMemo(
+    () => data.nodes.some((node) => node.research_status === "active"),
+    [data.nodes]
+  );
+  useEffect(() => {
+    if (!hasActiveResearch) return;
+    const timer = window.setInterval(
+      () => setPulseTick((tick) => (tick + 1) % 1_000),
+      120
+    );
+    return () => window.clearInterval(timer);
+  }, [hasActiveResearch]);
 
   const radiusFor = useCallback(
     (n: GraphNode) => {
@@ -324,10 +345,18 @@ export default function GraphView({
 
   const handleClick = useCallback(
     (node: GraphNode) => {
-      onSelect(node.id);
+      setHoverId(null);
+      onSelect(selectedId === node.id ? null : node.id);
     },
-    [onSelect]
+    [onSelect, selectedId]
   );
+
+  const clearSelection = useCallback(() => {
+    setHoverId(null);
+    pendingHover.current = null;
+    clearTimers();
+    onSelect(null);
+  }, [onSelect]);
 
   // big graphs need the extra ticks to actually converge; 160 froze the
   // layout mid-expansion on ~1.9k nodes
@@ -383,7 +412,7 @@ export default function GraphView({
         }}
         onNodeHover={(n) => onNodeHover(n as GraphNode | null)}
         onNodeClick={(n) => handleClick(n as GraphNode)}
-        onBackgroundClick={() => onSelect(null)}
+        onBackgroundClick={clearSelection}
         linkColor={(l) => {
           const link = l as Link;
           const isFocusEdge =
@@ -416,12 +445,33 @@ export default function GraphView({
           const isSel = node.id === selectedId;
           const isHover = node.id === hoverId;
           const isHub = hubSet.has(node.id);
-          const color = tc[node.type as EntityType] ?? "#8a8a92";
+          const color = node.flags?.no_contact
+            ? theme === "light"
+              ? "#b33232"
+              : "#d65454"
+            : node.flags?.internal
+            ? theme === "light"
+              ? "#74747d"
+              : "#85858f"
+            : colorMode === "state"
+            ? oc[node.state ?? 0]
+            : tc[node.type as EntityType] ?? "#8a8a92";
           const ring = node.status ? sc[node.status as Status] : null;
 
           ctx.globalAlpha = dim ? dimAlpha : 1;
 
-          if (ring) {
+          if (node.research_status === "active") {
+            const pulse = (Math.sin(Date.now() / 430) + 1) / 2;
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, r + 4 + pulse * 3, 0, Math.PI * 2);
+            ctx.fillStyle =
+              theme === "light"
+                ? `rgba(43,118,170,${0.1 + pulse * 0.12})`
+                : `rgba(104,184,230,${0.12 + pulse * 0.16})`;
+            ctx.fill();
+          }
+
+          if (ring && colorMode === "type") {
             ctx.beginPath();
             ctx.arc(node.x, node.y, r + 2.4, 0, Math.PI * 2);
             ctx.lineWidth = 2;
@@ -441,6 +491,40 @@ export default function GraphView({
           ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
           ctx.fillStyle = color;
           ctx.fill();
+
+          if (node.flags?.no_contact) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.strokeStyle =
+              theme === "light"
+                ? "rgba(255,255,255,0.82)"
+                : "rgba(18,18,20,0.78)";
+            ctx.lineWidth = Math.max(1.2, r * 0.22);
+            const step = Math.max(3, r * 0.7);
+            for (let offset = -r * 2; offset <= r * 2; offset += step) {
+              ctx.beginPath();
+              ctx.moveTo(node.x - r, node.y + offset + r);
+              ctx.lineTo(node.x + r, node.y + offset - r);
+              ctx.stroke();
+            }
+            ctx.restore();
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, r + 1.6, 0, Math.PI * 2);
+            ctx.strokeStyle = theme === "light" ? "#8e1818" : "#ff7777";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          } else if (node.research_status === "done") {
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, r + 1.8, 0, Math.PI * 2);
+            ctx.strokeStyle =
+              theme === "light"
+                ? "rgba(24,70,92,0.92)"
+                : "rgba(188,226,244,0.95)";
+            ctx.lineWidth = 2.8;
+            ctx.stroke();
+          }
           if (isHover || isSel) {
             ctx.lineWidth = 1.3;
             ctx.strokeStyle = nodeStroke;

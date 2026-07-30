@@ -4,6 +4,11 @@ import type { WorkspaceInfo } from "@/core/types";
 export type NavKey =
   | "overview"
   | "network"
+  | "schools"
+  | "institutions"
+  | "teams"
+  | "teachers"
+  | "competitors"
   | "mail"
   | "agents"
   | "workspace"
@@ -41,6 +46,34 @@ const Icons: Record<NavKey, JSX.Element> = {
       <path d="M7.7 8.4 10.6 15M16.6 7.7 13.3 15.4M8 7l7.8-.6" />
     </svg>
   ),
+  schools: (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <path d="m3 10 9-5 9 5-9 5zM6 13v5h12v-5M21 10v6" />
+    </svg>
+  ),
+  institutions: (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 20h16M6 20V9h12v11M3 9l9-5 9 5M9 12v5M15 12v5" />
+    </svg>
+  ),
+  teams: (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="8" r="3" />
+      <circle cx="17" cy="9" r="2.3" />
+      <path d="M3.5 20a5.5 5.5 0 0 1 11 0M14 15.5a4.5 4.5 0 0 1 6.5 4" />
+    </svg>
+  ),
+  teachers: (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3.5 20a5.5 5.5 0 0 1 11 0M14 6h7M17.5 6v8M15 11h5" />
+    </svg>
+  ),
+  competitors: (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 4H4v3a4 4 0 0 0 4 4M16 4h4v3a4 4 0 0 1-4 4M8 3h8v5a4 4 0 0 1-8 0zM12 12v5M8 21h8M9 17h6" />
+    </svg>
+  ),
   mail: (
     <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="5" width="18" height="14" rx="2.4" />
@@ -75,6 +108,15 @@ const Icons: Record<NavKey, JSX.Element> = {
 const TOP: { k: NavKey; label: string }[] = [
   { k: "overview", label: "Overview" },
   { k: "network", label: "Network" },
+];
+const LISTS: { k: NavKey; label: string }[] = [
+  { k: "schools", label: "Okullar" },
+  { k: "institutions", label: "Kurumlar" },
+  { k: "teams", label: "Takımlar" },
+  { k: "teachers", label: "Öğretmenler" },
+  { k: "competitors", label: "Rakipler" },
+];
+const MODULES: { k: NavKey; label: string }[] = [
   { k: "mail", label: "Mail" },
   { k: "agents", label: "Agents" },
 ];
@@ -109,9 +151,19 @@ export default function Sidebar({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  const Item = ({ k, label }: { k: NavKey; label: string }) => (
+  const Item = ({
+    k,
+    label,
+    nested = false,
+  }: {
+    k: NavKey;
+    label: string;
+    nested?: boolean;
+  }) => (
     <button
-      className={`side-item ${active === k ? "on" : ""}`}
+      className={`side-item ${nested ? "nested" : ""} ${
+        active === k ? "on" : ""
+      }`}
       onClick={() => onNavigate(k)}
     >
       <span className="side-ico">{Icons[k]}</span>
@@ -134,10 +186,31 @@ export default function Sidebar({
       <div className="side-brand">
         <span className="side-mark">O</span>
         <span className="side-word">Outpost</span>
+        <button
+          className="side-brand-toggle"
+          onClick={onClose}
+          title="Sidebar’ı gizle (⌘B / Ctrl+B)"
+          aria-label="Sidebar’ı gizle"
+        >
+          «
+        </button>
       </div>
 
       <div className="side-group">
         {TOP.map((i) => (
+          <Item key={i.k} {...i} />
+        ))}
+      </div>
+
+      <div className="side-list-group">
+        <div className="side-section-label">Listeler</div>
+        {LISTS.map((i) => (
+          <Item key={i.k} {...i} nested />
+        ))}
+      </div>
+
+      <div className="side-group side-modules">
+        {MODULES.map((i) => (
           <Item key={i.k} {...i} />
         ))}
       </div>
@@ -192,15 +265,6 @@ export default function Sidebar({
           <span className="ws-caret">▾</span>
         </button>
       </div>
-
-      <button
-        className="side-collapse"
-        onClick={onClose}
-        title="Hide sidebar (⌘B)"
-        aria-label="Hide sidebar"
-      >
-        «
-      </button>
 
       {/* Right-edge drag handle: resize between min/max, highlights on hover. */}
       <div

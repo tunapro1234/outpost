@@ -10,6 +10,11 @@ import { useSyncExternalStore } from "react";
 export type ViewKey =
   | "overview"
   | "network"
+  | "schools"
+  | "institutions"
+  | "teams"
+  | "teachers"
+  | "competitors"
   | "mail"
   | "agents"
   | "workspace"
@@ -23,6 +28,11 @@ export type Route =
 const PATH_TO_VIEW: Record<string, ViewKey> = {
   "/": "overview",
   "/network": "network",
+  "/lists/schools": "schools",
+  "/lists/institutions": "institutions",
+  "/lists/teams": "teams",
+  "/lists/teachers": "teachers",
+  "/lists/competitors": "competitors",
   "/mail": "mail",
   // legacy alias — the module used to be called Reach. Kept so old links and
   // bookmarks still resolve; navigate() below rewrites the URL to /mail.
@@ -39,6 +49,11 @@ const PATH_TO_VIEW: Record<string, ViewKey> = {
 const VIEW_TO_PATH: Record<ViewKey, string> = {
   overview: "/",
   network: "/network",
+  schools: "/lists/schools",
+  institutions: "/lists/institutions",
+  teams: "/lists/teams",
+  teachers: "/lists/teachers",
+  competitors: "/lists/competitors",
   mail: "/mail",
   agents: "/agents",
   workspace: "/workspace",

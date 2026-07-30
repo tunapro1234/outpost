@@ -1,10 +1,145 @@
 import { TYPE_DIRECTORIES } from "../../lib/vault.mjs";
 import { ENTITY_TYPES } from "../../lib/entity-meta.mjs";
+import { openWorkspaceDb } from "../../lib/db.mjs";
 import { normalizeSearch } from "../../lib/slug.mjs";
 import { extractMailAddresses } from "../mail/parser.mjs";
 import { emptyMailStats } from "../reach/mails.mjs";
 
 export const VALID_TYPES = new Set(ENTITY_TYPES);
+const DURUM_STATES = new Map([
+  ["yeni", 0],
+  ["izlemede", 0],
+  ["siniflandirma-bekliyor", 0],
+  ["pasif", 0],
+  ["yazilacak", 1],
+  ["konusuldu", 3],
+  ["referans-verdi", 3],
+  ["aktif", 4],
+]);
+
+function emptyFlags() {
+  return { internal: false, no_contact: false };
+}
+
+export function workspaceNetworkId(workspace) {
+  return workspace.networkId ?? workspace.defaultNetworkId ?? "default";
+}
+
+/**
+ * The one state-derivation function used by graph, list, detail, status-map,
+ * and Overview. A manual value is an override. Everything else is evidence:
+ * interactions and matched mail raise the state, then `durum` supplies a
+ * baseline. Safety classifications deliberately have no outreach state.
+ */
+export function deriveEntityState({
+  entity,
+  status = null,
+  interaction = null,
+  mail = null,
+} = {}) {
+  const durum = typeof entity?.meta?.durum === "string"
+    ? entity.meta.durum.trim().toLowerCase()
+    : "";
+  const flags = emptyFlags();
+  if (durum === "ic") flags.internal = true;
+  if (durum === "temas-yasak") flags.no_contact = true;
+
+  const researchStatus = status?.research_status ?? "none";
+  if (flags.internal || flags.no_contact) {
+    return {
+      state: null,
+      state_source: "derived",
+      research_status: researchStatus,
+      flags,
+    };
+  }
+
+  if (
+    status?.state_source === "manual" &&
+    Number.isInteger(status.outreach_state)
+  ) {
+    return {
+      state: status.outreach_state,
+      state_source: "manual",
+      research_status: researchStatus,
+      flags,
+    };
+  }
+
+  let state = DURUM_STATES.get(durum) ?? 0;
+  if (mail?.out) state = Math.max(state, 2);
+  if (mail?.in) state = Math.max(state, 3);
+  if (interaction?.out) state = Math.max(state, 2);
+  if (interaction?.in) state = Math.max(state, 3);
+  return {
+    state,
+    state_source: "derived",
+    research_status: researchStatus,
+    flags,
+  };
+}
+
+function evidence(map, entityId) {
+  let value = map.get(entityId);
+  if (!value) {
+    value = { out: false, in: false };
+    map.set(entityId, value);
+  }
+  return value;
+}
+
+/**
+ * Load every DB/mail input once and derive all entities in a network. Callers
+ * may pass the already-loaded traffic mail list to avoid duplicate I/O.
+ */
+export function entityStateMap(workspace, mails = []) {
+  const db = openWorkspaceDb(workspace);
+  const network = workspaceNetworkId(workspace);
+  const statusByEntity = new Map(
+    db.prepare(
+      `SELECT * FROM entity_status
+       WHERE workspace = ? AND network = ?`,
+    ).all(workspace.id, network).map((row) => [row.entity_id, row]),
+  );
+  const interactionByEntity = new Map();
+  for (const row of db.prepare(
+    `SELECT entity_id, direction FROM interaction
+     WHERE workspace = ? AND network = ?`,
+  ).all(workspace.id, network)) {
+    evidence(interactionByEntity, row.entity_id)[row.direction] = true;
+  }
+
+  const mailByEntity = new Map();
+  for (const mail of mails) {
+    if (!mail?.entity_id || !["out", "in"].includes(mail.direction)) continue;
+    evidence(mailByEntity, mail.entity_id)[mail.direction] = true;
+    if (mail.person_id) evidence(mailByEntity, mail.person_id)[mail.direction] = true;
+  }
+  for (const row of db.prepare(
+    `SELECT m.person_id, m.company_id
+     FROM mail_send AS s
+     JOIN mail AS m ON m.id = s.mail_id
+     WHERE s.status = 'sent'`,
+  ).all()) {
+    for (const entityId of [row.person_id, row.company_id]) {
+      if (entityId) evidence(mailByEntity, entityId).out = true;
+    }
+  }
+
+  return new Map([...workspace.index.entities.values()].map((entity) => [
+    entity.id,
+    deriveEntityState({
+      entity,
+      status: statusByEntity.get(entity.id),
+      interaction: interactionByEntity.get(entity.id),
+      mail: mailByEntity.get(entity.id),
+    }),
+  ]));
+}
+
+function stateFor(entity, stateByEntity) {
+  return stateByEntity?.get(entity.id) ?? deriveEntityState({ entity });
+}
 
 export function entityMailAddresses(entity) {
   return extractMailAddresses([entity?.meta?.mail, entity?.meta?.mails]);
@@ -42,7 +177,7 @@ export function csv(value) {
   return new Set(value.split(",").map((item) => item.trim()).filter(Boolean));
 }
 
-export function entityListItem(entity, index, statsByEntity) {
+export function entityListItem(entity, index, statsByEntity, stateByEntity) {
   return {
     id: entity.id,
     name: entity.meta.name,
@@ -72,6 +207,7 @@ export function entityListItem(entity, index, statsByEntity) {
     sira: Number.isInteger(entity.meta.sira) ? entity.meta.sira : null,
     degree: index.degrees.get(entity.id) ?? 0,
     ...(statsByEntity.get(entity.id) ?? emptyMailStats()),
+    ...stateFor(entity, stateByEntity),
   };
 }
 
@@ -108,10 +244,15 @@ export function facets(index) {
   };
 }
 
-export function graph(index, statsByEntity, query) {
+export function graph(index, statsByEntity, query, {
+  stateByEntity,
+  hiddenNodes = [],
+} = {}) {
   const types = csv(query.types);
   const statuses = csv(query.statuses);
   const q = normalizeSearch(query.q);
+  const hidden = new Set(hiddenNodes);
+  const includeHidden = query.include_hidden === "1";
   let minScore = null;
   if (query.minScore !== undefined) {
     minScore = Number(query.minScore);
@@ -124,6 +265,7 @@ export function graph(index, statsByEntity, query) {
 
   const visible = new Set();
   const nodes = [];
+  let hiddenCount = 0;
   for (const entity of index.entities.values()) {
     const meta = entity.meta;
     const score = typeof meta.score === "number" ? meta.score : null;
@@ -131,6 +273,10 @@ export function graph(index, statsByEntity, query) {
     if (statuses && !statuses.has(meta.status ?? "")) continue;
     if (minScore !== null && (score === null || score < minScore)) continue;
     if (q && !normalizeSearch(meta.name).includes(q)) continue;
+    if (hidden.has(entity.id)) {
+      hiddenCount += 1;
+      if (!includeHidden) continue;
+    }
     visible.add(entity.id);
     nodes.push({
       id: entity.id,
@@ -142,6 +288,7 @@ export function graph(index, statsByEntity, query) {
       degree: index.degrees.get(entity.id) ?? 0,
       mail_count: statsByEntity.get(entity.id)?.mail_count ?? 0,
       tags: Array.isArray(meta.tags) ? meta.tags : null,
+      ...stateFor(entity, stateByEntity),
     });
   }
   return {
@@ -149,5 +296,6 @@ export function graph(index, statsByEntity, query) {
     edges: index.edges.filter(
       (edge) => visible.has(edge.source) && visible.has(edge.target),
     ),
+    hidden_count: hiddenCount,
   };
 }

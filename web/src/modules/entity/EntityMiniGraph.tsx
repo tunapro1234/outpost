@@ -50,9 +50,10 @@ export default function EntityMiniGraph({ data, centerId, theme, onSelect }: Pro
         focusNodeId={null}
         fitSignal={0}
         physics={{ ...DEFAULT_PHYSICS, charge: 160, linkDistance: 46 }}
-        hubSet={new Set()}
-        hubThreshold={null}
-      />
+      hubSet={new Set()}
+      hubThreshold={null}
+      colorMode="type"
+    />
     </div>
   );
 }

@@ -53,6 +53,42 @@ ALTER TABLE mail ADD COLUMN source TEXT;
 ALTER TABLE mail ADD COLUMN authored_by TEXT;
 CREATE INDEX IF NOT EXISTS idx_mail_source ON mail(source);
 `,
+  // Migration 2: channel-independent contact history and per-network entity
+  // state. The CHECK constraints are deliberate: API validation is helpful,
+  // but every writer (including local scripts) must obey the same invariants.
+  `
+CREATE TABLE IF NOT EXISTS interaction (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace TEXT NOT NULL,
+  network TEXT,
+  entity_id TEXT NOT NULL,
+  channel TEXT NOT NULL
+    CHECK(channel IN ('whatsapp', 'mail', 'telefon', 'yuzyuze', 'diger')),
+  direction TEXT NOT NULL DEFAULT 'out'
+    CHECK(direction IN ('out', 'in')),
+  at TEXT NOT NULL,
+  note TEXT,
+  source TEXT,
+  created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_interaction_workspace_entity
+  ON interaction(workspace, entity_id);
+
+CREATE TABLE IF NOT EXISTS entity_status (
+  workspace TEXT,
+  network TEXT,
+  entity_id TEXT,
+  outreach_state INTEGER
+    CHECK(outreach_state BETWEEN 0 AND 5),
+  state_source TEXT
+    CHECK(state_source IN ('manual', 'derived')),
+  research_status TEXT NOT NULL DEFAULT 'none'
+    CHECK(research_status IN ('none', 'active', 'done')),
+  research_agent TEXT,
+  updated_at TEXT,
+  PRIMARY KEY (workspace, network, entity_id)
+);
+`,
 ];
 
 function currentUserVersion(db) {

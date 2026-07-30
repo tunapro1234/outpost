@@ -4,14 +4,19 @@ import type {
   MailAgentConfig,
   MailAgentModel,
   Entity,
+  EntityStatusResult,
   EntityListItem,
   EntityMeta,
   EntityType,
   Exclusion,
   Facets,
+  FleetResponse,
   GatherOverview,
   GraphData,
   GraphNode,
+  Interaction,
+  InteractionChannel,
+  InteractionDirection,
   MailDraft,
   MailImportItem,
   MailImportResult,
@@ -207,6 +212,15 @@ function mockMetrics(): Metrics {
     outreach: {
       mailsSent: 0,
       uniqueRecipients: 0,
+      reached: 0,
+      stateHistogram: {
+        0: mockGraph.nodes.length,
+        1: 0,
+        2: 0,
+        3: 0,
+        4: 0,
+        5: 0,
+      },
       firstMailAt: null,
       lastMailAt: null,
       activeDays: 0,
@@ -216,6 +230,7 @@ function mockMetrics(): Metrics {
     },
     gather: { staged: 0, acceptedTotal: 0, agents: 0, running: 0 },
     reach: { candidates: 0 },
+    recentActivity: [],
   };
 }
 
@@ -533,6 +548,19 @@ export const api = {
     }
   },
 
+  // Live bp/tmux fleet. Operational inspection is best-effort: callers get an
+  // unavailable empty result if either the endpoint or the local tools fail.
+  async fleet(): Promise<FleetResponse | null> {
+    if (MOCK) return null;
+    try {
+      const res = await fetch(`${workspaceBase()}/fleet`);
+      if (!res.ok) return null;
+      return (await res.json()) as FleetResponse;
+    } catch {
+      return null;
+    }
+  },
+
   // Overview metrics. Returns null on 404 / error (endpoint may still be
   // shipping) so the dashboard degrades to a graceful empty state.
   async metrics(): Promise<Metrics | null> {
@@ -566,6 +594,79 @@ export const api = {
   async entity(id: string): Promise<Entity> {
     if (MOCK) return mockEntities[id] ?? fallbackEntity(id);
     return json<Entity>(netUrl(`${workspaceBase()}/entities/${encodeURIComponent(id)}`));
+  },
+
+  async interactions(id: string): Promise<Interaction[]> {
+    if (MOCK) return [];
+    return json<Interaction[]>(
+      netUrl(`${workspaceBase()}/entity/${encodeURIComponent(id)}/interactions`)
+    );
+  },
+
+  async createInteraction(
+    id: string,
+    payload: {
+      channel: InteractionChannel;
+      direction?: InteractionDirection;
+      at?: string;
+      note?: string;
+    }
+  ): Promise<Interaction> {
+    if (MOCK) {
+      const now = new Date().toISOString();
+      return {
+        id: Date.now(),
+        workspace: "mock",
+        network: "default",
+        entity_id: id,
+        channel: payload.channel,
+        direction: payload.direction ?? "out",
+        at: payload.at ?? now,
+        note: payload.note ?? null,
+        source: "mock",
+        created_at: now,
+      };
+    }
+    return json<Interaction>(
+      netUrl(`${workspaceBase()}/entity/${encodeURIComponent(id)}/interactions`),
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  async deleteInteraction(id: string, interactionId: number): Promise<void> {
+    if (MOCK) return;
+    await json<{ ok: boolean }>(
+      netUrl(
+        `${workspaceBase()}/entity/${encodeURIComponent(id)}/interactions/${interactionId}`
+      ),
+      { method: "DELETE" }
+    );
+  },
+
+  async updateEntityStatus(
+    id: string,
+    outreachState: number
+  ): Promise<EntityStatusResult> {
+    if (MOCK) {
+      return {
+        entity_id: id,
+        state: outreachState as EntityStatusResult["state"],
+        state_source: "manual",
+        research_status: "none",
+      };
+    }
+    return json<EntityStatusResult>(
+      netUrl(`${workspaceBase()}/entity/${encodeURIComponent(id)}/status`),
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ outreach_state: outreachState }),
+      }
+    );
   },
 
   async patchEntity(

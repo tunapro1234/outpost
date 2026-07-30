@@ -4,6 +4,7 @@ import type {
   GraphData,
   GraphEdge,
   GraphNode,
+  OutreachState,
   Status,
 } from "./types";
 import { trNormalize } from "./normalize";
@@ -17,6 +18,8 @@ export interface FilterState {
   types: EntityType[];
   subtypes: string[]; // encoded "type::subtype"
   statuses: Status[];
+  outreachStates: OutreachState[];
+  tags: string[];
   noStatus: boolean;
   scoreMin: number | null;
   scoreMax: number | null;
@@ -43,6 +46,8 @@ export const DEFAULT_FILTERS: FilterState = {
   types: [],
   subtypes: [],
   statuses: [],
+  outreachStates: [],
+  tags: [],
   noStatus: false,
   scoreMin: null,
   scoreMax: null,
@@ -254,6 +259,22 @@ function nodePasses(n: GraphNode, f: FilterState, ego: Set<string> | null): bool
       (n.status && f.statuses.includes(n.status)) ||
       (f.noStatus && !n.status);
     if (!statusOk) return false;
+  }
+
+  if (
+    f.outreachStates.length &&
+    (n.state == null || !f.outreachStates.includes(n.state))
+  ) {
+    return false;
+  }
+
+  if (
+    f.tags.length &&
+    !f.tags.every((tag) =>
+      (n.tags ?? []).some((nodeTag) => trNormalize(nodeTag) === trNormalize(tag))
+    )
+  ) {
+    return false;
   }
 
   // score

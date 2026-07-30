@@ -17,7 +17,29 @@ export type Status =
   | "red"
   | "pas";
 
-export interface GraphNode {
+export type OutreachState = 0 | 1 | 2 | 3 | 4 | 5;
+export type ResearchStatus = "none" | "active" | "done";
+export type InteractionChannel =
+  | "whatsapp"
+  | "mail"
+  | "telefon"
+  | "yuzyuze"
+  | "diger";
+export type InteractionDirection = "out" | "in";
+
+export interface EntityFlags {
+  internal: boolean;
+  no_contact: boolean;
+}
+
+export interface EntityState {
+  state?: OutreachState | null;
+  state_source?: "manual" | "derived";
+  research_status?: ResearchStatus;
+  flags?: EntityFlags;
+}
+
+export interface GraphNode extends EntityState {
   id: string;
   name: string;
   type: EntityType;
@@ -59,7 +81,7 @@ export interface GraphData {
   edges: GraphEdge[];
 }
 
-export interface EntityListItem {
+export interface EntityListItem extends EntityState {
   id: string;
   name: string;
   type: EntityType;
@@ -168,12 +190,31 @@ export interface EntityProduct {
   top_seller?: boolean;
 }
 
-export interface Entity {
+export interface Entity extends EntityState {
   id: string;
   meta: EntityMeta;
   body: string;
   relations: Relation[];
   unresolved: string[];
+}
+
+export interface Interaction {
+  id: number;
+  workspace: string;
+  network: string;
+  entity_id: string;
+  channel: InteractionChannel;
+  direction: InteractionDirection;
+  at: string;
+  note: string | null;
+  source: string;
+  created_at: string;
+}
+
+export interface EntityStatusResult extends EntityState {
+  entity_id: string;
+  agent?: string | null;
+  updated_at?: string;
 }
 
 // ---- facets (server /api/facets, or derived client-side) ----------------
@@ -575,6 +616,8 @@ export interface Metrics {
   outreach: {
     mailsSent: number;
     uniqueRecipients: number;
+    reached: number;
+    stateHistogram: Record<string, number>;
     firstMailAt: string | null;
     lastMailAt: string | null;
     activeDays: number;
@@ -591,6 +634,15 @@ export interface Metrics {
   reach: {
     candidates: number;
   };
+  recentActivity: OverviewActivity[];
+}
+
+export interface OverviewActivity {
+  kind: "interaction" | "mail_send" | "gather_run" | "entity_status";
+  at: string;
+  title: string;
+  entity_id?: string;
+  channel?: InteractionChannel;
 }
 
 // ---- gather: agents / runs / stage --------------------------------------
@@ -663,6 +715,28 @@ export interface OverviewAgent {
 export interface GatherOverview {
   agents: OverviewAgent[];
   counts: Record<GatherKind, { staged: number; accepted: number }>;
+}
+
+// ---- live fleet (server GET /api/ws/:ws/fleet) ---------------------------
+export interface FleetAgent {
+  name: string;
+  tmux: "idle" | "busy" | "closed";
+  status: "working" | "idle" | "closed";
+  cache: {
+    raw: string;
+    heat: string | null;
+    age: string | null;
+    tokens: string | null;
+  };
+  lastTalk: string | null;
+  agentbook: string;
+  currentTask: string | null;
+}
+
+export interface FleetResponse {
+  agents: FleetAgent[];
+  unavailable: boolean;
+  updatedAt: string | null;
 }
 
 // ---- profile (global /api/profile) --------------------------------------

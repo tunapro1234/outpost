@@ -11,6 +11,7 @@ import type {
 import { api } from "@/core/api";
 import AgentsStrip from "./AgentsStrip";
 import AgentSpeed from "./AgentSpeed";
+import FleetSection from "./FleetSection";
 import PipelineFlow from "./PipelineFlow";
 
 interface GatherViewProps {
@@ -479,12 +480,13 @@ export default function GatherView({
 
   return (
     <div className="view-pad gather2">
+      <FleetSection />
+
       <div className="g-head">
         <div>
-          <h2>Agents</h2>
+          <h2>Toplama</h2>
           <span className="int-sub">
-            Mission control for your agent fleet: discovery, enrichment and
-            outreach, with every step approved by you.
+            Keşif ve zenginleştirme akışları; her adım sizin onayınızdan geçer.
           </span>
         </div>
         <button className="btn" onClick={load}>

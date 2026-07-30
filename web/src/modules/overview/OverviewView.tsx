@@ -1,8 +1,15 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { MailItem, Metrics } from "@/core/types";
+import type { Metrics, OverviewActivity } from "@/core/types";
 import type { NavKey } from "@/layout/Sidebar";
 import type { ThemeName } from "@/core/theme";
-import { TYPE_LABELS, TYPE_ORDER, typeColors } from "@/core/theme";
+import {
+  OUTREACH_STATE_LABELS,
+  OUTREACH_STATE_ORDER,
+  TYPE_LABELS,
+  TYPE_ORDER,
+  outreachStateColors,
+  typeColors,
+} from "@/core/theme";
 import { api } from "@/core/api";
 import {
   CARD_SECTIONS,
@@ -17,7 +24,6 @@ import { useMailDrafts } from "@/modules/mail/useMailDrafts";
 
 interface Props {
   theme: ThemeName;
-  mails: MailItem[] | null;
   onOpenEntity: (id: string) => void;
   onNavigate: (k: NavKey) => void;
   // Submit from the top prompt bar — opens the Assistant drawer with the text.
@@ -97,22 +103,23 @@ function relTime(iso: string | null): string {
 
 interface Activity {
   key: string;
-  when: string | null;
-  icon: "out" | "in" | "gather";
+  when: string;
+  icon: string;
   title: string;
   sub: string;
   entityId?: string;
+  channel?: string;
 }
 
 export default function OverviewView({
   theme,
-  mails,
   onOpenEntity,
   onNavigate,
   onAssistantSubmit,
   assistantReplyKey,
 }: Props) {
   const TC = typeColors(theme);
+  const OC = outreachStateColors(theme);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [layout, setLayout] = useState<DashboardLayout | null>(null);
@@ -182,25 +189,34 @@ export default function OverviewView({
   }, [metrics]);
 
   const activity = useMemo<Activity[]>(() => {
-    const items: Activity[] = [];
-    for (const m of mails ?? []) {
-      const name = m.person_name || m.entity_name || "Unknown";
-      items.push({
-        key: `mail-${m.id}`,
-        when: m.date,
-        icon: m.direction === "in" ? "in" : "out",
-        title: m.subject || (m.direction === "in" ? "Inbound mail" : "Outbound mail"),
-        sub: `${m.direction === "in" ? "From" : "To"} ${name}`,
-        entityId: m.person_id || m.entity_id,
-      });
-    }
-    items.sort((a, b) => {
-      const ta = a.when ? new Date(a.when).getTime() : 0;
-      const tb = b.when ? new Date(b.when).getTime() : 0;
-      return tb - ta;
-    });
-    return items.slice(0, 8);
-  }, [mails]);
+    const iconFor = (item: OverviewActivity) => {
+      if (item.channel === "whatsapp") return "◉";
+      if (item.channel === "mail") return "@";
+      if (item.channel === "telefon") return "☎";
+      if (item.channel === "yuzyuze") return "◇";
+      if (item.kind === "gather_run") return "+";
+      if (item.kind === "entity_status") return "↻";
+      return "·";
+    };
+    const subFor = (item: OverviewActivity) => {
+      if (item.channel === "whatsapp") return "WhatsApp";
+      if (item.channel === "mail") return "Mail";
+      if (item.channel === "telefon") return "Telefon";
+      if (item.channel === "yuzyuze") return "Yüz yüze";
+      if (item.channel === "diger") return "Diğer";
+      if (item.kind === "gather_run") return "Toplama";
+      return "Durum değişikliği";
+    };
+    return (metrics?.recentActivity ?? []).slice(0, 8).map((item, index) => ({
+      key: `${item.kind}-${item.at}-${item.entity_id ?? index}`,
+      when: item.at,
+      icon: iconFor(item),
+      title: item.title,
+      sub: subFor(item),
+      entityId: item.entity_id,
+      channel: item.channel ?? item.kind,
+    }));
+  }, [metrics?.recentActivity]);
 
   if (loading) {
     return (
@@ -227,18 +243,6 @@ export default function OverviewView({
   }
 
   const o = metrics.outreach;
-  const kpis: { k: string; v: string; tone?: string; hint?: string }[] = [
-    { k: "Reached people", v: fmtNum(o.uniqueRecipients), hint: "unique recipients" },
-    { k: "Mails sent", v: fmtNum(o.mailsSent), tone: "var(--warn)" },
-    {
-      k: "Avg / day",
-      v: o.avgPerActiveDay ? o.avgPerActiveDay.toFixed(1) : "0",
-      hint: `${fmtNum(o.activeDays)} active days`,
-    },
-    { k: "Total entities", v: fmtNum(metrics.totals.entities) },
-    { k: "Staged", v: fmtNum(metrics.gather.staged), tone: "var(--ok)" },
-  ];
-
   // Mail approval queue. Hidden entirely while the endpoint is absent (null);
   // a quiet one-line note when reachable but empty.
   const draftList = drafts.drafts;
@@ -281,23 +285,78 @@ export default function OverviewView({
     );
 
   const daily30Total = daily.reduce((s, d) => s + d.count, 0);
-  const rangeLabel =
-    o.firstMailAt && o.lastMailAt
-      ? `${fmtDate(o.firstMailAt)} to ${fmtDate(o.lastMailAt)}`
-      : "No outreach yet";
+  const rangeLabel = "Tüm kanallardaki gerçek aktivite";
 
   // ---- section elements, keyed by SectionId --------------------------------
   const kpisEl = (
-    <div className="ov-kpis">
-      {kpis.map((c) => (
-        <div className="ov-kpi" key={c.k}>
-          <div className="ov-kpi-v" style={c.tone ? { color: c.tone } : undefined}>
-            {c.v}
+    <div className="ov-kpi-groups">
+      <section>
+        <h3 className="ov-group-title">Temas</h3>
+        <div className="ov-kpis ov-kpis-contact">
+          <div className="ov-kpi ov-kpi-reached">
+            <div className="ov-kpi-v">{fmtNum(o.reached)}</div>
+            <div className="ov-kpi-k">Temas kurulan kişi</div>
+            <div className="ov-kpi-hint">temas kurulan kişi — tüm kanallar</div>
+            <div className="ov-state-mini" aria-label="Durum dağılımı">
+              {OUTREACH_STATE_ORDER.map((state) => {
+                const count = o.stateHistogram[String(state)] ?? 0;
+                const total = Math.max(
+                  1,
+                  OUTREACH_STATE_ORDER.reduce(
+                    (sum: number, item) =>
+                      sum + (o.stateHistogram[String(item)] ?? 0),
+                    0
+                  )
+                );
+                return (
+                  <span
+                    key={state}
+                    style={{
+                      width: `${(count / total) * 100}%`,
+                      background: OC[state],
+                    }}
+                    title={`${OUTREACH_STATE_LABELS[state]}: ${count}`}
+                  />
+                );
+              })}
+            </div>
           </div>
-          <div className="ov-kpi-k">{c.k}</div>
-          {c.hint && <div className="ov-kpi-hint">{c.hint}</div>}
+          <div className="ov-kpi">
+            <div className="ov-kpi-v">{fmtNum(metrics.totals.entities)}</div>
+            <div className="ov-kpi-k">Toplam kayıt</div>
+          </div>
+          <div className="ov-kpi">
+            <div className="ov-kpi-v" style={{ color: "var(--ok)" }}>
+              {fmtNum(metrics.gather.staged)}
+            </div>
+            <div className="ov-kpi-k">İncelenecek</div>
+          </div>
         </div>
-      ))}
+      </section>
+      <section>
+        <h3 className="ov-group-title">Mail</h3>
+        <div className="ov-kpis ov-kpis-mail">
+          <div className="ov-kpi">
+            <div className="ov-kpi-v" style={{ color: "var(--warn)" }}>
+              {fmtNum(o.mailsSent)}
+            </div>
+            <div className="ov-kpi-k">Gönderilen mail</div>
+          </div>
+          <div className="ov-kpi">
+            <div className="ov-kpi-v">{fmtNum(o.uniqueRecipients)}</div>
+            <div className="ov-kpi-k">Tekil mail alıcısı</div>
+          </div>
+          <div className="ov-kpi">
+            <div className="ov-kpi-v">
+              {o.avgPerActiveDay ? o.avgPerActiveDay.toFixed(1) : "0"}
+            </div>
+            <div className="ov-kpi-k">Aktif gün ortalaması</div>
+            <div className="ov-kpi-hint">
+              {fmtNum(o.activeDays)} aktif gün
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 
@@ -377,14 +436,9 @@ export default function OverviewView({
     <section className="ov-card ov-activity-card">
       <div className="ov-card-head">
         <div className="ov-card-title">Recent activity</div>
-        {mails && mails.length > 0 && (
-          <button className="ov-card-link" onClick={() => onNavigate("mail")}>
-            View all
-          </button>
-        )}
       </div>
       {activity.length === 0 ? (
-        <div className="ov-chart-empty">No activity recorded yet.</div>
+        <div className="ov-chart-empty">henüz aktivite yok</div>
       ) : (
         <div className="ov-activity">
           {activity.map((a) => (
@@ -393,8 +447,8 @@ export default function OverviewView({
               className="ov-act-row"
               onClick={() => a.entityId && onOpenEntity(a.entityId)}
             >
-              <span className={`ov-act-ico ${a.icon}`}>
-                {a.icon === "in" ? "←" : a.icon === "out" ? "→" : "+"}
+              <span className={`ov-act-ico ${a.channel}`}>
+                {a.icon}
               </span>
               <span className="ov-act-main">
                 <span className="ov-act-title">{a.title}</span>

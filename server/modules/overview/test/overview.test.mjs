@@ -6,6 +6,11 @@ import { createApp } from "../../../app.mjs";
 import { serializeMarkdown } from "../../../lib/vault.mjs";
 import { temporaryDirectory, writeEntity } from "../../../test-support/helpers.mjs";
 import { createRunRecord, writeRun } from "../../gather/journal.mjs";
+import {
+  insertMail,
+  markSend,
+  scheduleSend,
+} from "../../mailer/store.mjs";
 
 const NOW = () => new Date("2026-07-16T18:00:00.000Z");
 
@@ -14,8 +19,22 @@ async function metricsWorkspace(t) {
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "fixture");
   const vault = path.join(directory, "vault");
+  const warmVault = path.join(directory, "warm-vault");
   await fs.mkdir(directory, { recursive: true });
-  await fs.writeFile(path.join(directory, "config.yaml"), "name: Fixture\n", "utf8");
+  await fs.writeFile(
+    path.join(directory, "config.yaml"),
+    `name: Fixture
+networks:
+  - id: research
+    vault_path: vault
+  - id: warm
+    vault_path: warm-vault
+    adapter: tr-network
+    read_only: true
+default_network: research
+`,
+    "utf8",
+  );
 
   const entities = [
     ["people", "ulasildi", { type: "person", name: "Ulaşıldı", mail: "alice@example.com", score: 45 }],
@@ -26,6 +45,18 @@ async function metricsWorkspace(t) {
   ];
   await Promise.all(entities.map(([kind, id, meta]) =>
     writeEntity(vault, kind, id, serializeMarkdown("", meta))));
+  await fs.mkdir(warmVault, { recursive: true });
+  await fs.writeFile(
+    path.join(warmVault, "Hasan Bilgin.md"),
+    "---\ntip: kisi\ndurum: konusuldu\n---\n\n# Hasan Bilgin\n",
+    "utf8",
+  );
+  // Aynı entity_id iki network'te görünse de Overview birleşiminde tek kişidir.
+  await fs.writeFile(
+    path.join(warmVault, "Ulaşıldı.md"),
+    "---\ntip: kisi\ndurum: yeni\n---\n\n# Ulaşıldı\n",
+    "utf8",
+  );
 
   const mails = [
     {
@@ -128,7 +159,7 @@ async function metricsWorkspace(t) {
   return root;
 }
 
-test("GET /api/ws/:ws/metrics tüm modül metriklerini kontrat şeklinde derler", async (t) => {
+test("metrics tüm network state'lerini entity_id ile birleştirip reached ve histogramı üretir", async (t) => {
   const root = await metricsWorkspace(t);
   const app = await createApp({
     workspacesPath: root,
@@ -158,6 +189,8 @@ test("GET /api/ws/:ws/metrics tüm modül metriklerini kontrat şeklinde derler"
       avgPerActiveDay: 1,
       byStatus: { sent: 3, replied: 1 },
       mailbox: { sent: 3, received: 1 },
+      reached: 2,
+      stateHistogram: { 0: 4, 1: 0, 2: 0, 3: 2, 4: 0, 5: 0 },
     },
   );
   assert.equal(metrics.outreach.daily.length, 30);
@@ -175,6 +208,7 @@ test("GET /api/ws/:ws/metrics tüm modül metriklerini kontrat şeklinde derler"
     running: 1,
   });
   assert.deepEqual(metrics.reach, { candidates: 2 });
+  assert.deepEqual(metrics.recentActivity, []);
 });
 
 test("metrics eksik kaynaklarda sıfır döner ve daily boş günleri tam 30 güne doldurur", async (t) => {
@@ -205,6 +239,8 @@ test("metrics eksik kaynaklarda sıfır döner ve daily boş günleri tam 30 gü
     })),
     byStatus: { sent: 0, replied: 0 },
     mailbox: { sent: 0, received: 0 },
+    reached: 0,
+    stateHistogram: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
   });
   assert.deepEqual(metrics.gather, {
     staged: 0,
@@ -213,4 +249,65 @@ test("metrics eksik kaynaklarda sıfır döner ve daily boş günleri tam 30 gü
     running: 0,
   });
   assert.deepEqual(metrics.reach, { candidates: 0 });
+  assert.deepEqual(metrics.recentActivity, []);
+});
+
+test("recentActivity yalnız gerçek zamanlı interaction, send, run ve manual status olaylarını döner", async (t) => {
+  const root = await metricsWorkspace(t);
+  const app = await createApp({
+    workspacesPath: root,
+    outpostVault: null,
+    watch: false,
+    metricsNow: NOW,
+  });
+  t.after(() => app.close());
+  const workspace = app.workspaceRegistry.get("fixture");
+
+  await app.inject({
+    method: "POST",
+    url: "/api/ws/fixture/entity/aday/interactions",
+    payload: {
+      channel: "telefon",
+      direction: "in",
+      at: "2026-07-28T10:00:00.000Z",
+    },
+  });
+  await app.inject({
+    method: "PUT",
+    url: "/api/ws/fixture/entity/ulasildi/status",
+    payload: { outreach_state: 4 },
+  });
+  insertMail(workspace, {
+    id: "overview-sent",
+    person_id: "ulasildi",
+    to_addr: "alice@example.com",
+    subject: "Gerçek gönderim",
+  });
+  const sendId = scheduleSend(workspace, {
+    mail_id: "overview-sent",
+    scheduled_at: "2026-07-27T09:00:00.000Z",
+    status: "sent",
+  });
+  markSend(workspace, sendId, { sent_at: "2026-07-27T09:00:00.000Z" });
+  const completed = createRunRecord("idle-agent", {
+    now: () => new Date("2026-07-26T08:00:00.000Z"),
+  });
+  completed.status = "ok";
+  completed.ended = "2026-07-26T08:05:00.000Z";
+  await writeRun(workspace, completed);
+
+  const metrics = (await app.inject({ url: "/api/ws/fixture/metrics" })).json();
+  assert.deepEqual(
+    new Set(metrics.recentActivity.map((item) => item.kind)),
+    new Set(["interaction", "mail_send", "gather_run", "entity_status"]),
+  );
+  assert.ok(metrics.recentActivity.every((item) =>
+    Number.isFinite(Date.parse(item.at)) &&
+    typeof item.title === "string" &&
+    item.title.length > 0));
+  assert.deepEqual(
+    [...metrics.recentActivity]
+      .sort((left, right) => Date.parse(right.at) - Date.parse(left.at)),
+    metrics.recentActivity,
+  );
 });

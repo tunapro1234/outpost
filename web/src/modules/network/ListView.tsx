@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { EntityListItem, EntityType, Status } from "@/core/types";
+import type {
+  EntityListItem,
+  EntityType,
+  Status,
+} from "@/core/types";
 import {
+  OUTREACH_STATE_LABELS,
   STATUS_COLORS,
   STATUS_LABELS,
   TYPE_COLORS,
@@ -26,9 +31,10 @@ type ColKey =
 
 type SortKey = "name" | ColKey;
 type GroupKey = "none" | "city" | "subtype" | "status";
-type PresetId =
+export type ListPresetId =
   | "all"
   | "competitor"
+  | "teacher"
   | "company"
   | "person"
   | "institution"
@@ -43,6 +49,8 @@ interface SortSpec {
 
 interface Props {
   items: EntityListItem[];
+  network: string | null;
+  requestedPreset?: ListPresetId | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onOpenFull: (id: string) => void;
@@ -76,10 +84,11 @@ const COLUMNS: { key: ColKey; label: string; num?: boolean }[] = [
   { key: "last_mail_direction", label: "Dir" },
 ];
 const PRESETS: {
-  id: PresetId;
+  id: ListPresetId;
   label: string;
   type: EntityType | null;
   tag?: string;
+  matches?: (item: EntityListItem) => boolean;
   cols: ColKey[];
 }[] = [
   {
@@ -94,6 +103,27 @@ const PRESETS: {
     type: "company",
     tag: "rakip",
     cols: ["subtype", "city", "score", "degree"],
+  },
+  {
+    id: "teacher",
+    label: "Öğretmenler",
+    type: "person",
+    matches: (item) => {
+      const role = normalizePresetText(item.role);
+      const tags = (item.tags ?? []).map(normalizePresetText);
+      return (
+        ["mentor", "ogretmen", "egitmen"].some((word) =>
+          role.includes(word)
+        ) ||
+        tags.some(
+          (tag) =>
+            tag.includes("mentor") ||
+            tag.includes("ogretmen") ||
+            tag.includes("egitmen")
+        )
+      );
+    },
+    cols: ["role", "connected_org", "closeness", "mail_status", "degree"],
   },
   {
     id: "company",
@@ -142,7 +172,7 @@ const GROUPS: { key: GroupKey; label: string }[] = [
 
 interface SavedView {
   name: string;
-  preset: PresetId;
+  preset: ListPresetId;
   grouping: GroupKey;
   cols: ColKey[];
   sorts: SortSpec[];
@@ -152,7 +182,7 @@ const LS_STATE = "outpost.list.state.v2";
 const LS_VIEWS = "outpost.list.views.v2";
 
 function loadState(): {
-  preset: PresetId;
+  preset: ListPresetId;
   grouping: GroupKey;
   cols: ColKey[];
   sorts: SortSpec[];
@@ -164,6 +194,14 @@ function loadState(): {
     /* ignore */
   }
   return null;
+}
+
+function normalizePresetText(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLocaleLowerCase("tr")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replaceAll("ı", "i");
 }
 
 function loadViews(): SavedView[] {
@@ -232,13 +270,17 @@ function groupValue(it: EntityListItem, g: GroupKey): string {
 
 export default function ListView({
   items,
+  network,
+  requestedPreset,
   selectedId,
   onSelect,
   onOpenFull,
   onChanged,
 }: Props) {
   const saved = loadState();
-  const [preset, setPreset] = useState<PresetId>(saved?.preset ?? "all");
+  const [preset, setPreset] = useState<ListPresetId>(
+    requestedPreset ?? saved?.preset ?? "all"
+  );
   const [grouping, setGrouping] = useState<GroupKey>(saved?.grouping ?? "none");
   const [cols, setCols] = useState<ColKey[]>(
     saved?.cols ?? PRESETS[0].cols
@@ -255,6 +297,7 @@ export default function ListView({
   const [showNew, setShowNew] = useState(false);
   const [newType, setNewType] = useState<EntityType>("person");
   const [newName, setNewName] = useState("");
+  const [showAllWarm, setShowAllWarm] = useState(false);
   const colsRef = useRef<HTMLDivElement>(null);
   const viewsRef = useRef<HTMLDivElement>(null);
 
@@ -277,12 +320,20 @@ export default function ListView({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  const applyPreset = (id: PresetId) => {
+  const applyPreset = (id: ListPresetId) => {
     const p = PRESETS.find((x) => x.id === id)!;
     setPreset(id);
     setCols(p.cols);
     setCollapsed(new Set());
   };
+
+  useEffect(() => {
+    if (requestedPreset) applyPreset(requestedPreset);
+  }, [requestedPreset]);
+
+  useEffect(() => {
+    setShowAllWarm(false);
+  }, [network]);
 
   const visible = (k: ColKey) => cols.includes(k);
   const toggleCol = (k: ColKey) => {
@@ -296,15 +347,30 @@ export default function ListView({
 
   // preset type filter (list is its own surface; graph filter stays shared)
   const activePreset = PRESETS.find((p) => p.id === preset) ?? PRESETS[0];
-  const filtered = useMemo(
+  const presetFiltered = useMemo(
     () =>
       items.filter(
         (it) =>
           (!activePreset.type || it.type === activePreset.type) &&
-          (!activePreset.tag || it.tags?.includes(activePreset.tag))
+          (!activePreset.tag || it.tags?.includes(activePreset.tag)) &&
+          (!activePreset.matches || activePreset.matches(it))
       ),
     [items, activePreset]
   );
+  const filtered = useMemo(
+    () =>
+      network !== "warm" || showAllWarm
+        ? presetFiltered
+        : presetFiltered.filter(
+            (item) =>
+              item.state != null &&
+              item.state >= 1 &&
+              !item.flags?.internal &&
+              !item.flags?.no_contact
+          ),
+    [network, presetFiltered, showAllWarm]
+  );
+  const warmHiddenCount = presetFiltered.length - filtered.length;
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -411,6 +477,21 @@ export default function ListView({
 
   const dirText = (d?: "out" | "in" | null) =>
     d === "out" ? "→ out" : d === "in" ? "← in" : "—";
+
+  const stateChip = (item: EntityListItem) => {
+    if (item.flags?.no_contact) {
+      return <span className="state-chip blocked">Temas yasak</span>;
+    }
+    if (item.flags?.internal) {
+      return <span className="state-chip internal">İç kayıt</span>;
+    }
+    if (item.state == null) return null;
+    return (
+      <span className={`state-chip state-${item.state}`}>
+        {OUTREACH_STATE_LABELS[item.state]}
+      </span>
+    );
+  };
 
   // ---- cell render ----
   const cell = (it: EntityListItem, k: ColKey) => {
@@ -548,7 +629,10 @@ export default function ListView({
       className={it.id === selectedId ? "sel" : ""}
       onClick={() => onSelect(it.id)}
     >
-      <td className="c-name">{it.name}</td>
+      <td className="c-name">
+        <span className="list-name-text">{it.name}</span>
+        {stateChip(it)}
+      </td>
       {activeCols.map((c) => cell(it, c.key))}
       <td className="col-open">
         <button
@@ -570,6 +654,20 @@ export default function ListView({
       <div className="list-head">
         <h2>List</h2>
         <span className="count">{sorted.length} records</span>
+
+        {network === "warm" && (
+          <label className="warm-show-all">
+            <input
+              type="checkbox"
+              checked={showAllWarm}
+              onChange={(event) => setShowAllWarm(event.target.checked)}
+            />
+            <span>Tümünü göster</span>
+            {!showAllWarm && warmHiddenCount > 0 && (
+              <span className="warm-hidden-count">{warmHiddenCount} gizli</span>
+            )}
+          </label>
+        )}
 
         <div className="list-presets">
           {PRESETS.map((p) => (
@@ -707,45 +805,51 @@ export default function ListView({
         </div>
       )}
 
-      <table className="grid list-grid">
-        <thead>
-          <tr>
-            {th("name", "Name")}
-            {activeCols.map((c) => th(c.key, c.label, c.num))}
-            <th className="col-open" />
-          </tr>
-        </thead>
-        <tbody>
-          {groups === null
-            ? sorted.map(row)
-            : groups.map((g) => {
-                const isCollapsed = collapsed.has(g.label);
-                return [
-                  <tr key={`h-${g.label}`} className="group-row">
-                    <td colSpan={colSpan}>
-                      <button
-                        className="group-toggle"
-                        onClick={() =>
-                          setCollapsed((prev) => {
-                            const n = new Set(prev);
-                            n.has(g.label) ? n.delete(g.label) : n.add(g.label);
-                            return n;
-                          })
-                        }
-                      >
-                        <span className={`group-caret ${isCollapsed ? "c" : ""}`}>
-                          ▾
-                        </span>
-                        <span className="group-name">{g.label}</span>
-                        <span className="group-count">{g.items.length}</span>
-                      </button>
-                    </td>
-                  </tr>,
-                  ...(isCollapsed ? [] : g.items.map(row)),
-                ];
-              })}
-        </tbody>
-      </table>
+      <div className="list-table-frame">
+        <table className="grid list-grid">
+          <thead>
+            <tr>
+              {th("name", "Name")}
+              {activeCols.map((c) => th(c.key, c.label, c.num))}
+              <th className="col-open" />
+            </tr>
+          </thead>
+          <tbody>
+            {groups === null
+              ? sorted.map(row)
+              : groups.map((g) => {
+                  const isCollapsed = collapsed.has(g.label);
+                  return [
+                    <tr key={`h-${g.label}`} className="group-row">
+                      <td colSpan={colSpan}>
+                        <button
+                          className="group-toggle"
+                          onClick={() =>
+                            setCollapsed((prev) => {
+                              const n = new Set(prev);
+                              n.has(g.label) ? n.delete(g.label) : n.add(g.label);
+                              return n;
+                            })
+                          }
+                        >
+                          <span
+                            className={`group-caret ${
+                              isCollapsed ? "c" : ""
+                            }`}
+                          >
+                            ▾
+                          </span>
+                          <span className="group-name">{g.label}</span>
+                          <span className="group-count">{g.items.length}</span>
+                        </button>
+                      </td>
+                    </tr>,
+                    ...(isCollapsed ? [] : g.items.map(row)),
+                  ];
+                })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
