@@ -30,6 +30,7 @@ export type InteractionDirection = "out" | "in";
 export interface EntityFlags {
   internal: boolean;
   no_contact: boolean;
+  mail_tahmin?: boolean;
 }
 
 export interface EntityState {
@@ -51,6 +52,11 @@ export interface GraphNode extends EntityState {
   city?: string | null;
   mail?: string | null;
   role?: string | null;
+  guven?: string | null;
+  katman?: string | number | null;
+  sira?: number | null;
+  politika_durumu?: "no_contact" | "defer" | null;
+  politika_metni?: string | null;
   mailSource?: string | null;
   closeness?: number | null;
   hook?: string | null;
@@ -97,6 +103,10 @@ export interface EntityListItem extends EntityState {
   last_mail_from?: string | null;
   // enriched client-side / server-optional (used by list presets)
   role?: string | null;
+  guven?: string | null;
+  katman?: string | number | null;
+  politika_durumu?: "no_contact" | "defer" | null;
+  politika_metni?: string | null;
   closeness?: number | null;
   hook?: string | null;
   tags?: string[] | null;
@@ -160,6 +170,18 @@ export interface EntityMeta {
   // yeni | yazilacak | ulasildi | konusuldu | referans-verdi | ilgili-pilot |
   // pasif | ic ("ic" = ekip üyesi; outreach akışının dışında, bilinmeyen değil)
   durum?: string | null;
+  guven?: unknown;
+  robotik_rol?: string | null;
+  kaynak_tipi?: string | null;
+  birincil_kanal?: string | null;
+  politika_durumu?: "no_contact" | "defer" | null;
+  politika_metni?: string | null;
+  ic_veri?: unknown;
+  alim_sinyalleri?: unknown;
+  kanca_adaylari?: unknown;
+  bulunamayan?: unknown;
+  uyarilar?: unknown;
+  kaynaklar?: unknown;
   // `kategori: lead-<kaynak>` -> who opened this lead.
   lead_source?: string | null;
   // ---- manual-contact fields — DISPLAY ONLY ------------------------------

@@ -26,6 +26,9 @@ type ColKey =
   | "last_mail_date"
   | "last_mail_direction"
   | "role"
+  | "guven"
+  | "katman"
+  | "sira"
   | "connected_org"
   | "closeness";
 
@@ -71,6 +74,9 @@ const COLUMNS: { key: ColKey; label: string; num?: boolean }[] = [
   { key: "type", label: "Type" },
   { key: "subtype", label: "Subtype" },
   { key: "role", label: "Role" },
+  { key: "guven", label: "Güven" },
+  { key: "katman", label: "Katman" },
+  { key: "sira", label: "Sıra", num: true },
   { key: "connected_org", label: "Connected org" },
   { key: "status", label: "Status" },
   { key: "score", label: "Score", num: true },
@@ -227,6 +233,18 @@ function cmpFor(key: SortKey, a: EntityListItem, b: EntityListItem): number {
       return (a.subtype ?? "").localeCompare(b.subtype ?? "", "tr");
     case "role":
       return (a.role ?? "").localeCompare(b.role ?? "", "tr");
+    case "guven":
+      return (a.guven ?? "").localeCompare(b.guven ?? "", "tr");
+    case "katman":
+      return String(a.katman ?? "").localeCompare(String(b.katman ?? ""), "tr", { numeric: true });
+    case "sira": {
+      const left = a.sira;
+      const right = b.sira;
+      if (left == null && right == null) return 0;
+      if (left == null) return 1;
+      if (right == null) return -1;
+      return left - right;
+    }
     case "connected_org":
       return (a.connected_org ?? "").localeCompare(b.connected_org ?? "", "tr");
     case "status":
@@ -300,6 +318,7 @@ export default function ListView({
   const [showAllWarm, setShowAllWarm] = useState(false);
   const colsRef = useRef<HTMLDivElement>(null);
   const viewsRef = useRef<HTMLDivElement>(null);
+  const previousNetworkRef = useRef(network);
 
   // persist current working state
   useEffect(() => {
@@ -333,6 +352,17 @@ export default function ListView({
 
   useEffect(() => {
     setShowAllWarm(false);
+    if (network === "hedef") {
+      setPreset("all");
+      setGrouping("none");
+      setCols(["sira", "role", "type", "guven", "connected_org", "katman", "score"]);
+      setSorts([{ key: "sira", order: "asc" }, { key: "name", order: "asc" }]);
+    } else if (previousNetworkRef.current === "hedef") {
+      const active = PRESETS.find((item) => item.id === preset) ?? PRESETS[0];
+      setCols(active.cols);
+      setSorts([{ key: "score", order: "desc" }]);
+    }
+    previousNetworkRef.current = network;
   }, [network]);
 
   const visible = (k: ColKey) => cols.includes(k);
@@ -479,8 +509,11 @@ export default function ListView({
     d === "out" ? "→ out" : d === "in" ? "← in" : "—";
 
   const stateChip = (item: EntityListItem) => {
-    if (item.flags?.no_contact) {
+    if (item.politika_durumu === "no_contact") {
       return <span className="state-chip blocked">Temas yasak</span>;
+    }
+    if (item.politika_durumu === "defer") {
+      return <span className="state-chip policy-defer">⏸ Ertelendi</span>;
     }
     if (item.flags?.internal) {
       return <span className="state-chip internal">İç kayıt</span>;
@@ -515,6 +548,33 @@ export default function ListView({
         return (
           <td key={k} className="muted">
             {it.role ?? "—"}
+          </td>
+        );
+      case "guven": {
+        const level = normalizePresetText(it.guven);
+        const tone = level.startsWith("kesin")
+          ? "certain"
+          : level.startsWith("muhtemel")
+            ? "probable"
+            : level.startsWith("tahmin")
+              ? "estimated"
+              : "belirsiz"; // bileşik metin tahmine düşürülmez, nötr görünür
+        return (
+          <td key={k}>
+            {it.guven ? <span className={`confidence-badge ${tone}`}>{it.guven}</span> : <span className="muted">—</span>}
+          </td>
+        );
+      }
+      case "katman":
+        return (
+          <td key={k} className="muted">
+            {it.katman ?? "—"}
+          </td>
+        );
+      case "sira":
+        return (
+          <td key={k} className="num">
+            {it.sira ?? "—"}
           </td>
         );
       case "connected_org":

@@ -45,7 +45,8 @@ test("entities, stats, detail ve health endpointleri sözleşme şeklini döndü
   assert.equal(entities.length, 3);
   assert.deepEqual(Object.keys(entities[0]), [
     "id", "name", "type", "subtype", "role", "closeness", "hook", "mail_source",
-    "tags", "status", "score", "city", "mail",
+    "tags", "status", "score", "guven", "katman",
+    "politika_durumu", "politika_metni", "city", "mail",
     // adapter/manual-contact alanları — phone & kimlik_guveni SALT GÖRÜNTÜ,
     // outreach akışlarına lib/outreach-guard.mjs tarafından hiç geçmez.
     "org", "location", "durum", "lead_source",

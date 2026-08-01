@@ -31,15 +31,26 @@ import EntityMiniGraph from "./EntityMiniGraph";
 import ExclusionBanner from "./ExclusionBanner";
 import {
   competitionHistory,
+  normalizeAuditIssues,
+  normalizeConfidence,
+  normalizeContacts,
+  normalizeDrafts,
+  normalizeEvidence,
+  normalizeNotFound,
+  normalizeProfileNote,
   normalizeProducts,
+  normalizeSources,
   normalizeStringList,
+  normalizeWarnings,
   wikilinkTarget,
 } from "./structuredMeta";
+import type { ProfileContact, ProfileSource } from "./structuredMeta";
 
 type Tab = "overview" | "mails" | "activity" | "note";
 
 interface Props {
   id: string;
+  network: string;
   theme: ThemeName;
   onOpenMenu: () => void;
   onToggleTheme: () => void;
@@ -76,6 +87,78 @@ function ext(url: string): string {
   return /^https?:\/\//.test(url) ? url : `https://${url}`;
 }
 
+function socialHref(channel: "linkedin" | "instagram", value: string): string {
+  if (/^https?:\/\//u.test(value)) return value;
+  if (channel === "linkedin") return ext(value);
+  const handle = value.match(/@([\p{L}\p{N}._-]+)/u)?.[1] ?? value.replace(/^@/u, "");
+  return `https://instagram.com/${handle}`;
+}
+
+function ProfileContactsBlock({ contacts }: { contacts: ProfileContact[] }) {
+  return (
+    <div className="profile-contacts" aria-label="Kaynaklı iletişim alanları">
+      {contacts.map((contact) => {
+        const Icon = contact.channel === "tel"
+          ? IconPhone
+          : contact.channel === "mail"
+            ? IconMail
+            : contact.channel === "linkedin"
+              ? IconLinkedin
+              : IconInstagram;
+        const value = (
+          <>
+            <Icon />
+            <span className="profile-contact-copy">
+              {contact.estimated && <span className="estimated-badge">TAHMİN</span>}
+              <span className="profile-contact-value">{contact.value}</span>
+              <span className="profile-contact-source">↳ {contact.source}</span>
+            </span>
+          </>
+        );
+        return contact.channel === "linkedin" || contact.channel === "instagram" ? (
+          <a
+            className="profile-contact"
+            key={contact.channel}
+            href={socialHref(contact.channel, contact.value)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {value}
+          </a>
+        ) : (
+          <div className="profile-contact" key={contact.channel}>{value}</div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProfileSourcesBlock({ sources }: { sources: ProfileSource[] }) {
+  return (
+    <section className="profile-sources" aria-labelledby="profile-sources-title">
+      <div className="profile-sources-title" id="profile-sources-title">Kaynaklar</div>
+      <div className="profile-source-list">
+        {sources.map((source, index) => (
+          <div className="profile-source" key={`${source.text}-${index}`}>
+            {source.claim && <div className="profile-source-claim">{source.claim}</div>}
+            <div className="profile-source-reference">
+              <span aria-hidden>↳</span>{" "}
+              {source.type === "acik" && source.url ? (
+                <a href={source.url} target="_blank" rel="noreferrer">{source.text}</a>
+              ) : (
+                <span>{source.text}</span>
+              )}
+              {source.type === "ic" && (
+                <span className="profile-internal-source">🔒 iç kaynak</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // First real paragraph of the note body — skips the leading H1 / headings.
 function firstParagraph(body: string): string {
   const lines = stripFrontmatter(body).split(/\n/);
@@ -97,6 +180,7 @@ function firstParagraph(body: string): string {
 
 export default function EntityPage({
   id,
+  network,
   theme,
   onOpenMenu,
   onToggleTheme,
@@ -110,7 +194,7 @@ export default function EntityPage({
 
   const [entity, setEntity] = useState<Entity | null>(null);
   const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const [entityNotFound, setEntityNotFound] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
   const [statusOpen, setStatusOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -120,7 +204,7 @@ export default function EntityPage({
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    setNotFound(false);
+    setEntityNotFound(false);
     setTab("overview");
     setEditing(false);
     setStatusOpen(false);
@@ -134,13 +218,13 @@ export default function EntityPage({
       })
       .catch(() => {
         if (!alive) return;
-        setNotFound(true);
+        setEntityNotFound(true);
         setLoading(false);
       });
     return () => {
       alive = false;
     };
-  }, [id]);
+  }, [id, network]);
 
   const meta = entity?.meta;
   const type = meta?.type ?? "company";
@@ -201,6 +285,51 @@ export default function EntityPage({
     () => competitionHistory(meta ?? {}),
     [meta]
   );
+  const profileConfidence = useMemo(() => normalizeConfidence(meta?.guven), [meta?.guven]);
+  const profileContacts: ProfileContact[] = useMemo(
+    () => normalizeContacts(meta?.iletisim),
+    [meta?.iletisim]
+  );
+  const purchases = useMemo(() => normalizeEvidence(meta?.robotik_alimlar), [meta?.robotik_alimlar]);
+  const activities = useMemo(() => normalizeEvidence(meta?.aktiviteler), [meta?.aktiviteler]);
+  const signals = useMemo(() => normalizeStringList(meta?.alim_sinyalleri), [meta?.alim_sinyalleri]);
+  const internalData = useMemo(() => normalizeStringList(meta?.ic_veri), [meta?.ic_veri]);
+  const hooks = useMemo(() => normalizeStringList(meta?.kanca_adaylari), [meta?.kanca_adaylari]);
+  const notFound = useMemo(() => normalizeNotFound(meta?.bulunamayan), [meta?.bulunamayan]);
+  const profileWarnings = useMemo(() => normalizeWarnings(meta?.uyarilar), [meta?.uyarilar]);
+  const profileSources = useMemo(() => normalizeSources(meta?.kaynaklar), [meta?.kaynaklar]);
+  const interviewQuestions = useMemo(
+    () => normalizeStringList(meta?.gorusme_sorulari),
+    [meta?.gorusme_sorulari]
+  );
+  const messageDrafts = useMemo(
+    () => normalizeDrafts(meta?.mesaj_taslaklari),
+    [meta?.mesaj_taslaklari]
+  );
+  const auditIssues = useMemo(
+    () => normalizeAuditIssues(meta?.denetim_sorunlar),
+    [meta?.denetim_sorunlar]
+  );
+  const purchaseScore = typeof meta?.alim_skoru === "number"
+    ? meta.alim_skoru
+    : meta?.score;
+  const profileHook = typeof meta?.kanca === "string" && meta.kanca.trim()
+    ? meta.kanca
+    : meta?.hook;
+  const profileStatus = typeof meta?.durum === "string" && meta.durum.trim()
+    ? meta.durum
+    : null;
+  const primaryChannel = typeof meta?.birincil_kanal === "string" && meta.birincil_kanal.trim()
+    ? meta.birincil_kanal
+    : null;
+  const policyStatus = meta?.politika_durumu === "no_contact" || meta?.politika_durumu === "defer"
+    ? meta.politika_durumu
+    : null;
+  const policyText = typeof meta?.politika_metni === "string" && meta.politika_metni.trim()
+    ? meta.politika_metni
+    : null;
+  const laneNote = normalizeProfileNote(meta?.kulvar_notu);
+  const scanNote = normalizeProfileNote(meta?.tarama_notu);
   const connectedPeople = useMemo(() => {
     const people = new Map<string, Relation>();
     for (const relation of entity?.relations ?? []) {
@@ -236,7 +365,7 @@ export default function EntityPage({
     return [...linked.values()];
   }, [entity, graph.nodes, meta?.teams]);
 
-  const goto = (nid: string) => navigate(entityPath(nid));
+  const goto = (nid: string) => navigate(entityPath(nid, network));
 
   const RelRow = (r: Relation) => (
     <button
@@ -284,7 +413,7 @@ export default function EntityPage({
       </div>
 
       <div className="ep-scroll">
-        {notFound ? (
+        {entityNotFound ? (
           <div className="empty-state" style={{ marginTop: "16vh" }}>
             <div className="es-title">We couldn't find that entity</div>
             <div className="es-sub">
@@ -295,6 +424,11 @@ export default function EntityPage({
           <div className="ep-loading">Loading…</div>
         ) : (
           <>
+            {policyStatus === "no_contact" && (
+              <div className="no-contact-banner" role="alert">
+                {policyText ?? "⛔ Temas yok"}
+              </div>
+            )}
             <ExclusionBanner
               id={entity.id}
               name={meta.name ?? entity.id}
@@ -360,9 +494,51 @@ export default function EntityPage({
                       </div>
                     )}
                   </div>
+                  {type !== "person" && profileConfidence && (
+                    <span className={`confidence-badge ${profileConfidence.level}`}>
+                      {profileConfidence.raw}
+                    </span>
+                  )}
+                  {type !== "person" && profileConfidence?.level === "tahmin" && (
+                    <span className="confidence-warning">tahmin — gönderim kanalı değildir</span>
+                  )}
                 </div>
 
                 <h1 className="ep-name">{meta.name}</h1>
+                {type === "person" && (
+                  <div className="profile-summary-row">
+                    {profileStatus && <span className="profile-neutral-chip">{profileStatus}</span>}
+                    {profileConfidence && (
+                      <span className={`confidence-badge ${profileConfidence.level}`}>
+                        {profileConfidence.raw}
+                      </span>
+                    )}
+                    {primaryChannel && (
+                      <span className="profile-neutral-chip">birincil kanal: {primaryChannel}</span>
+                    )}
+                    {policyStatus === "defer" && (
+                      <span className="profile-policy-defer">{policyText ?? "⏸ Temas ertelendi"}</span>
+                    )}
+                  </div>
+                )}
+                {type === "person" && profileConfidence?.level === "tahmin" && (
+                  <div className="confidence-warning profile-confidence-warning">
+                    tahmin — gönderim kanalı değildir
+                  </div>
+                )}
+                {type === "person" && profileSources.length > 0 && (
+                  <ProfileSourcesBlock sources={profileSources} />
+                )}
+                {type === "person" && (meta.robotik_rol || meta.kaynak_tipi) && (
+                  <div className="profile-meta-line">
+                    {typeof meta.robotik_rol === "string" && meta.robotik_rol.trim() && (
+                      <span><span className="profile-meta-label">Robotik rol:</span> {meta.robotik_rol}</span>
+                    )}
+                    {typeof meta.kaynak_tipi === "string" && meta.kaynak_tipi.trim() && (
+                      <span><span className="profile-meta-label">Kaynak tipi:</span> {meta.kaynak_tipi}</span>
+                    )}
+                  </div>
+                )}
                 <div className="ep-subline">
                   {[meta.subtype, meta.district, meta.city]
                     .filter(Boolean)
@@ -427,14 +603,16 @@ export default function EntityPage({
                   )}
                 </div>
 
-                {meta.hook && <div className="ep-hook">{meta.hook}</div>}
+                {profileContacts.length > 0 && <ProfileContactsBlock contacts={profileContacts} />}
+
+                {profileHook && <div className="ep-hook">{profileHook}</div>}
               </div>
 
               {/* score / closeness card */}
               <div className="ep-metrics">
                 <div className="ep-metric">
-                  <div className="k">Score</div>
-                  <div className="v">{meta.score != null ? meta.score : "—"}</div>
+                  <div className="k">{meta.alim_skoru != null ? "Alım skoru" : "Score"}</div>
+                  <div className="v">{purchaseScore != null ? purchaseScore : "—"}</div>
                 </div>
                 {type === "person" && (
                   <div className="ep-metric">
@@ -503,6 +681,172 @@ export default function EntityPage({
                         <p className="ep-muted">No description yet</p>
                       )}
                     </section>
+
+                    {(laneNote || scanNote) && (
+                      <div className="profile-note-stack">
+                        {laneNote && (
+                          <div className="profile-context-note profile-lane-note">{laneNote}</div>
+                        )}
+                        {scanNote && (
+                          <div className="profile-context-note profile-scan-note">{scanNote}</div>
+                        )}
+                      </div>
+                    )}
+
+                    {purchases.length > 0 && (
+                      <section className="ep-sec">
+                        <div className="ep-sec-title">Robotik alımlar</div>
+                        <div className="profile-evidence-list">
+                          {purchases.map((item, index) => (
+                            <div className="profile-evidence" key={`${item.text}-${index}`}>
+                              {item.date && <span className="profile-evidence-date">{item.date}</span>}
+                              <div>{item.text}</div>
+                              {item.source && <div className="profile-evidence-source">↳ {item.source}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {activities.length > 0 && (
+                      <section className="ep-sec">
+                        <div className="ep-sec-title">Aktiviteler</div>
+                        <div className="profile-evidence-list">
+                          {activities.map((item, index) => (
+                            <div className="profile-evidence" key={`${item.text}-${index}`}>
+                              {item.date && <span className="profile-evidence-date">{item.date}</span>}
+                              <div>{item.text}</div>
+                              {item.source && <div className="profile-evidence-source">↳ {item.source}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {internalData.length > 0 && (
+                      <section className="ep-sec">
+                        <div className="ep-sec-title">İç veri</div>
+                        <ul className="profile-list">
+                          {internalData.map((item) => <li key={item}>{item}</li>)}
+                        </ul>
+                      </section>
+                    )}
+
+                    {signals.length > 0 && (
+                      <section className="ep-sec">
+                        <div className="ep-sec-title">Alım sinyalleri</div>
+                        <ul className="profile-list">
+                          {signals.map((signal) => <li key={signal}>{signal}</li>)}
+                        </ul>
+                      </section>
+                    )}
+
+                    {hooks.length > 0 && (
+                      <details className="ep-sec profile-hooks">
+                        <summary className="ep-sec-title">
+                          Kanca adayları — DOĞRULANMAMIŞ, mesaja olduğu gibi girmez
+                        </summary>
+                        <div className="profile-hook-note">
+                          Doğrulanmamış. Kanca bir KONU BAŞLIĞIDIR, hazır cümle değil — bilgi övgüye değil soruya çevrilir.
+                          {meta.onay === false && " · paketin denetim alanı: onay=false"}
+                        </div>
+                        <ul className="profile-list">
+                          {hooks.map((hook) => <li key={hook}>{hook}</li>)}
+                        </ul>
+                      </details>
+                    )}
+
+                    {notFound.length > 0 && (
+                      <section className="ep-sec profile-not-found">
+                        <div className="ep-sec-title">Bu turda çıkmayanlar</div>
+                        <ul className="profile-list profile-not-found-list">
+                          {notFound.map((item, index) => (
+                            <li key={`${item.text}-${index}`}>
+                              <span>{item.text}</span>
+                              {item.type === "bulunamadi" && (
+                                <span className="not-found-tag searched">arandı, çıkmadı</span>
+                              )}
+                              {item.type === "bakilamadi" && (
+                                <span className="not-found-tag retry">🔄 bakılamadı — yeniden taranmalı</span>
+                              )}
+                              {item.type === "aranmadi" && (
+                                <span className="not-found-tag skipped">kural gereği aranmadı</span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    )}
+
+                    {profileWarnings.length > 0 && (
+                      <section className="ep-sec">
+                        <div className="ep-sec-title">Uyarılar</div>
+                        <div className="profile-warning-list">
+                          {profileWarnings.map((warning, index) => (
+                            <div
+                              className={`profile-warning ${warning.tone}`}
+                              key={`${warning.text}-${index}`}
+                            >
+                              {warning.text}
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {typeof meta.temas_plani === "string" && meta.temas_plani.trim() && (
+                      <section className="ep-sec">
+                        <div className="ep-sec-title">Temas planı</div>
+                        <p className="profile-plan">{meta.temas_plani}</p>
+                      </section>
+                    )}
+
+                    {interviewQuestions.length > 0 && (
+                      <section className="ep-sec">
+                        <div className="ep-sec-title">Mom-Test soruları</div>
+                        <ol className="profile-list numbered">
+                          {interviewQuestions.map((question) => <li key={question}>{question}</li>)}
+                        </ol>
+                      </section>
+                    )}
+
+                    {messageDrafts.length > 0 && (
+                      <section className="ep-sec">
+                        <div className="ep-sec-title">Mesaj taslakları</div>
+                        <p className="draft-approval-note">Gönderim = Tuna'nın tek tek onayı</p>
+                        <div className="profile-drafts">
+                          {messageDrafts.map((draft, index) => (
+                            <details className="profile-draft" key={`${draft.person}-${draft.channel}-${index}`}>
+                              <summary>
+                                <span className="draft-badge">TASLAK</span>
+                                {draft.person && <span>{draft.person}</span>}
+                                <span>{draft.channel}</span>
+                                {draft.corrected && <span className="audited-badge">denetimden geçti</span>}
+                              </summary>
+                              {draft.subject && <div className="profile-draft-subject">Konu: {draft.subject}</div>}
+                              <div className="profile-draft-text">{draft.text}</div>
+                            </details>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {auditIssues.length > 0 && (
+                      <section className="ep-sec">
+                        <div className="ep-sec-title">Denetim sorunları</div>
+                        <div className="audit-issues">
+                          {auditIssues.map((issue, index) => (
+                            <div className={`audit-issue ${issue.clean ? "clean" : "warning"}`} key={`${issue.type}-${index}`}>
+                              <div>
+                                <span className="audit-type">{issue.type}</span>
+                                {issue.person && <span className="audit-person">{issue.person}</span>}
+                              </div>
+                              <div>{issue.description}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
 
                     {products.length > 0 && (
                       <section className="ep-sec">

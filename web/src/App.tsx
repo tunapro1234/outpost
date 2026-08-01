@@ -166,6 +166,7 @@ export default function App() {
   }, []);
 
   const route = useRoute();
+  const routeNetwork = route.name === "entity" ? route.network ?? null : null;
   // Active view is derived from the path. On the entity page (/e/:id) we keep
   // the last visited view so the sidebar highlight stays put behind it.
   const lastViewRef = useRef<NavKey>("overview");
@@ -379,19 +380,25 @@ export default function App() {
       const all = list ?? [];
       const stored = localStorage.getItem(networkStorageKey(workspace));
       const chosen =
-        all.find((n) => n.id === stored) ??
-        all.find((n) => n.ui_default) ??
-        all.find((n) => n.default) ??
-        all[0] ??
-        null;
+        routeNetwork === null
+          ? all.find((n) => n.id === stored) ??
+            all.find((n) => n.ui_default) ??
+            all.find((n) => n.default) ??
+            all[0] ??
+            null
+          : null;
+      const chosenId = routeNetwork ?? chosen?.id ?? null;
       setNetworks(all);
-      configureNetwork(chosen?.id ?? null);
-      setNetworkState(chosen?.id ?? "");
+      configureNetwork(chosenId);
+      if (routeNetwork !== null) {
+        localStorage.setItem(networkStorageKey(workspace), routeNetwork);
+      }
+      setNetworkState(chosenId ?? "");
     });
     return () => {
       alive = false;
     };
-  }, [workspace]);
+  }, [workspace, routeNetwork]);
 
   useEffect(() => {
     if (!workspace || network === null) return;
@@ -410,9 +417,12 @@ export default function App() {
       setFocusNodeId(null);
       setFiltersState((f) => ({ ...f, egoId: null, hubThreshold: null }));
       setNetworkState(id);
+      if (route.name === "entity") {
+        navigate(entityPath(route.id, id), { replace: true });
+      }
       return true;
     },
-    [workspace, network, networks]
+    [workspace, network, networks, route]
   );
 
   const applyControlCommand = useCallback(
@@ -427,8 +437,11 @@ export default function App() {
             showControlToast(`⌁ agent: workspace ${command.ws} is unavailable`);
             break;
           }
-          navigate(entityPath(command.id));
-          showControlToast(`⌁ agent: opened ${entityPath(command.id)}`);
+          const targetNetwork =
+            command.ws && command.ws !== workspace ? null : network;
+          const path = entityPath(command.id, targetNetwork);
+          navigate(path);
+          showControlToast(`⌁ agent: opened ${path}`);
           break;
         case "set-workspace":
           showControlToast(
@@ -492,9 +505,11 @@ export default function App() {
       changeNetwork,
       changeWorkspace,
       filters,
+      network,
       presets,
       setFilters,
       showControlToast,
+      workspace,
     ]
   );
   controlHandler.current = applyControlCommand;
@@ -527,6 +542,11 @@ export default function App() {
                 city: m.city ?? null,
                 mail: m.mail ?? null,
                 role: m.role ?? null,
+                guven: m.guven ?? null,
+                katman: m.katman ?? null,
+                sira: m.sira ?? null,
+                politika_durumu: m.politika_durumu ?? null,
+                politika_metni: m.politika_metni ?? null,
                 closeness: m.closeness ?? null,
                 hook: m.hook ?? null,
                 tags: m.tags ?? null,
@@ -847,6 +867,11 @@ export default function App() {
           last_mail_direction: n.last_mail_direction ?? null,
           last_mail_from: n.last_mail_from ?? null,
           role: n.role ?? null,
+          guven: n.guven ?? null,
+          katman: n.katman ?? null,
+          sira: n.sira ?? null,
+          politika_durumu: n.politika_durumu ?? null,
+          politika_metni: n.politika_metni ?? null,
           closeness: n.closeness ?? null,
           hook: n.hook ?? null,
           tags: n.tags ?? null,
@@ -862,9 +887,12 @@ export default function App() {
     [result, orgByEntity]
   );
 
-  const openFull = useCallback((id: string) => {
-    navigate(entityPath(id));
-  }, []);
+  const openFull = useCallback(
+    (id: string) => {
+      navigate(entityPath(id, network));
+    },
+    [network]
+  );
 
   const egoNode = filters.egoId
     ? full.nodes.find((n) => n.id === filters.egoId)
@@ -1010,11 +1038,15 @@ export default function App() {
   const appClass = `app${assistantOpen ? " rail-open" : ""}`;
   const appStyle = { "--rail-w": `${assistantWidth}px` } as CSSProperties;
 
-  if (!workspace) {
+  const entityNetworkReady =
+    network !== null &&
+    (route.name !== "entity" || !route.network || route.network === network);
+
+  if (!workspace || (route.name === "entity" && !entityNetworkReady)) {
     return (
       <div className="app">
         <div className="center-msg">
-          <div>{error ?? "Loading workspace…"}</div>
+          <div>{error ?? (workspace ? "Loading network…" : "Loading workspace…")}</div>
         </div>
         <ControlToast message={controlToast} />
       </div>
@@ -1029,6 +1061,7 @@ export default function App() {
         <div className="main" key={workspace}>
           <EntityPage
             id={route.id}
+            network={network!}
             theme={theme}
             onOpenMenu={() => setMobileSidebarOpen(true)}
             onToggleTheme={() =>

@@ -21,6 +21,22 @@ function emptyFlags() {
   return { internal: false, no_contact: false };
 }
 
+function profileScore(meta = {}) {
+  if (typeof meta.score === "number" && Number.isFinite(meta.score)) return meta.score;
+  if (typeof meta.alim_skoru === "number" && Number.isFinite(meta.alim_skoru)) {
+    return meta.alim_skoru;
+  }
+  return null;
+}
+
+function profileConfidence(meta = {}) {
+  if (typeof meta.guven === "string") return meta.guven;
+  if (meta.guven && typeof meta.guven === "object" && !Array.isArray(meta.guven)) {
+    return meta.guven.sinif ?? meta.guven.ham ?? null;
+  }
+  return null;
+}
+
 export function workspaceNetworkId(workspace) {
   return workspace.networkId ?? workspace.defaultNetworkId ?? "default";
 }
@@ -41,6 +57,10 @@ export function deriveEntityState({
     ? entity.meta.durum.trim().toLowerCase()
     : "";
   const flags = emptyFlags();
+  if (entity?.meta?.flags && typeof entity.meta.flags === "object") {
+    flags.internal = entity.meta.flags.internal === true;
+    flags.no_contact = entity.meta.flags.no_contact === true;
+  }
   if (durum === "ic") flags.internal = true;
   if (durum === "temas-yasak") flags.no_contact = true;
 
@@ -189,7 +209,13 @@ export function entityListItem(entity, index, statsByEntity, stateByEntity) {
     mail_source: entity.meta.mail_source ?? null,
     tags: Array.isArray(entity.meta.tags) ? entity.meta.tags : null,
     status: entity.meta.status ?? null,
-    score: typeof entity.meta.score === "number" ? entity.meta.score : null,
+    score: profileScore(entity.meta),
+    guven: profileConfidence(entity.meta),
+    katman: entity.meta.katman ?? null,
+    politika_durumu: ["no_contact", "defer"].includes(entity.meta.politika_durumu)
+      ? entity.meta.politika_durumu
+      : null,
+    politika_metni: entity.meta.politika_metni ?? null,
     city: entity.meta.city ?? null,
     mail: entity.meta.mail ?? null,
     // Adapter-mapped / manual-outreach fields. `phone` and `kimlik_guveni` are
@@ -268,7 +294,7 @@ export function graph(index, statsByEntity, query, {
   let hiddenCount = 0;
   for (const entity of index.entities.values()) {
     const meta = entity.meta;
-    const score = typeof meta.score === "number" ? meta.score : null;
+    const score = profileScore(meta);
     if (types && !types.has(meta.type)) continue;
     if (statuses && !statuses.has(meta.status ?? "")) continue;
     if (minScore !== null && (score === null || score < minScore)) continue;
@@ -285,6 +311,11 @@ export function graph(index, statsByEntity, query, {
       subtype: meta.subtype ?? null,
       status: meta.status ?? null,
       score,
+      sira: Number.isInteger(meta.sira) ? meta.sira : null,
+      politika_durumu: ["no_contact", "defer"].includes(meta.politika_durumu)
+        ? meta.politika_durumu
+        : null,
+      politika_metni: meta.politika_metni ?? null,
       degree: index.degrees.get(entity.id) ?? 0,
       mail_count: statsByEntity.get(entity.id)?.mail_count ?? 0,
       tags: Array.isArray(meta.tags) ? meta.tags : null,

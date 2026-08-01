@@ -23,7 +23,7 @@ export type ViewKey =
 
 export type Route =
   | { name: "view"; key: ViewKey }
-  | { name: "entity"; id: string };
+  | { name: "entity"; id: string; network?: string };
 
 const PATH_TO_VIEW: Record<string, ViewKey> = {
   "/": "overview",
@@ -86,14 +86,23 @@ export function viewPath(key: ViewKey): string {
 function parse(): Route {
   const path = window.location.pathname;
   const m = path.match(/^\/e\/(.+)$/);
-  if (m) return { name: "entity", id: decodeURIComponent(m[1]) };
+  if (m) {
+    const network = new URLSearchParams(window.location.search).get("net")?.trim();
+    return {
+      name: "entity",
+      id: decodeURIComponent(m[1]),
+      ...(network ? { network } : {}),
+    };
+  }
   const key = PATH_TO_VIEW[path] ?? "overview";
   return { name: "view", key };
 }
 
 function sameRoute(a: Route, b: Route): boolean {
   if (a.name !== b.name) return false;
-  if (a.name === "entity" && b.name === "entity") return a.id === b.id;
+  if (a.name === "entity" && b.name === "entity") {
+    return a.id === b.id && a.network === b.network;
+  }
   if (a.name === "view" && b.name === "view") return a.key === b.key;
   return true;
 }
@@ -118,8 +127,9 @@ export function navigate(path: string, opts?: { replace?: boolean }): void {
   refresh();
 }
 
-export function entityPath(id: string): string {
-  return `/e/${encodeURIComponent(id)}`;
+export function entityPath(id: string, network?: string | null): string {
+  const path = `/e/${encodeURIComponent(id)}`;
+  return network ? `${path}?net=${encodeURIComponent(network)}` : path;
 }
 
 function subscribe(cb: () => void): () => void {

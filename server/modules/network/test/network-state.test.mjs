@@ -51,6 +51,14 @@ test("state türetme manual override, temas, mail ve durum önceliklerini uygula
     research_status: "none",
     flags: { internal: false, no_contact: true },
   });
+  assert.deepEqual(deriveEntityState({
+    entity: { meta: { flags: { no_contact: true } } },
+  }), {
+    state: null,
+    state_source: "derived",
+    research_status: "none",
+    flags: { internal: false, no_contact: true },
+  });
 });
 
 test("interactions CRUD ve status upsert payloadları entity durumuna yansır", async (t) => {
