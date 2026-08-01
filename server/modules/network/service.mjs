@@ -228,6 +228,7 @@ export function entityListItem(entity, index, statsByEntity, stateByEntity) {
     phone: entity.meta.phone ?? null,
     phone_source: entity.meta.phone_source ?? null,
     contact_channel: entity.meta.contact_channel ?? null,
+    birincil_kanal: entity.meta.birincil_kanal ?? entity.meta.contact_channel ?? null,
     kimlik_guveni: entity.meta.kimlik_guveni ?? null,
     gun: entity.meta.gun ?? null,
     sira: Number.isInteger(entity.meta.sira) ? entity.meta.sira : null,

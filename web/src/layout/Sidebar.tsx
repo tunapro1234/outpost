@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { WorkspaceInfo } from "@/core/types";
 
 export type NavKey =
+  | "today"
   | "overview"
   | "network"
   | "schools"
@@ -30,6 +31,12 @@ interface Props {
 }
 
 const Icons: Record<NavKey, JSX.Element> = {
+  today: (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M8 3v4M16 3v4M3 10h18M8 15h3M8 18h7" />
+    </svg>
+  ),
   overview: (
     <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="3" width="7" height="9" rx="1.4" />
@@ -106,6 +113,7 @@ const Icons: Record<NavKey, JSX.Element> = {
 };
 
 const TOP: { k: NavKey; label: string }[] = [
+  { k: "today", label: "Bugün" },
   { k: "overview", label: "Overview" },
   { k: "network", label: "Network" },
 ];

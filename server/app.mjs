@@ -31,6 +31,7 @@ import { networkRoutes } from "./modules/network/routes.mjs";
 import { overviewRoutes } from "./modules/overview/routes.mjs";
 import { profileRoutes } from "./modules/profile/routes.mjs";
 import { reachRoutes } from "./modules/reach/routes.mjs";
+import { temasRoutes } from "./modules/temas/routes.mjs";
 
 const SERVER_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_WEB_DIST = path.resolve(SERVER_DIRECTORY, "../web/dist");
@@ -256,6 +257,10 @@ export async function createApp({
     prefix: "/api/ws/:ws",
     resolveWorkspace: resolveScopedWorkspace,
     defaultUser,
+  });
+  await app.register(temasRoutes, {
+    prefix: "/api/ws/:ws",
+    resolveWorkspace: resolveScopedWorkspace,
   });
   await app.register(assistantRoutes, {
     prefix: "/api/ws/:ws",

@@ -18,6 +18,20 @@ export type Status =
   | "pas";
 
 export type OutreachState = 0 | 1 | 2 | 3 | 4 | 5;
+export type TemasDurumu =
+  | "yazilmadi"
+  | "yazildi"
+  | "cevap_bekleniyor"
+  | "cevaplanacak"
+  | "gorusuldu"
+  | "kapandi";
+
+export interface TemasDurumuResult {
+  entity_id: string;
+  durum: TemasDurumu;
+  guncelleme_ts: string | null;
+  kaynak: "ui:tuna" | "seed" | null;
+}
 export type ResearchStatus = "none" | "active" | "done";
 export type InteractionChannel =
   | "whatsapp"
@@ -121,6 +135,7 @@ export interface EntityListItem extends EntityState {
   phone?: string | null;
   phone_source?: "elden" | "ocr" | "web" | null;
   contact_channel?: string | null;
+  birincil_kanal?: string | null;
   kimlik_guveni?: "iyi" | "orta" | "zayif" | null;
   gun?: string | null;
   sira?: number | null;

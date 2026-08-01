@@ -50,6 +50,25 @@ export interface ProfileNotFoundItem {
   type: "bulunamadi" | "bakilamadi" | "aranmadi" | null;
 }
 
+export const SCHOOL_STRUCTURE_FIELDS = [
+  ["yapi", "Yapı"],
+  ["kampus", "Kampüs"],
+  ["karar_merkezi", "Karar merkezi"],
+  ["takvim", "Takvim"],
+  ["pencere", "Pencere"],
+  ["robotik_izi", "Robotik izi"],
+  ["kendi_kiti", "Kendi kiti"],
+  ["ucret", "Ücret"],
+] as const;
+
+export type SchoolStructureKey = typeof SCHOOL_STRUCTURE_FIELDS[number][0];
+
+export interface SchoolStructureRow {
+  key: SchoolStructureKey;
+  label: string;
+  value: string;
+}
+
 function text(value: unknown): string | null {
   if (typeof value === "string" && value.trim()) return value.trim();
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
@@ -215,6 +234,23 @@ export function normalizeStringList(value: unknown): string[] {
 
 export function normalizeProfileNote(value: unknown): string | null {
   return text(value);
+}
+
+export function normalizeSchoolStructure(
+  meta: Record<string, unknown>
+): SchoolStructureRow[] {
+  const rows = SCHOOL_STRUCTURE_FIELDS.flatMap(([key, label]) => {
+    const value = text(meta[key]);
+    return value ? [{ key, label, value }] : [];
+  });
+  const ownKitIndex = rows.findIndex(({ key, value }) =>
+    key === "kendi_kiti" && !value.toLocaleLowerCase("tr-TR").startsWith("yok")
+  );
+  if (ownKitIndex > 0) {
+    const [ownKit] = rows.splice(ownKitIndex, 1);
+    rows.unshift(ownKit);
+  }
+  return rows;
 }
 
 export function normalizeNotFound(value: unknown): ProfileNotFoundItem[] {

@@ -24,6 +24,7 @@ import WorkspaceView from "@/modules/workspace/WorkspaceView";
 import IntegrationsView from "@/modules/integrations/IntegrationsView";
 import ProfileView from "@/modules/profile/ProfileView";
 import OverviewView from "@/modules/overview/OverviewView";
+import TodayView from "@/modules/today/TodayView";
 import AssistantDrawer from "@/modules/assistant/AssistantDrawer";
 import ControlToast from "@/components/ControlToast";
 import { connectControl, type ControlCommand } from "@/core/control";
@@ -82,6 +83,7 @@ const ENTITY_TYPES: EntityType[] = [
 ];
 
 const TITLES: Record<NavKey, string> = {
+  today: "Bugün",
   overview: "Overview",
   network: "Network",
   schools: "Okullar",
@@ -236,6 +238,9 @@ export default function App() {
       setNetworks([]);
       setNetworkState(null);
       setWorkspaceState(chosen.id);
+      if (chosen.id === "probot" && window.location.pathname === "/") {
+        navigate(viewPath("today"), { replace: true });
+      }
     });
     return () => {
       alive = false;
@@ -1273,6 +1278,12 @@ export default function App() {
               onNavigate={navigateHome}
               onAssistantSubmit={submitAssistant}
               assistantReplyKey={assistantReplyKey}
+            />
+          )}
+          {view === "today" && (
+            <TodayView
+              hasHedef={networks.some((item) => item.id === "hedef")}
+              onOpenEntity={(id) => navigate(entityPath(id, "hedef"))}
             />
           )}
           {view === "mail" && (

@@ -89,6 +89,27 @@ CREATE TABLE IF NOT EXISTS entity_status (
   PRIMARY KEY (workspace, network, entity_id)
 );
 `,
+  // Migration 3: Tuna-owned contact-state overlay. This deliberately lives
+  // beside (not inside) the rebuildable vault and is only mutated by the
+  // dedicated UI PATCH route or the one-off, insert-only seed script.
+  `
+CREATE TABLE IF NOT EXISTS temas_durumu (
+  ws TEXT NOT NULL,
+  network TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  durum TEXT NOT NULL
+    CHECK(durum IN (
+      'yazilmadi', 'yazildi', 'cevap_bekleniyor',
+      'cevaplanacak', 'gorusuldu', 'kapandi'
+    )),
+  guncelleme_ts TEXT NOT NULL,
+  kaynak TEXT NOT NULL
+    CHECK(kaynak IN ('ui:tuna', 'seed')),
+  PRIMARY KEY (ws, network, entity_id)
+);
+CREATE INDEX IF NOT EXISTS idx_temas_durumu_panel
+  ON temas_durumu(ws, network, durum);
+`,
 ];
 
 function currentUserVersion(db) {

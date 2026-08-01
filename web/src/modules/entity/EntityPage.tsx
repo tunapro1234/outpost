@@ -38,6 +38,7 @@ import {
   normalizeEvidence,
   normalizeNotFound,
   normalizeProfileNote,
+  normalizeSchoolStructure,
   normalizeProducts,
   normalizeSources,
   normalizeStringList,
@@ -298,6 +299,10 @@ export default function EntityPage({
   const notFound = useMemo(() => normalizeNotFound(meta?.bulunamayan), [meta?.bulunamayan]);
   const profileWarnings = useMemo(() => normalizeWarnings(meta?.uyarilar), [meta?.uyarilar]);
   const profileSources = useMemo(() => normalizeSources(meta?.kaynaklar), [meta?.kaynaklar]);
+  const schoolStructure = useMemo(
+    () => normalizeSchoolStructure(meta ?? {}),
+    [meta]
+  );
   const interviewQuestions = useMemo(
     () => normalizeStringList(meta?.gorusme_sorulari),
     [meta?.gorusme_sorulari]
@@ -505,6 +510,11 @@ export default function EntityPage({
                 </div>
 
                 <h1 className="ep-name">{meta.name}</h1>
+                {(type === "school" || type === "institution") && profileStatus && (
+                  <div className="profile-summary-row">
+                    <span className="profile-neutral-chip">{profileStatus}</span>
+                  </div>
+                )}
                 {type === "person" && (
                   <div className="profile-summary-row">
                     {profileStatus && <span className="profile-neutral-chip">{profileStatus}</span>}
@@ -681,6 +691,20 @@ export default function EntityPage({
                         <p className="ep-muted">No description yet</p>
                       )}
                     </section>
+
+                    {(type === "school" || type === "institution") && schoolStructure.length > 0 && (
+                      <section className="ep-sec school-structure">
+                        <div className="ep-sec-title">Yapı</div>
+                        <dl className="school-structure-list">
+                          {schoolStructure.map((row) => (
+                            <div className="school-structure-row" key={row.key}>
+                              <dt>{row.label}</dt>
+                              <dd>{row.value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </section>
+                    )}
 
                     {(laneNote || scanNote) && (
                       <div className="profile-note-stack">

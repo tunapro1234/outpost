@@ -38,6 +38,8 @@ import type {
   Status,
   UserStat,
   NetworkInfo,
+  TemasDurumu,
+  TemasDurumuResult,
   WorkspaceInfo,
 } from "./types";
 import { trNormalize } from "./normalize";
@@ -87,6 +89,7 @@ import mockEntitiesRaw from "../../mock/entities.json";
 
 const mockGraph = mockGraphRaw as unknown as GraphData;
 const mockEntities = mockEntitiesRaw as unknown as Record<string, Entity>;
+const mockTemas = new Map<string, TemasDurumuResult>();
 
 function nodeById(id: string): GraphNode | undefined {
   return mockGraph.nodes.find((n) => n.id === id);
@@ -589,6 +592,51 @@ export const api = {
     if (params.sort) p.set("sort", params.sort);
     if (params.order) p.set("order", params.order);
     return json<EntityListItem[]>(netUrl(`${workspaceBase()}/entities`, p));
+  },
+
+  // The Today panel is intentionally pinned to the `hedef` network and must
+  // not follow the Network screen's active selection.
+  async todayEntities(): Promise<EntityListItem[]> {
+    if (MOCK) return mockEntityList({ sort: "name", order: "asc" });
+    const p = new URLSearchParams({ network: "hedef", sort: "name", order: "asc" });
+    const list = await json<EntityListItem[]>(`${workspaceBase()}/entities?${p.toString()}`);
+    // Panel kişi bazlıdır: kurum/okul kartları temas akışına girmez.
+    return list.filter((item) => item.type === "person");
+  },
+
+  async temas(id: string): Promise<TemasDurumuResult> {
+    if (MOCK) {
+      return mockTemas.get(id) ?? {
+        entity_id: id,
+        durum: "yazilmadi",
+        guncelleme_ts: null,
+        kaynak: null,
+      };
+    }
+    return json<TemasDurumuResult>(
+      `${workspaceBase()}/temas/${encodeURIComponent(id)}`
+    );
+  },
+
+  async patchTemas(id: string, durum: TemasDurumu): Promise<TemasDurumuResult> {
+    if (MOCK) {
+      const result: TemasDurumuResult = {
+        entity_id: id,
+        durum,
+        guncelleme_ts: new Date().toISOString(),
+        kaynak: "ui:tuna",
+      };
+      mockTemas.set(id, result);
+      return result;
+    }
+    return json<TemasDurumuResult>(
+      `${workspaceBase()}/temas/${encodeURIComponent(id)}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ durum }),
+      }
+    );
   },
 
   async entity(id: string): Promise<Entity> {

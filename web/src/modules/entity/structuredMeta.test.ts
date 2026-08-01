@@ -9,12 +9,46 @@ import {
   normalizeEvidence,
   normalizeNotFound,
   normalizeProfileNote,
+  normalizeSchoolStructure,
   normalizeProducts,
   normalizeSources,
   normalizeStringList,
   normalizeWarnings,
   wikilinkTarget,
 } from "./structuredMeta.ts";
+
+test("kurum yapı alanlarını düz metin olarak normalize eder ve var olan kiti öne alır", () => {
+  assert.deepEqual(normalizeSchoolStructure({
+    yapi: "Zincir okul",
+    kampus: "İstanbul kampüsleri",
+    karar_merkezi: "Genel merkez",
+    takvim: "Eylül–Haziran",
+    pencere: "Mart–Mayıs",
+    robotik_izi: "FLL takımları",
+    kendi_kiti: "🔴 VAR — ERA-KIT",
+    ucret: "Ücretli",
+    bos: "gösterilmez",
+  }), [
+    { key: "kendi_kiti", label: "Kendi kiti", value: "🔴 VAR — ERA-KIT" },
+    { key: "yapi", label: "Yapı", value: "Zincir okul" },
+    { key: "kampus", label: "Kampüs", value: "İstanbul kampüsleri" },
+    { key: "karar_merkezi", label: "Karar merkezi", value: "Genel merkez" },
+    { key: "takvim", label: "Takvim", value: "Eylül–Haziran" },
+    { key: "pencere", label: "Pencere", value: "Mart–Mayıs" },
+    { key: "robotik_izi", label: "Robotik izi", value: "FLL takımları" },
+    { key: "ucret", label: "Ücret", value: "Ücretli" },
+  ]);
+});
+
+test("yok ile başlayan kendi kiti satırını yapısal sırasında bırakır", () => {
+  assert.deepEqual(normalizeSchoolStructure({
+    yapi: "Kampüs okulu",
+    kendi_kiti: "YOK — dış tedarik",
+  }), [
+    { key: "yapi", label: "Yapı", value: "Kampüs okulu" },
+    { key: "kendi_kiti", label: "Kendi kiti", value: "YOK — dış tedarik" },
+  ]);
+});
 
 test("profil bilgi notlarını yalnızca dolu metin olarak normalize eder", () => {
   assert.equal(normalizeProfileNote("  Kulvar bilgisi  "), "Kulvar bilgisi");

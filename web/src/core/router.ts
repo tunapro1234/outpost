@@ -8,6 +8,7 @@ import { useSyncExternalStore } from "react";
 // `?select=` / `?f=` query params keep working untouched.
 
 export type ViewKey =
+  | "today"
   | "overview"
   | "network"
   | "schools"
@@ -27,6 +28,8 @@ export type Route =
 
 const PATH_TO_VIEW: Record<string, ViewKey> = {
   "/": "overview",
+  "/today": "today",
+  "/overview": "overview",
   "/network": "network",
   "/lists/schools": "schools",
   "/lists/institutions": "institutions",
@@ -47,7 +50,8 @@ const PATH_TO_VIEW: Record<string, ViewKey> = {
 };
 
 const VIEW_TO_PATH: Record<ViewKey, string> = {
-  overview: "/",
+  today: "/today",
+  overview: "/overview",
   network: "/network",
   schools: "/lists/schools",
   institutions: "/lists/institutions",
