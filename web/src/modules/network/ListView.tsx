@@ -112,15 +112,24 @@ const PRESETS: {
     cols: ["subtype", "city", "score", "degree"],
   },
   {
-    // 2027 FTC mentorleri — Tuna WhatsApp'tan doğrudan yazıyor, kişiler research
-    // vault'una `2027-ftc` etiketiyle giriyor (probot-outreach, API üzerinden).
-    // Üyelik kuralı ETİKET: kadro/rol metnine bakmıyoruz, çünkü mentorluk bir
-    // unvan değil bir ilişki — kişinin rolünden çıkarılamaz, işaretlenir.
+    // 2027 FTC kampanyası — Tuna WhatsApp'tan doğrudan yazıyor; kişiler, okullar
+    // ve takımlar research vault'una `2027-ftc` etiketiyle giriyor.
+    //
+    // ⚠️ TİP FİLTRESİ YOK (type: null) ve bu KASITLI. İlk sürümde `type: "person"`
+    // vardı; Tuna listeyi "FTC okulları + takımları + insanları" olarak istiyor ve
+    // takımlar `company` tipinde tutuluyor (örn. lavender-robotics-frc-9583-ftc-24140).
+    // Tip filtresi kalsaydı 54 takım + 51 kurum listede HİÇ görünmeyecekti — üstelik
+    // sessizce: liste dolu görünür, eksiği yalnız sayan fark ederdi.
+    // ⭐ Ders: bir listenin üyelik kuralı İKİ şarta bağlanınca, ikincisi birincinin
+    //    içinde saklanır. Burada üyelik TEK şart: etiket. Etiketi kim koyduysa
+    //    kararı o vermiştir; tip ayrımı görünüm meselesidir, üyelik ölçütü değil.
     id: "ftc2027",
     label: "2027 FTC",
-    type: "person",
+    type: null,
     tag: "2027-ftc",
-    cols: ["subtype", "city", "score", "degree", "mail_count", "last_mail_date"],
+    // Karışık tipli liste olduğu için `type` sütunu ilk sırada: okul mu takım mı
+    // kişi mi, bakan kişi ilk bakışta görsün.
+    cols: ["type", "subtype", "city", "score", "degree", "mail_count", "last_mail_date"],
   },
   {
     id: "teacher",

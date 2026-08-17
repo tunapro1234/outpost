@@ -132,12 +132,14 @@ const TOP: { k: NavKey; label: string }[] = [
   { k: "network", label: "Network" },
 ];
 const LISTS: { k: NavKey; label: string }[] = [
+  // Tuna, 17 Ağu: "2027 FTC en tepede olsun." Aktif kampanya listesi, kalıcı
+  // envanter listelerinin (Okullar/Kurumlar/…) üstünde duruyor.
+  { k: "ftc2027", label: "2027 FTC" },
   { k: "schools", label: "Okullar" },
   { k: "institutions", label: "Kurumlar" },
   { k: "teams", label: "Takımlar" },
   { k: "teachers", label: "Öğretmenler" },
   { k: "competitors", label: "Rakipler" },
-  { k: "ftc2027", label: "2027 FTC" },
 ];
 const MODULES: { k: NavKey; label: string }[] = [
   { k: "mail", label: "Mail" },
