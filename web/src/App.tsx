@@ -91,6 +91,7 @@ const TITLES: Record<NavKey, string> = {
   teams: "Takımlar",
   teachers: "Öğretmenler",
   competitors: "Rakipler",
+  ftc2027: "2027 FTC",
   mail: "Mail",
   agents: "Agents",
   workspace: "Workspace",
@@ -104,7 +105,18 @@ const LIST_NAV_PRESETS: Partial<Record<NavKey, ListPresetId>> = {
   teams: "team",
   teachers: "teacher",
   competitors: "competitor",
+  ftc2027: "ftc2027",
 };
+
+// ⚠️ Liste route'ları eskiden ağı SABİT olarak "intel"e çeviriyordu. 2027 FTC
+// listesi research vault'unda yaşıyor, yani sabit varsayım onu boş gösterirdi.
+// ⭐ Ders: bir kuralı "hepsi için aynı" diye yazmak, ilk istisnada kuralı değil
+//    İSTİSNAYI bozar. Eşleme tabloya alındı; yazılmayan her liste eskisi gibi
+//    "intel"e gider, yani mevcut davranış birebir korunur.
+const LIST_NAV_NETWORK: Partial<Record<NavKey, string>> = {
+  ftc2027: "research",
+};
+const DEFAULT_LIST_NETWORK = "intel";
 
 function loadTheme(): ThemeName {
   const t = localStorage.getItem("outpost.theme");
@@ -922,8 +934,11 @@ export default function App() {
         hubThreshold: facets.degree.p99 || null,
       });
     }
-    if (network !== "intel" && networks.some((item) => item.id === "intel")) {
-      changeNetwork("intel");
+    const wanted = LIST_NAV_NETWORK[view] ?? DEFAULT_LIST_NETWORK;
+    // networks.some(...) kapısı korunuyor: ağ yoksa hiçbir şey yapma. Olmayan bir
+    // ağa geçmeye çalışmak, listeyi boş değil BOZUK gösterirdi.
+    if (network !== wanted && networks.some((item) => item.id === wanted)) {
+      changeNetwork(wanted);
     }
   }, [
     changeNetwork,

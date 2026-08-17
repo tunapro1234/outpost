@@ -43,7 +43,8 @@ export type ListPresetId =
   | "institution"
   | "school"
   | "channel"
-  | "team";
+  | "team"
+  | "ftc2027";
 
 interface SortSpec {
   key: SortKey;
@@ -109,6 +110,17 @@ const PRESETS: {
     type: "company",
     tag: "rakip",
     cols: ["subtype", "city", "score", "degree"],
+  },
+  {
+    // 2027 FTC mentorleri — Tuna WhatsApp'tan doğrudan yazıyor, kişiler research
+    // vault'una `2027-ftc` etiketiyle giriyor (probot-outreach, API üzerinden).
+    // Üyelik kuralı ETİKET: kadro/rol metnine bakmıyoruz, çünkü mentorluk bir
+    // unvan değil bir ilişki — kişinin rolünden çıkarılamaz, işaretlenir.
+    id: "ftc2027",
+    label: "2027 FTC",
+    type: "person",
+    tag: "2027-ftc",
+    cols: ["subtype", "city", "score", "degree", "mail_count", "last_mail_date"],
   },
   {
     id: "teacher",

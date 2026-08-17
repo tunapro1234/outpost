@@ -16,6 +16,7 @@ export type ViewKey =
   | "teams"
   | "teachers"
   | "competitors"
+  | "ftc2027"
   | "mail"
   | "agents"
   | "workspace"
@@ -36,6 +37,7 @@ const PATH_TO_VIEW: Record<string, ViewKey> = {
   "/lists/teams": "teams",
   "/lists/teachers": "teachers",
   "/lists/competitors": "competitors",
+  "/lists/2027-ftc": "ftc2027",
   "/mail": "mail",
   // legacy alias — the module used to be called Reach. Kept so old links and
   // bookmarks still resolve; navigate() below rewrites the URL to /mail.
@@ -58,6 +60,7 @@ const VIEW_TO_PATH: Record<ViewKey, string> = {
   teams: "/lists/teams",
   teachers: "/lists/teachers",
   competitors: "/lists/competitors",
+  ftc2027: "/lists/2027-ftc",
   mail: "/mail",
   agents: "/agents",
   workspace: "/workspace",

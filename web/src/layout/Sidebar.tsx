@@ -10,6 +10,10 @@ export type NavKey =
   | "teams"
   | "teachers"
   | "competitors"
+  // ⚠️ NavKey ile router'daki ViewKey AYRI iki union ve elle senkron tutuluyor.
+  // Yeni bir liste eklerken İKİSİNE birden yazılmazsa tsc yakalıyor (bugün yakaladı),
+  // ama kayması mümkün olduğu için not düşülüyor: burayı değiştiren core/router.ts'e de bakar.
+  | "ftc2027"
   | "mail"
   | "agents"
   | "workspace"
@@ -81,6 +85,16 @@ const Icons: Record<NavKey, JSX.Element> = {
       <path d="M8 4H4v3a4 4 0 0 0 4 4M16 4h4v3a4 4 0 0 1-4 4M8 3h8v5a4 4 0 0 1-8 0zM12 12v5M8 21h8M9 17h6" />
     </svg>
   ),
+  ftc2027: (
+    // Takım/mentor ikonu: bir merkez ve ona bağlı üç kişi. FTC mentorluğu bir
+    // unvan değil bir bağ olduğu için rozet değil ilişki çizimi seçildi.
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="7" r="3" />
+      <path d="M12 10v4M12 14l-5 4M12 14l5 4" />
+      <circle cx="6" cy="19" r="2" />
+      <circle cx="18" cy="19" r="2" />
+    </svg>
+  ),
   mail: (
     <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="5" width="18" height="14" rx="2.4" />
@@ -123,6 +137,7 @@ const LISTS: { k: NavKey; label: string }[] = [
   { k: "teams", label: "Takımlar" },
   { k: "teachers", label: "Öğretmenler" },
   { k: "competitors", label: "Rakipler" },
+  { k: "ftc2027", label: "2027 FTC" },
 ];
 const MODULES: { k: NavKey; label: string }[] = [
   { k: "mail", label: "Mail" },
