@@ -65,6 +65,9 @@ export interface GraphNode extends EntityState {
   // enriched client-side from the entity list — optional
   city?: string | null;
   mail?: string | null;
+  // EntityPage'in "Bağlantılar" kartçıkları kişide telefonu gösteriyor; ilişki
+  // kaydı (Relation) yalnız id/ad/tip taşıdığı için zenginleştirme buradan.
+  phone?: string | null;
   role?: string | null;
   guven?: string | null;
   katman?: string | number | null;

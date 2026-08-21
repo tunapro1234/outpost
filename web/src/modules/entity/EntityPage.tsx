@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   Entity,
   GraphData,
+  GraphNode,
   MailItem,
   Relation,
   Status,
@@ -251,17 +252,19 @@ export default function EntityPage({
     }
   };
 
-  const { relOut, relIn, mentions } = useMemo(() => {
-    const rels = entity?.relations ?? [];
-    return {
-      relOut: rels.filter((r) => r.kind === "relation" && r.direction === "out"),
-      relIn: rels.filter((r) => r.kind === "relation" && r.direction === "in"),
-      mentions: rels.filter((r) => r.kind === "mention"),
-    };
-  }, [entity]);
+  // Gerçek ilişkiler `connections`ta toplanıyor (aşağıda); burada kalan yalnız
+  // "anılma" (mention) bağları — bağlantı bloğunun soluk alt şeridi.
+  const mentions = useMemo(
+    () => (entity?.relations ?? []).filter((r) => r.kind === "mention"),
+    [entity]
+  );
 
-  const definition = useMemo(
-    () => (entity ? firstParagraph(entity.body) : ""),
+  // Definition, not gövdesinin ilk paragrafı — yani HAM MARKDOWN. Düz metin
+  // olarak basılınca "**#24140 Lavender Robotics**" yıldızlarıyla görünüyordu
+  // (Tuna, 21 Ağu). Gövdenin geri kalanıyla aynı boru hattından (renderMarkdown
+  // → DOMPurify) geçiriyoruz; ayrı bir "yıldızları soy" mekanizması yok.
+  const definitionHtml = useMemo(
+    () => (entity ? renderMarkdown(firstParagraph(entity.body)) : ""),
     [entity]
   );
   const bodyHtml = useMemo(() => {
@@ -369,6 +372,41 @@ export default function EntityPage({
     }
     return [...linked.values()];
   }, [entity, graph.nodes, meta?.teams]);
+
+  // Bağlantı kartçıkları: ilişkinin kendisi (id/ad/tip/etiket/yön) sunucunun
+  // entityDetail'inden, yani vault gövdesindeki İlişkiler bölümünden doğan
+  // edge'lerden geliyor. Rol/telefon/şehir ve temas politikası Relation
+  // kaydında YOK; graf düğümünden (App'te entity listesiyle zenginleştirilmiş)
+  // okunuyor. Düğüm bulunamazsa kart yine çizilir, sadece ek satırı olmaz.
+  const nodeById = useMemo(() => {
+    const map = new Map<string, GraphNode>();
+    for (const node of graph.nodes) map.set(node.id, node);
+    return map;
+  }, [graph.nodes]);
+
+  // Aynı hedefe giden ilişkiler TEK kartta toplanır. Karşılıklı yazılmış bir
+  // bağ (A'nın notunda "bağlı olduğu kurum", B'nin notunda "kurumun takımı")
+  // sunucudan iki ayrı edge olarak geliyordu ve liste aynı kurumu iki kez
+  // basıyordu (Tuna, 21 Ağu). Kart hedefe göre tekilleşir, etiketler
+  // birleştirilir; yön artık ayırt edici değil (bu yüzden ok da çizmiyoruz).
+  const connections = useMemo(() => {
+    const byTarget = new Map<string, { rel: Relation; labels: string[]; node?: GraphNode }>();
+    for (const rel of entity?.relations ?? []) {
+      if (rel.kind !== "relation") continue;
+      const label = rel.label?.trim();
+      const existing = byTarget.get(rel.id);
+      if (existing) {
+        if (label && !existing.labels.includes(label)) existing.labels.push(label);
+        continue;
+      }
+      byTarget.set(rel.id, {
+        rel,
+        labels: label ? [label] : [],
+        node: nodeById.get(rel.id),
+      });
+    }
+    return [...byTarget.values()];
+  }, [entity, nodeById]);
 
   const goto = (nid: string) => navigate(entityPath(nid, network));
 
@@ -656,6 +694,88 @@ export default function EntityPage({
               </div>
             </header>
 
+            {/* Bağlantılar — sayfanın en önemli bloğu (Tuna, 21 Ağu):
+                kimlik şeridinin hemen altında, sekmelerin ÜSTÜNDE, yani hangi
+                sekmede olursan ol görünür. İlişkisi olmayan kayıtta hiç
+                çizilmez, o yüzden diğer ağlarda da fazlalık yapmaz. */}
+            {(connections.length > 0 || mentions.length > 0) && (
+              <section className="ep-connections">
+                <div className="ep-sec-title">
+                  Bağlantılar
+                  <span className="ep-sec-count">{connections.length}</span>
+                </div>
+                {connections.length > 0 && (
+                  <div className="ep-conn-grid">
+                    {connections.map(({ rel, labels, node }) => {
+                      const blocked =
+                        node?.politika_durumu === "no_contact" ||
+                        Boolean(node?.flags?.no_contact);
+                      const deferred = node?.politika_durumu === "defer";
+                      const extras =
+                        rel.type === "person"
+                          ? [node?.role, node?.phone]
+                          : [node?.city];
+                      const detail = extras.filter(Boolean) as string[];
+                      return (
+                        <button
+                          key={rel.id}
+                          className={`ep-conn${blocked || deferred ? " dim" : ""}`}
+                          onClick={() => goto(rel.id)}
+                          title={node?.politika_metni ?? rel.name}
+                        >
+                          <span className="ep-conn-head">
+                            <span
+                              className="ep-conn-type"
+                              style={{
+                                background: `${TYPE_COLORS[rel.type]}1f`,
+                                color: TYPE_COLORS[rel.type],
+                              }}
+                            >
+                              <span
+                                className="swatch"
+                                style={{ background: TYPE_COLORS[rel.type] }}
+                              />
+                              {TYPE_LABELS[rel.type]}
+                            </span>
+                            {blocked && (
+                              <span className="ep-conn-flag" title="Temas yok">
+                                ⛔
+                              </span>
+                            )}
+                            {deferred && (
+                              <span
+                                className="ep-conn-flag"
+                                title="Temas ertelendi"
+                              >
+                                ⏸️
+                              </span>
+                            )}
+                          </span>
+                          <span className="ep-conn-name">{rel.name}</span>
+                          {detail.length > 0 && (
+                            <span className="ep-conn-detail">
+                              {detail.join(" · ")}
+                            </span>
+                          )}
+                          {labels.length > 0 && (
+                            <span className="ep-conn-label">
+                              {labels.join(" · ")}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {mentions.length > 0 && (
+                  <div className="ep-conn-mentions">
+                    <div className="rel-group-label">Anılanlar</div>
+                    <div className="ep-rels">{mentions.map(RelRow)}</div>
+                  </div>
+                )}
+              </section>
+            )}
+
             {/* tabs */}
             <nav className="ep-tabs tabs">
               {(
@@ -685,8 +805,11 @@ export default function EntityPage({
                   <div className="ep-col-main">
                     <section className="ep-sec">
                       <div className="ep-sec-title">Definition</div>
-                      {definition ? (
-                        <p className="ep-def">{definition}</p>
+                      {definitionHtml ? (
+                        <div
+                          className="ep-def md"
+                          dangerouslySetInnerHTML={{ __html: definitionHtml }}
+                        />
                       ) : (
                         <p className="ep-muted">No description yet</p>
                       )}
@@ -980,28 +1103,8 @@ export default function EntityPage({
                       </section>
                     )}
 
-                    <section className="ep-sec">
-                      <div className="ep-sec-title">
-                        Relationships
-                        <span className="ep-sec-count">
-                          {relOut.length + relIn.length + mentions.length}
-                        </span>
-                      </div>
-                      {relOut.length + relIn.length + mentions.length === 0 ? (
-                        <p className="ep-muted">No relationships recorded.</p>
-                      ) : (
-                        <div className="ep-rels">
-                          {relOut.map(RelRow)}
-                          {relIn.map(RelRow)}
-                          {mentions.length > 0 && (
-                            <>
-                              <div className="rel-group-label">Mentions</div>
-                              {mentions.map(RelRow)}
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </section>
+                    {/* İlişkiler artık sayfanın üstündeki "Bağlantılar"
+                        bölümünde; burada ikinci bir liste tutulmuyor. */}
                   </div>
 
                   <div className="ep-col-side">

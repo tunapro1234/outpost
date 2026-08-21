@@ -388,18 +388,23 @@ textarea {
 
 /* Left-edge reveal handle — mirror of the assistant FAB (right edge), same
    inverse-contrast language: light chip on dark theme, dark on light. */
+/* Sol kenar tutamağı, sağdaki asistan FAB'ının aynası: dikey ORTADA durur.
+   Eskiden top:12px'teydi ve entity sayfasında başlık çubuğunun (← Back +
+   breadcrumb) üstüne biniyordu (Tuna, 21 Ağu). */
 .sidebar-reveal {
   position: absolute;
   left: 0;
-  top: 12px;
+  top: 50%;
+  transform: translateY(-50%);
   z-index: 44;
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 5px;
   min-height: 38px;
-  padding: 7px 11px 7px 8px;
+  padding: 10px 7px 10px 9px;
   border: none;
-  border-radius: 0 9px 9px 0;
+  border-radius: 0 10px 10px 0;
   background: var(--text);
   color: var(--bg);
   box-shadow: 12px 0 28px -18px rgba(0, 0, 0, 0.55), 0 0 0 2px var(--accent-halo);
@@ -414,6 +419,7 @@ textarea {
   line-height: 1;
 }
 .sidebar-reveal-label {
+  writing-mode: vertical-rl;
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -3529,6 +3535,83 @@ button.ep-metric {
   background: var(--text-dim);
 }
 
+/* Bağlantılar — kimlik şeridi ile sekmeler arasında, sayfanın ilk bloğu */
+.ep-connections {
+  max-width: 1160px;
+  margin: 4px auto 22px;
+  padding: 0 40px;
+  width: 100%;
+}
+.ep-conn-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.ep-conn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 9px 11px;
+  cursor: pointer;
+  color: var(--text);
+}
+.ep-conn:hover {
+  border-color: var(--accent);
+  background: var(--surface-3);
+}
+.ep-conn.dim {
+  opacity: 0.55;
+}
+.ep-conn-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.ep-conn-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.ep-conn-type .swatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.ep-conn-flag {
+  font-size: 11px;
+  margin-left: auto;
+}
+.ep-conn-flag + .ep-conn-flag {
+  margin-left: 0;
+}
+.ep-conn-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.ep-conn-detail {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+.ep-conn-label {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.ep-conn-mentions {
+  margin-top: 12px;
+}
+
 /* tabs + body */
 .ep-tabs {
   max-width: 1160px;
@@ -3576,6 +3659,11 @@ button.ep-metric {
   color: var(--text);
   margin: 0;
   max-width: 680px;
+}
+/* Definition markdown olarak render ediliyor; son paragrafın alt boşluğu
+   bölümün kendi boşluğuyla üst üste binmesin. */
+.ep-def.md p:last-child {
+  margin-bottom: 0;
 }
 .ep-muted {
   font-size: 13px;
@@ -5612,18 +5700,15 @@ table.ep-products .ep-product-name {
 .hier-wide .hier-meta:first-child::before {
   content: "";
 }
-/* Dar ekranda "→" sağa yaslanır; geniş ekranda (≥1400px) özet şeridi sağa
-   yaslanır ve "→" onun peşinden gelir — iki `auto` boşluğu bölüşmesin. */
-.hier-line .row-open {
-  margin-left: auto;
+/* "→" düğmesi kaldırıldı (kayda gidiş = çift tık); geniş ekranda (≥1400px)
+   sağa yaslanan tek şey özet şeridi. */
+.hier-row.hier-child {
+  cursor: default;
 }
 @media (min-width: 1400px) {
   .hier-wide {
     display: flex;
     margin-left: auto;
-  }
-  .hier-line .hier-wide ~ .row-open {
-    margin-left: 10px;
   }
 }
 
@@ -8474,6 +8559,13 @@ textarea.ms-import-text {
   .ep-body {
     margin: 16px auto 40px;
     padding: 0 14px;
+  }
+  .ep-connections {
+    padding: 0 14px;
+    margin-bottom: 16px;
+  }
+  .ep-conn-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
   .ep-overview {
     grid-template-columns: minmax(0, 1fr);

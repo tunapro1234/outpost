@@ -1021,7 +1021,13 @@ export default function ListView({
   );
 
   // ---- hiyerarşi satırları ----
-  const openRecord = (it: EntityListItem) => onSelect(it.id);
+  // Hiyerarşi kipinde SAĞ PANEL (EntityPanel) hiç açılmaz: bu kipteki hiçbir
+  // satır onSelect çağırmaz (Tuna, 21 Ağu — "sağ yan paneli kaldıralım ftc
+  // görünümünden"). Panel App'te `selectedId && isNetwork` ile çizildiği için
+  // seçimi hiç kurmamak paneli de kapatıyor; ayrı bir "paneli gizle" bayrağı
+  // eklemeye gerek yok. Kayda gitmek artık ÇİFT TIK (tek yol; "→" düğmeleri
+  // kaldırıldı). Düz liste satırları (`row`) ve graf görünümü etkilenmedi.
+  const HIER_HINT = "çift tık: sayfasını aç";
 
   const childRow = (
     root: HierRoot,
@@ -1035,7 +1041,8 @@ export default function ListView({
         className={`hier-row hier-child${blocked ? " blocked" : ""}${
           it.id === selectedId ? " sel" : ""
         }`}
-        onClick={() => openRecord(it)}
+        title={HIER_HINT}
+        onDoubleClick={() => onOpenFull(it.id)}
       >
         <td colSpan={colSpan}>
           <div className="hier-line indent">
@@ -1053,16 +1060,6 @@ export default function ListView({
             {kind === "person" && it.phone && (
               <span className="hier-meta mono">{it.phone}</span>
             )}
-            <button
-              className="row-open"
-              title="Open full page"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenFull(it.id);
-              }}
-            >
-              →
-            </button>
           </div>
         </td>
       </tr>
@@ -1074,10 +1071,9 @@ export default function ListView({
     const rec = root.record;
     const blocked = rec ? isBlocked(rec) : false;
     const phoneCount = root.people.filter((p) => p.phone).length;
-    // Takım satırına tıklamak SAĞ PANELİ AÇMAZ, aşağı doğru genişletir
-    // (Tuna, 21 Ağu). Kaydın kendisine gitmek için "→" düğmesi duruyor;
-    // alt satırlar (kurum/kişi) genişleyemeyeceği için tıklamada panel
-    // açmaya devam ediyor.
+    // Takım satırına tek tık = aşağı genişlet/kapat; ÇİFT TIK = takımın kendi
+    // sayfası. Alt satırlarda tek tık hiçbir şey yapmaz, çift tık o kaydın
+    // sayfasına gider. Hiçbiri sağ paneli açmaz.
     const toggleRoot = () =>
       setHierOpen((prev) => {
         const next = new Set(prev);
@@ -1091,7 +1087,9 @@ export default function ListView({
         className={`hier-row hier-head${blocked ? " blocked" : ""}${
           rec && rec.id === selectedId ? " sel" : ""
         }`}
+        title={rec ? HIER_HINT : undefined}
         onClick={toggleRoot}
+        onDoubleClick={() => rec && onOpenFull(rec.id)}
       >
         <td colSpan={colSpan}>
           <div className="hier-line">
@@ -1137,18 +1135,6 @@ export default function ListView({
                 <span className="hier-meta">{phoneCount} telefonlu</span>
               )}
             </span>
-            {rec && (
-              <button
-                className="row-open"
-                title="Open full page"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenFull(rec.id);
-                }}
-              >
-                →
-              </button>
-            )}
           </div>
         </td>
       </tr>

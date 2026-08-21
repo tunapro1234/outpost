@@ -11,6 +11,8 @@ interface Props {
   onSelect: (id: string) => void;
 }
 
+const MAX_LABEL = 20;
+
 function endId(n: string | GraphNode): string {
   return typeof n === "string" ? n : n.id;
 }
@@ -27,7 +29,18 @@ export default function EntityMiniGraph({ data, centerId, theme, onSelect }: Pro
       if (s === centerId) keep.add(t);
       if (t === centerId) keep.add(s);
     }
-    const nodes = data.nodes.filter((n) => keep.has(n.id));
+    // Ego kutusu ~380x320px; uzun kurum adları etiket olarak kutunun dışına
+    // taşıp kenarda kesiliyordu ("...ği Tasarlayan Gençler Derr" — Tuna, 21
+    // Ağu). Etiketi burada kısaltıyoruz; kimlik (id) ve tıklama davranışı
+    // değişmiyor, yalnız çizilen ad kırpılıyor. Kopya çıkarmak güvenli:
+    // GraphView bağlantıları id STRING'iyle kuruyor, düğüm referansıyla değil.
+    const nodes = data.nodes
+      .filter((n) => keep.has(n.id))
+      .map((n) =>
+        n.name.length > MAX_LABEL
+          ? { ...n, name: `${n.name.slice(0, MAX_LABEL - 1).trimEnd()}…` }
+          : n
+      );
     const edges = data.edges.filter(
       (e) => keep.has(endId(e.source)) && keep.has(endId(e.target))
     );

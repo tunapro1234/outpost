@@ -589,6 +589,7 @@ export default function App() {
                 ...n,
                 city: m.city ?? null,
                 mail: m.mail ?? null,
+                phone: m.phone ?? null,
                 role: m.role ?? null,
                 guven: m.guven ?? null,
                 katman: m.katman ?? null,
