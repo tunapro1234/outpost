@@ -44,7 +44,11 @@ export type ListPresetId =
   | "school"
   | "channel"
   | "team"
-  | "ftc2027";
+  | "ftc2027"
+  | "ftcSezonu"
+  | "sogukHat"
+  | "tumKayitlar"
+  | "atolyeler";
 
 interface SortSpec {
   key: SortKey;
@@ -130,6 +134,62 @@ const PRESETS: {
     // Karışık tipli liste olduğu için `type` sütunu ilk sırada: okul mu takım mı
     // kişi mi, bakan kişi ilk bakışta görsün.
     cols: ["type", "subtype", "city", "score", "degree", "mail_count", "last_mail_date"],
+  },
+  {
+    // FTC Sezonu — kendi ağı var (`ftc`, vault: workspaces/probot/ftc-vault).
+    // Üyelik ölçütü AĞIN KENDİSİ: bu ağa giren her şey listeye girer.
+    //
+    // ⚠️ Ne tip ne de etiket filtresi var, ikisi de KASITLI. 2027 FTC'de tip
+    // filtresi 105 kaydı sessizce gizlemişti; burada ayrıştırma zaten ağ
+    // seviyesinde yapıldığı için ikinci bir şart eklemek aynı hatayı geri
+    // getirirdi. Ağda ne varsa görünür.
+    id: "ftcSezonu",
+    label: "FTC Sezonu",
+    type: null,
+    // Karışık tipli liste: `type` sütunu ilk sırada, okul/takım/kişi ayrımı
+    // ilk bakışta okunsun.
+    cols: ["type", "subtype", "city", "score", "degree", "mail_count", "last_mail_date"],
+  },
+  {
+    // Tüm Kayıtlar — hiçbir filtre yok; research ağının komple dökümü.
+    id: "tumKayitlar",
+    label: "Tüm Kayıtlar",
+    type: null,
+    cols: ["type", "subtype", "status", "score", "city", "degree", "mail_count", "last_mail_date"],
+  },
+  {
+    // Atölyeler — research vault'ta ayırt edici alan `subtype: atolye`
+    // (tag DEĞİL: research kayıtları neredeyse etiketsiz, 21 Ağu sayımı 128).
+    id: "atolyeler",
+    label: "Atölyeler",
+    type: null,
+    matches: (item) => item.subtype === "atolye",
+    cols: ["type", "city", "mail", "score", "mail_count", "last_mail_date"],
+  },
+  {
+    // Soğuk Hat — research ağının "aranabilir" kesiti: araştırması bitmiş,
+    // elde bir iletişim kanalı var, ama HENÜZ temas edilmemiş kayıtlar.
+    //
+    // ⚠️ TİP FİLTRESİ YOK ve bu kasıtlı (2027 FTC'de tip filtresi 151 kaydın
+    // 102'sini sessizce gizlemişti). Üyelik ölçütü tip değil DURUM.
+    // Üç şart da temas durumuna bakıyor, hiçbiri "ne olduğuna" bakmıyor:
+    //   1) iletişim var (mail ya da telefon) — yoksa aranamaz,
+    //   2) temas edilmemiş (durum yazılmadı/boş, giden-gelen mail yok),
+    //   3) temas yasağı yok (no_contact / internal / politika).
+    id: "sogukHat",
+    label: "Soğuk Hat",
+    type: null,
+    matches: (item) => {
+      const hasChannel = Boolean(item.mail || item.phone);
+      if (!hasChannel) return false;
+      if (item.flags?.internal || item.flags?.no_contact) return false;
+      if (item.politika_durumu === "no_contact") return false;
+      const durum = normalizePresetText(item.durum);
+      const untouched = durum === "" || durum === "yazilmadi";
+      const noMail = !item.mail_count && !item.last_mail_date;
+      return untouched && noMail;
+    },
+    cols: ["type", "city", "mail", "score", "last_mail_date"],
   },
   {
     id: "teacher",

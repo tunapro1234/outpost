@@ -92,6 +92,10 @@ const TITLES: Record<NavKey, string> = {
   teachers: "Öğretmenler",
   competitors: "Rakipler",
   ftc2027: "2027 FTC",
+  ftcSezonu: "FTC Sezonu",
+  sogukHat: "Soğuk Hat",
+  tumKayitlar: "Tüm Kayıtlar",
+  atolyeler: "Atölyeler",
   mail: "Mail",
   agents: "Agents",
   workspace: "Workspace",
@@ -105,7 +109,11 @@ const LIST_NAV_PRESETS: Partial<Record<NavKey, ListPresetId>> = {
   teams: "team",
   teachers: "teacher",
   competitors: "competitor",
-  ftc2027: "ftc2027",
+  ftc2027: "ftcSezonu", // 21 Ağu tekilleştirme: 2027 FTC girdisi ftc ağını gösterir
+  ftcSezonu: "ftcSezonu",
+  sogukHat: "sogukHat",
+  tumKayitlar: "tumKayitlar",
+  atolyeler: "atolyeler",
 };
 
 // ⚠️ Liste route'ları eskiden ağı SABİT olarak "intel"e çeviriyordu. 2027 FTC
@@ -114,7 +122,14 @@ const LIST_NAV_PRESETS: Partial<Record<NavKey, ListPresetId>> = {
 //    İSTİSNAYI bozar. Eşleme tabloya alındı; yazılmayan her liste eskisi gibi
 //    "intel"e gider, yani mevcut davranış birebir korunur.
 const LIST_NAV_NETWORK: Partial<Record<NavKey, string>> = {
-  ftc2027: "research",
+  ftc2027: "ftc",
+  // FTC Sezonu kendi ağında yaşıyor; tag ile değil AĞ ile ayrılıyor.
+  ftcSezonu: "ftc",
+  // Soğuk Hat yeni bir ağ AÇMIYOR: mevcut research ağının içinden
+  // "henüz temas edilmemiş" kesitini gösteriyor.
+  sogukHat: "research",
+  tumKayitlar: "research",
+  atolyeler: "research",
 };
 const DEFAULT_LIST_NETWORK = "intel";
 
@@ -512,6 +527,22 @@ export default function App() {
         case "set-color-mode":
           setColorMode(command.mode);
           showControlToast(`⌁ agent: set graph colors by ${command.mode}`);
+          break;
+        case "set-sidebar":
+          // Mobilde overlay'i, masaüstünde kalıcı rayı hedefler — ikisi ayrı state.
+          if (window.matchMedia(MOBILE_MEDIA).matches) {
+            setMobileSidebarOpen(!command.hidden);
+          } else {
+            setSidebarHidden(command.hidden);
+          }
+          showControlToast(`⌁ agent: sidebar ${command.hidden ? "kapatıldı" : "açıldı"}`);
+          break;
+        case "reload":
+          // Yeni bundle yayınlandığında sekmeyi uzaktan tazelemek için —
+          // Tuna'nın F5 basması gerekmesin (21 Ağu şartı). Kısa gecikme:
+          // toast'ın görünmesine izin ver.
+          showControlToast("⌁ agent: sayfa yenileniyor…");
+          window.setTimeout(() => window.location.reload(), 600);
           break;
         case "toast":
           showControlToast(`⌁ agent: ${command.message}`);

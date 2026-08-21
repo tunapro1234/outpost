@@ -15,6 +15,8 @@ export type ControlCommand =
       preset?: string;
     }
   | { id: string; action: "set-color-mode"; mode: "type" | "state" }
+  | { id: string; action: "set-sidebar"; hidden: boolean }
+  | { id: string; action: "reload" }
   | { id: string; action: "toast"; message: string };
 
 const INITIAL_RECONNECT_MS = 1_000;
@@ -95,6 +97,12 @@ export function parseControlCommand(value: unknown): ControlCommand | null {
       return command.mode === "type" || command.mode === "state"
         ? { id: command.id, action: command.action, mode: command.mode }
         : null;
+    case "set-sidebar":
+      return typeof command.hidden === "boolean"
+        ? { id: command.id, action: command.action, hidden: command.hidden }
+        : null;
+    case "reload":
+      return { id: command.id, action: command.action };
     case "toast":
       return nonEmptyString(command.message)
         ? { id: command.id, action: command.action, message: command.message }

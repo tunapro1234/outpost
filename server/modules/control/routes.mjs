@@ -12,6 +12,8 @@ const ACTIONS = new Set([
   "set-view",
   "set-filters",
   "set-color-mode",
+  "set-sidebar",
+  "reload",
   "toast",
 ]);
 const LOCAL_BASE = "http://localhost";
@@ -128,6 +130,13 @@ export function validateCommand(payload) {
         fail(400, "mode must be type or state");
       }
       return { action: payload.action, mode: payload.mode };
+    case "set-sidebar":
+      if (typeof payload.hidden !== "boolean") {
+        fail(400, "hidden must be a boolean");
+      }
+      return { action: payload.action, hidden: payload.hidden };
+    case "reload":
+      return { action: payload.action };
     case "toast":
       return {
         action: payload.action,

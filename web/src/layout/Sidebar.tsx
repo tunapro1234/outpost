@@ -14,6 +14,10 @@ export type NavKey =
   // Yeni bir liste eklerken İKİSİNE birden yazılmazsa tsc yakalıyor (bugün yakaladı),
   // ama kayması mümkün olduğu için not düşülüyor: burayı değiştiren core/router.ts'e de bakar.
   | "ftc2027"
+  | "ftcSezonu"
+  | "sogukHat"
+  | "tumKayitlar"
+  | "atolyeler"
   | "mail"
   | "agents"
   | "workspace"
@@ -95,6 +99,35 @@ const Icons: Record<NavKey, JSX.Element> = {
       <circle cx="18" cy="19" r="2" />
     </svg>
   ),
+  ftcSezonu: (
+    // Sezon ikonu: takvim/tur çemberi içinde bir hedef. Ayrı bir ağın (ftc)
+    // tamamı olduğu için 2027 FTC'nin bağ çiziminden kasten farklı duruyor.
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3" />
+    </svg>
+  ),
+  tumKayitlar: (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="4" width="16" height="4" rx="1" />
+      <rect x="4" y="10" width="16" height="4" rx="1" />
+      <rect x="4" y="16" width="16" height="4" rx="1" />
+    </svg>
+  ),
+  atolyeler: (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.8-2.8 2.4-2.8z" />
+    </svg>
+  ),
+  sogukHat: (
+    // Soğuk hat: kar tanesi (soğuk temas) — mail ikonundan ayrışsın diye
+    // zarf/telefon değil, sıcaklık metaforu seçildi.
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9" />
+      <path d="M12 6.5 9.8 4.6M12 6.5l2.2-1.9M12 17.5l-2.2 1.9M12 17.5l2.2 1.9" />
+    </svg>
+  ),
   mail: (
     <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="5" width="18" height="14" rx="2.4" />
@@ -132,14 +165,15 @@ const TOP: { k: NavKey; label: string }[] = [
   { k: "network", label: "Network" },
 ];
 const LISTS: { k: NavKey; label: string }[] = [
-  // Tuna, 17 Ağu: "2027 FTC en tepede olsun." Aktif kampanya listesi, kalıcı
-  // envanter listelerinin (Okullar/Kurumlar/…) üstünde duruyor.
+  // Tuna, 21 Ağu: "listeler dağınık" — envanter listeleri (Okullar/Kurumlar/
+  // Takımlar/Öğretmenler) kaldırıldı, rotaları deep-link olarak yaşıyor.
+  // 2027 FTC artık ftc ağının (FTC Sezonu grafiği) üstüne bağlı — iki FTC
+  // girdisi tekilleştirildi, en zengin veri kaynağı kazandı.
   { k: "ftc2027", label: "2027 FTC" },
-  { k: "schools", label: "Okullar" },
-  { k: "institutions", label: "Kurumlar" },
-  { k: "teams", label: "Takımlar" },
-  { k: "teachers", label: "Öğretmenler" },
+  { k: "tumKayitlar", label: "Tüm Kayıtlar" },
+  { k: "atolyeler", label: "Atölyeler" },
   { k: "competitors", label: "Rakipler" },
+  { k: "sogukHat", label: "Soğuk Hat" },
 ];
 const MODULES: { k: NavKey; label: string }[] = [
   { k: "mail", label: "Mail" },
