@@ -9028,3 +9028,7 @@ textarea.ms-import-text {
   color: var(--text);
   font-weight: 550;
 }
+.tp-secenekler .tp-not-ac {
+  border-style: dashed;
+  color: var(--text-faint);
+}

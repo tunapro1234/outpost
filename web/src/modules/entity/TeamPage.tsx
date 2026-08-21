@@ -176,7 +176,11 @@ function AnketFormu({
           const value = metin[soru.id] ?? "";
           const isaretli = secili[soru.id] ?? [];
           const cevap = cevapMetni(soru);
-          const open = acik === soru.id || Boolean(cevap);
+          const secmeli = soru.tip === "secmeli";
+          // Seçmelide chip'ler HER ZAMAN açık: "tek tıkla işaretle" iki tıka
+          // dönmesin. Akordeon yalnız serbest metni saklar — telefonda asıl
+          // yavaşlatan, seçeneği görmek için önce soruyu açmak olurdu.
+          const open = acik === soru.id || Boolean(value.trim()) || (!secmeli && Boolean(cevap));
           return (
             <li className={`tp-soru${cevap ? " dolu" : ""}`} key={soru.id}>
               <button
@@ -186,13 +190,13 @@ function AnketFormu({
               >
                 {soru.blok && <span className="tp-soru-blok">{soru.blok}</span>}
                 <span className="tp-soru-metin">{soru.soru}</span>
-                {soru.tip === "secmeli" && (
+                {secmeli && (
                   <span className="tp-soru-tip">
                     {soru.coklu ? "çoklu seçim" : "tek seçim"}
                   </span>
                 )}
               </button>
-              {open && soru.tip === "secmeli" && (
+              {secmeli && (
                 <div className="tp-secenekler">
                   {soru.secenekler.map((secenek) => (
                     <button
@@ -204,6 +208,15 @@ function AnketFormu({
                       {secenek}
                     </button>
                   ))}
+                  {!open && (
+                    <button
+                      className="tp-not-ac"
+                      type="button"
+                      onClick={() => setAcik(soru.id)}
+                    >
+                      + not
+                    </button>
+                  )}
                 </div>
               )}
               {open && (
