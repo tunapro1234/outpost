@@ -139,6 +139,8 @@ export interface EntityListItem extends EntityState {
   kimlik_guveni?: "iyi" | "orta" | "zayif" | null;
   gun?: string | null;
   sira?: number | null;
+  /** 0 = sayıldı, ödül yok · null = bakılmadı. İkisi aynı şey DEĞİL. */
+  odul_sayisi?: number | null;
 }
 
 export interface Relation {

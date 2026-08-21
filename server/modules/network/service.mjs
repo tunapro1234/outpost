@@ -232,6 +232,13 @@ export function entityListItem(entity, index, statsByEntity, stateByEntity) {
     kimlik_guveni: entity.meta.kimlik_guveni ?? null,
     gun: entity.meta.gun ?? null,
     sira: Number.isInteger(entity.meta.sira) ? entity.meta.sira : null,
+    // ⚠️ 0 ile YOKLUK ayrı tutuluyor: `odul_sayisi: 0` "sayıldı, ödül yok" demek;
+    // alanın hiç olmaması "bakılmadı" demek. `?? 0` yazmak ikisini aynı kutuya
+    // koyardı ve liste "ödülsüz" ile "bilinmiyor"u aynı gösterirdi. (Aynı aile:
+    // bozuk sayaç "sorun yok" demeye devam eder.) Bugün 54 takımın 23'ünde 0 var.
+    odul_sayisi: Number.isInteger(entity.meta.odul_sayisi)
+      ? entity.meta.odul_sayisi
+      : null,
     degree: index.degrees.get(entity.id) ?? 0,
     ...(statsByEntity.get(entity.id) ?? emptyMailStats()),
     ...stateFor(entity, stateByEntity),
