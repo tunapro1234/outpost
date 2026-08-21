@@ -62,16 +62,32 @@ async function writeJsonAtomic(filePath, value) {
   }
 }
 
+/**
+ * Soru şeması v2: `tip` yoksa "acik" (serbest metin) — eski davranış. `tip`
+ * "secmeli" ise `secenekler[]` sabit cevapları, `coklu` birden fazla seçime
+ * izin verilip verilmediğini söyler. CEVAP şeması değişmiyor: seçilenler UI'da
+ * metne çevrilip düz {soru, cevap} olarak yazılıyor, böylece anket ileride
+ * yine değişse de geçmiş kayıtlar okunur kalıyor.
+ */
 export async function readSorular() {
   const data = await readJson(SORULAR_PATH);
   const sorular = Array.isArray(data?.sorular) ? data.sorular : [];
   return {
     version: typeof data?.version === "string" ? data.version : null,
-    sorular: sorular.map((soru) => ({
-      id: String(soru?.id ?? ""),
-      blok: soru?.blok ?? null,
-      soru: String(soru?.soru ?? ""),
-    })).filter((soru) => soru.id && soru.soru),
+    sorular: sorular.map((soru) => {
+      const secenekler = Array.isArray(soru?.secenekler)
+        ? soru.secenekler.map((item) => String(item)).filter((item) => item.trim())
+        : [];
+      const secmeli = soru?.tip === "secmeli" && secenekler.length > 0;
+      return {
+        id: String(soru?.id ?? ""),
+        blok: soru?.blok ?? null,
+        soru: String(soru?.soru ?? ""),
+        tip: secmeli ? "secmeli" : "acik",
+        coklu: secmeli ? soru?.coklu === true : false,
+        secenekler: secmeli ? secenekler : [],
+      };
+    }).filter((soru) => soru.id && soru.soru),
   };
 }
 

@@ -8996,3 +8996,35 @@ textarea.ms-import-text {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+/* seçmeli anket soruları (şema v2): tek tıkla işaretle */
+.tp-soru-tip {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  flex: none;
+  white-space: nowrap;
+}
+.tp-secenekler {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 8px;
+}
+.tp-secenekler button {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12.5px;
+  padding: 5px 12px;
+}
+.tp-secenekler button:hover {
+  border-color: var(--accent);
+}
+.tp-secenekler button.on {
+  border-color: var(--accent);
+  background: var(--surface-3);
+  color: var(--text);
+  font-weight: 550;
+}

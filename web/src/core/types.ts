@@ -820,6 +820,11 @@ export interface AnketSoru {
   id: string;
   blok: string | null;
   soru: string;
+  /** "acik" = serbest metin · "secmeli" = secenekler arasından işaretle */
+  tip: "acik" | "secmeli";
+  /** secmeli sorularda birden fazla seçenek işaretlenebilir mi */
+  coklu: boolean;
+  secenekler: string[];
 }
 
 export interface AnketSorular {

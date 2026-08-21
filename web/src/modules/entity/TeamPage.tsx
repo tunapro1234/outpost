@@ -108,13 +108,39 @@ function AnketFormu({
   onSaved: () => void;
 }) {
   const [acik, setAcik] = useState<string | null>(null);
-  const [cevaplar, setCevaplar] = useState<Record<string, string>>({});
+  // Açık soruların cevabı ve seçmeli soruların "diğer/not" alanı aynı sözlükte.
+  const [metin, setMetin] = useState<Record<string, string>>({});
+  const [secili, setSecili] = useState<Record<string, string[]>>({});
   const [cevaplayan, setCevaplayan] = useState("");
   const [not, setNot] = useState("");
   const [saving, setSaving] = useState(false);
   const [hata, setHata] = useState<string | null>(null);
 
-  const dolu = sorular.filter((soru) => (cevaplar[soru.id] ?? "").trim());
+  // Seçmeli cevap dosyaya METİN olarak düşer: cevap şeması düz {soru, cevap}
+  // kalsın diye (anket ileride yine değişse de geçmiş okunur olur).
+  const cevapMetni = (soru: AnketSoru): string => {
+    const serbest = (metin[soru.id] ?? "").trim();
+    if (soru.tip !== "secmeli") return serbest;
+    const isaretli = secili[soru.id] ?? [];
+    return [isaretli.join(", "), serbest].filter(Boolean).join(" — ");
+  };
+
+  const isaretle = (soru: AnketSoru, secenek: string) => {
+    setSecili((prev) => {
+      const mevcut = prev[soru.id] ?? [];
+      if (!soru.coklu) {
+        return { ...prev, [soru.id]: mevcut.includes(secenek) ? [] : [secenek] };
+      }
+      return {
+        ...prev,
+        [soru.id]: mevcut.includes(secenek)
+          ? mevcut.filter((item) => item !== secenek)
+          : [...mevcut, secenek],
+      };
+    });
+  };
+
+  const dolu = sorular.filter((soru) => cevapMetni(soru));
 
   const kaydet = async () => {
     if (!dolu.length) return;
@@ -122,15 +148,13 @@ function AnketFormu({
     setHata(null);
     try {
       const payload: { cevaplar: AnketCevap[]; cevaplayan?: string; not?: string } = {
-        cevaplar: dolu.map((soru) => ({
-          soru: soru.soru,
-          cevap: cevaplar[soru.id].trim(),
-        })),
+        cevaplar: dolu.map((soru) => ({ soru: soru.soru, cevap: cevapMetni(soru) })),
       };
       if (cevaplayan.trim()) payload.cevaplayan = cevaplayan.trim();
       if (not.trim()) payload.not = not.trim();
       await api.anketKaydet(takimNo, payload);
-      setCevaplar({});
+      setMetin({});
+      setSecili({});
       setNot("");
       setAcik(null);
       onSaved();
@@ -149,10 +173,12 @@ function AnketFormu({
       </div>
       <ol className="tp-soru-list">
         {sorular.map((soru) => {
-          const value = cevaplar[soru.id] ?? "";
-          const open = acik === soru.id || Boolean(value.trim());
+          const value = metin[soru.id] ?? "";
+          const isaretli = secili[soru.id] ?? [];
+          const cevap = cevapMetni(soru);
+          const open = acik === soru.id || Boolean(cevap);
           return (
-            <li className={`tp-soru${value.trim() ? " dolu" : ""}`} key={soru.id}>
+            <li className={`tp-soru${cevap ? " dolu" : ""}`} key={soru.id}>
               <button
                 className="tp-soru-baslik"
                 onClick={() => setAcik(acik === soru.id ? null : soru.id)}
@@ -160,15 +186,36 @@ function AnketFormu({
               >
                 {soru.blok && <span className="tp-soru-blok">{soru.blok}</span>}
                 <span className="tp-soru-metin">{soru.soru}</span>
+                {soru.tip === "secmeli" && (
+                  <span className="tp-soru-tip">
+                    {soru.coklu ? "çoklu seçim" : "tek seçim"}
+                  </span>
+                )}
               </button>
+              {open && soru.tip === "secmeli" && (
+                <div className="tp-secenekler">
+                  {soru.secenekler.map((secenek) => (
+                    <button
+                      key={secenek}
+                      type="button"
+                      className={isaretli.includes(secenek) ? "on" : ""}
+                      onClick={() => isaretle(soru, secenek)}
+                    >
+                      {secenek}
+                    </button>
+                  ))}
+                </div>
+              )}
               {open && (
                 <textarea
                   className="tp-soru-cevap"
                   value={value}
-                  placeholder="Cevabı buraya yaz"
-                  rows={3}
+                  placeholder={
+                    soru.tip === "secmeli" ? "diğer / not" : "Cevabı buraya yaz"
+                  }
+                  rows={soru.tip === "secmeli" ? 2 : 3}
                   onChange={(event) =>
-                    setCevaplar((prev) => ({ ...prev, [soru.id]: event.target.value }))
+                    setMetin((prev) => ({ ...prev, [soru.id]: event.target.value }))
                   }
                 />
               )}
