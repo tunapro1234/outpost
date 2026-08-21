@@ -2,6 +2,7 @@ import { workspaceNetworkView } from "../../lib/config.mjs";
 import {
   TEMAS_NETWORK,
   getTemasDurumu,
+  listTemasDurumu,
   patchTemasDurumu,
 } from "./service.mjs";
 
@@ -11,30 +12,52 @@ function fail(statusCode, message) {
   throw error;
 }
 
-function hedefWorkspace(workspace) {
-  const network = workspace.getNetwork?.(TEMAS_NETWORK) ?? null;
-  if (!network) fail(404, "Hedef network bulunamadı");
+// Temas defteri artık `hedef`e kilitli DEĞİL: FTC hiyerarşisinde takımlara elle
+// WhatsApp yazılıyor ve o kayıtlar `ftc` ağında. Ağ adı ?network= ile gelir,
+// boşsa eski davranış (hedef) sürer — mevcut çağıranlar etkilenmez.
+function requestNetwork(request) {
+  const raw = request.query?.network;
+  if (raw === undefined) return TEMAS_NETWORK;
+  if (typeof raw !== "string" || !raw.trim()) fail(400, "network boş olamaz");
+  return raw.trim();
+}
+
+function networkWorkspace(workspace, networkId) {
+  const network = workspace.getNetwork?.(networkId) ?? null;
+  if (!network) fail(404, "Network bulunamadı");
   return workspaceNetworkView(workspace, network);
 }
 
-function entityInHedef(workspace, entityId) {
-  const hedef = hedefWorkspace(workspace);
-  if (!hedef.index.entities.has(entityId)) fail(404, "Entity bulunamadı");
-  return hedef;
+function entityInNetwork(workspace, networkId, entityId) {
+  const view = networkWorkspace(workspace, networkId);
+  if (!view.index.entities.has(entityId)) fail(404, "Entity bulunamadı");
+  return view;
 }
 
 export async function temasRoutes(app, { resolveWorkspace }) {
+  // Ağın TÜM durumları tek çağrıda. Hiyerarşi görünümü 50+ kökü açılışta
+  // boyamak zorunda; kayıt başına GET atmak olmaz.
+  app.get("/temas", async (request) => {
+    const networkId = requestNetwork(request);
+    const workspace = networkWorkspace(resolveWorkspace(request), networkId);
+    return { network: networkId, kayitlar: listTemasDurumu(workspace, networkId) };
+  });
+
   app.get("/temas/:entityId", async (request) => {
-    const workspace = entityInHedef(
+    const networkId = requestNetwork(request);
+    const workspace = entityInNetwork(
       resolveWorkspace(request),
+      networkId,
       request.params.entityId,
     );
-    return getTemasDurumu(workspace, request.params.entityId);
+    return getTemasDurumu(workspace, request.params.entityId, networkId);
   });
 
   app.patch("/temas/:entityId", async (request) => {
-    const workspace = entityInHedef(
+    const networkId = requestNetwork(request);
+    const workspace = entityInNetwork(
       resolveWorkspace(request),
+      networkId,
       request.params.entityId,
     );
     const payload = request.body;
@@ -44,6 +67,8 @@ export async function temasRoutes(app, { resolveWorkspace }) {
     if (Object.keys(payload).some((key) => key !== "durum")) {
       fail(400, "PATCH yalnızca durum alanını kabul eder");
     }
-    return patchTemasDurumu(workspace, request.params.entityId, payload.durum);
+    return patchTemasDurumu(workspace, request.params.entityId, payload.durum, {
+      network: networkId,
+    });
   });
 }

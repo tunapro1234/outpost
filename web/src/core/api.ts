@@ -618,7 +618,13 @@ export const api = {
     );
   },
 
-  async patchTemas(id: string, durum: TemasDurumu): Promise<TemasDurumuResult> {
+  // network verilmezse sunucu eski davranışa (hedef ağı) düşer — Today paneli
+  // oraya sabitli, FTC hiyerarşisi ise kendi ağını açıkça geçirir.
+  async patchTemas(
+    id: string,
+    durum: TemasDurumu,
+    network?: string
+  ): Promise<TemasDurumuResult> {
     if (MOCK) {
       const result: TemasDurumuResult = {
         entity_id: id,
@@ -629,14 +635,30 @@ export const api = {
       mockTemas.set(id, result);
       return result;
     }
+    const p = new URLSearchParams();
+    if (network) p.set("network", network);
+    const q = p.toString();
     return json<TemasDurumuResult>(
-      `${workspaceBase()}/temas/${encodeURIComponent(id)}`,
+      `${workspaceBase()}/temas/${encodeURIComponent(id)}${q ? `?${q}` : ""}`,
       {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ durum }),
       }
     );
+  },
+
+  // Bir ağın TÜM temas durumları. Hiyerarşi görünümü açılışta bunu bir kez
+  // çeker; kayıt başına GET atmaz. Durumu "yazilmadi" olanlar dönmez.
+  async temasListesi(network: string): Promise<TemasDurumuResult[]> {
+    if (MOCK) {
+      return [...mockTemas.values()].filter((r) => r.durum !== "yazilmadi");
+    }
+    const p = new URLSearchParams({ network });
+    const body = await json<{ kayitlar: TemasDurumuResult[] }>(
+      `${workspaceBase()}/temas?${p.toString()}`
+    );
+    return body.kayitlar ?? [];
   },
 
   async entity(id: string): Promise<Entity> {

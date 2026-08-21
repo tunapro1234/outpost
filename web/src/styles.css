@@ -5705,6 +5705,36 @@ table.ep-products .ep-product-name {
 .hier-row.hier-child {
   cursor: default;
 }
+/* "yazdım" işareti. Boşken sönük bir çerçeve (satır kalabalıklaşmasın),
+   işaretliyken dolu yeşil. İşaretli satır solar ama OKUNUR kalır: numarayı
+   yeniden görmek gerekebilir, o yüzden görünmez yapmıyoruz. */
+.hier-yazdim {
+  flex: none;
+  width: 19px;
+  height: 19px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.45;
+}
+.hier-yazdim:hover {
+  opacity: 1;
+  color: var(--text);
+}
+.hier-yazdim.on {
+  opacity: 1;
+  border-color: #2f9e58;
+  background: #2f9e58;
+  color: #fff;
+}
+.hier-row.yazildi .hier-line > *:not(.hier-yazdim) {
+  opacity: 0.42;
+}
 @media (min-width: 1400px) {
   .hier-wide {
     display: flex;

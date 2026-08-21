@@ -45,12 +45,23 @@ export function listTemasDurumu(workspace, network = TEMAS_NETWORK) {
   }));
 }
 
+// Export dosyası AĞ BAŞINA ayrı. Tek dosya olsaydı FTC'den atılan her PATCH,
+// `hedef` ağının export'unu kendi satırlarıyla ezerdi (dışarıdaki okuyucular
+// sessizce yanlış listeyi görürdü). Varsayılan ağın adı DEĞİŞMİYOR: mevcut
+// temas-export.json sözleşmesi olduğu gibi duruyor.
+export function temasExportName(network = TEMAS_NETWORK) {
+  return network === TEMAS_NETWORK
+    ? "temas-export.json"
+    : `temas-export.${network}.json`;
+}
+
 export async function writeTemasExport(workspace, network = TEMAS_NETWORK) {
   const output = `${JSON.stringify(listTemasDurumu(workspace, network), null, 2)}\n`;
-  const target = path.join(workspace.directory, "temas-export.json");
+  const name = temasExportName(network);
+  const target = path.join(workspace.directory, name);
   const temporary = path.join(
     workspace.directory,
-    `.temas-export.${process.pid}.${Date.now()}.tmp`,
+    `.${name}.${process.pid}.${Date.now()}.tmp`,
   );
   await fs.writeFile(temporary, output, "utf8");
   try {

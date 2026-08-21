@@ -719,11 +719,69 @@ export default function ListView({
     () => (hierarchyOn ? buildHierarchy(hierSource) : null),
     [hierarchyOn, hierSource]
   );
+  // ---- "yazdım" işaretleri ----
+  // Kalıcılık SQLite'taki `temas_durumu` tablosunda (server/modules/temas):
+  // workspace DB'si vault'un DIŞINDA yaşar, bu yüzden türetilmiş FTC vault'u
+  // her yeniden üretimde sıfırlansa da işaret kalır. Burada 6 durumlu makinenin
+  // yalnız iki ucu kullanılıyor: yazildi ↔ yazilmadi. Diğer durumlar (Today
+  // panelinden gelen cevap_bekleniyor vb.) de "yazılmış" sayılır — geri
+  // gitmiş bir kaydı bu ekran işaretsiz gösterip yeniden yazdırmasın.
+  const [yazildi, setYazildi] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!hierarchyOn || !network) return;
+    let alive = true;
+    api
+      .temasListesi(network)
+      .then((kayitlar) => {
+        if (!alive) return;
+        setYazildi(
+          new Set(
+            kayitlar
+              .filter((k) => k.durum !== "yazilmadi")
+              .map((k) => k.entity_id)
+          )
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [hierarchyOn, network]);
+
+  // İyimser yazım: önce yerel küme, PATCH hata verirse geri alınır.
+  const toggleYazildi = (id: string) => {
+    if (!network) return;
+    const next = !yazildi.has(id);
+    setYazildi((prev) => {
+      const copy = new Set(prev);
+      if (next) copy.add(id);
+      else copy.delete(id);
+      return copy;
+    });
+    api.patchTemas(id, next ? "yazildi" : "yazilmadi", network).catch(() => {
+      setYazildi((prev) => {
+        const copy = new Set(prev);
+        if (next) copy.delete(id);
+        else copy.add(id);
+        return copy;
+      });
+    });
+  };
+
   const hierarchy = useMemo(() => {
     if (!hierRoots) return null;
     const needle = normalizePresetText(queryInput);
-    return hierRoots.filter((root) => rootMatches(root, needle));
-  }, [hierRoots, queryInput]);
+    const visible = hierRoots.filter((root) => rootMatches(root, needle));
+    // Yazılan takımlar dibe iner, kendi aralarında ESKİ SIRA korunur (kararlı
+    // bölme). Kişi satırları takımın altında kalır — yalnız soluklaşırlar.
+    const kalan = visible.filter(
+      (root) => !(root.record && yazildi.has(root.record.id))
+    );
+    const bitmis = visible.filter(
+      (root) => root.record && yazildi.has(root.record.id)
+    );
+    return [...kalan, ...bitmis];
+  }, [hierRoots, queryInput, yazildi]);
 
   // grouped structure
   const groups = useMemo(() => {
@@ -1029,23 +1087,46 @@ export default function ListView({
   // kaldırıldı). Düz liste satırları (`row`) ve graf görünümü etkilenmedi.
   const HIER_HINT = "çift tık: sayfasını aç";
 
+  // Satırın "yazdım" düğmesi. stopPropagation ŞART: takım satırında tek tık
+  // açar/kapatır, çift tık kaydın sayfasına gider — işaret ikisini de
+  // tetiklememeli.
+  const yazdimButton = (id: string) => {
+    const on = yazildi.has(id);
+    return (
+      <button
+        className={`hier-yazdim${on ? " on" : ""}`}
+        title={on ? "Yazıldı (kaldır)" : "Yazdım olarak işaretle"}
+        aria-pressed={on}
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleYazildi(id);
+        }}
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
+        ✓
+      </button>
+    );
+  };
+
   const childRow = (
     root: HierRoot,
     it: EntityListItem,
     kind: "org" | "person"
   ) => {
     const blocked = isBlocked(it);
+    const done = yazildi.has(it.id);
     return (
       <tr
         key={`${root.key}-${kind}-${it.id}`}
         className={`hier-row hier-child${blocked ? " blocked" : ""}${
-          it.id === selectedId ? " sel" : ""
-        }`}
+          done ? " yazildi" : ""
+        }${it.id === selectedId ? " sel" : ""}`}
         title={HIER_HINT}
         onDoubleClick={() => onOpenFull(it.id)}
       >
         <td colSpan={colSpan}>
           <div className="hier-line indent">
+            {yazdimButton(it.id)}
             <span className="hier-kind">
               {kind === "org" ? TYPE_LABELS_TR[it.type] : "Kişi"}
             </span>
@@ -1081,18 +1162,20 @@ export default function ListView({
         else next.add(root.key);
         return next;
       });
+    const done = Boolean(rec && yazildi.has(rec.id));
     const head = (
       <tr
         key={root.key}
         className={`hier-row hier-head${blocked ? " blocked" : ""}${
-          rec && rec.id === selectedId ? " sel" : ""
-        }`}
+          done ? " yazildi" : ""
+        }${rec && rec.id === selectedId ? " sel" : ""}`}
         title={rec ? HIER_HINT : undefined}
         onClick={toggleRoot}
         onDoubleClick={() => rec && onOpenFull(rec.id)}
       >
         <td colSpan={colSpan}>
           <div className="hier-line">
+            {rec && yazdimButton(rec.id)}
             <button
               className="hier-caret"
               title={open ? "Kapat" : "Aç"}
