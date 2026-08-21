@@ -1285,7 +1285,21 @@ export default function App() {
                 routeTitle={listPreset ? TITLES[view] : null}
                 query={filters.q}
                 onQueryChange={(q) => setFilters({ ...filters, q })}
-                typeFilter={filters.types.length === 1 ? filters.types[0] : null}
+                typeFilter={
+                  // ⚠️ length !== 1 ise null → selector "Tümü" gösterir. Yani ÇOK tipli
+                  // bir filtre ekranda "süzme yok" diye görünürdü. Şu an ulaşılamaz, ama
+                  // güvenliği BAŞKA YERLERDEKİ üç invaryanta dayanıyor:
+                  //   1. /lists/* rotasına her giriş filters'ı DEFAULT_FILTERS'a çeker
+                  //      (yukarıdaki appliedListRoute etkisi);
+                  //   2. rota kipinde tek mutator bu selector'dır (0 ya da 1 tip);
+                  //   3. control API'nin set-filters'ı sonunda network'e navigate eder —
+                  //      çok tipli bir preset uygulasa bile bu ekranda kalmaz.
+                  // Üçünden BİRİ değişirse burası sessizce yalan söyler: liste eksik
+                  // görünür ve eksikliğin sebebi EKRANDA GÖRÜNMEZ. Ölçülmüş akrabası:
+                  // 2027 FTC'de tip filtresi 151 kaydın 102'sini gizleyecekti, liste
+                  // 49'la dolu görünüyordu. Kapatmak isteyen: "Tümü" yerine "Çoklu (n)".
+                  filters.types.length === 1 ? filters.types[0] : null
+                }
                 onTypeFilterChange={(t) =>
                   setFilters({ ...filters, types: t ? [t] : [] })
                 }
