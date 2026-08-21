@@ -107,7 +107,6 @@ function AnketFormu({
   version: string | null;
   onSaved: () => void;
 }) {
-  const [acik, setAcik] = useState<string | null>(null);
   // Açık soruların cevabı ve seçmeli soruların "diğer/not" alanı aynı sözlükte.
   const [metin, setMetin] = useState<Record<string, string>>({});
   const [secili, setSecili] = useState<Record<string, string[]>>({});
@@ -156,7 +155,6 @@ function AnketFormu({
       setMetin({});
       setSecili({});
       setNot("");
-      setAcik(null);
       onSaved();
     } catch (error) {
       setHata(error instanceof Error ? error.message : "Kaydedilemedi");
@@ -177,17 +175,12 @@ function AnketFormu({
           const isaretli = secili[soru.id] ?? [];
           const cevap = cevapMetni(soru);
           const secmeli = soru.tip === "secmeli";
-          // Seçmelide chip'ler HER ZAMAN açık: "tek tıkla işaretle" iki tıka
-          // dönmesin. Akordeon yalnız serbest metni saklar — telefonda asıl
-          // yavaşlatan, seçeneği görmek için önce soruyu açmak olurdu.
-          const open = acik === soru.id || Boolean(value.trim()) || (!secmeli && Boolean(cevap));
+          // Tıkla-aç YOK: her soru ve her seçenek sayfa açılır açılmaz
+          // doldurulabilir durumda. Telefonda konuşurken bir şeyi görmek için
+          // önce tıklamak zorunda kalmak en pahalı hareket.
           return (
             <li className={`tp-soru${cevap ? " dolu" : ""}`} key={soru.id}>
-              <button
-                className="tp-soru-baslik"
-                onClick={() => setAcik(acik === soru.id ? null : soru.id)}
-                type="button"
-              >
+              <div className="tp-soru-baslik">
                 {soru.blok && <span className="tp-soru-blok">{soru.blok}</span>}
                 <span className="tp-soru-metin">{soru.soru}</span>
                 {secmeli && (
@@ -195,7 +188,7 @@ function AnketFormu({
                     {soru.coklu ? "çoklu seçim" : "tek seçim"}
                   </span>
                 )}
-              </button>
+              </div>
               {secmeli && (
                 <div className="tp-secenekler">
                   {soru.secenekler.map((secenek) => (
@@ -208,25 +201,24 @@ function AnketFormu({
                       {secenek}
                     </button>
                   ))}
-                  {!open && (
-                    <button
-                      className="tp-not-ac"
-                      type="button"
-                      onClick={() => setAcik(soru.id)}
-                    >
-                      + not
-                    </button>
-                  )}
                 </div>
               )}
-              {open && (
+              {secmeli ? (
+                /* v3 soruları "not kısmına yazın" diye buraya atıf yapıyor. */
+                <input
+                  className="tp-soru-not"
+                  value={value}
+                  placeholder="not"
+                  onChange={(event) =>
+                    setMetin((prev) => ({ ...prev, [soru.id]: event.target.value }))
+                  }
+                />
+              ) : (
                 <textarea
                   className="tp-soru-cevap"
                   value={value}
-                  placeholder={
-                    soru.tip === "secmeli" ? "diğer / not" : "Cevabı buraya yaz"
-                  }
-                  rows={soru.tip === "secmeli" ? 2 : 3}
+                  placeholder="Cevabı buraya yaz"
+                  rows={3}
                   onChange={(event) =>
                     setMetin((prev) => ({ ...prev, [soru.id]: event.target.value }))
                   }
@@ -297,8 +289,8 @@ function GorusmeFormu({
       <textarea
         className="tp-gorusme-input"
         value={ozet}
-        rows={8}
-        placeholder="Görüşme özetini markdown olarak yapıştır"
+        rows={14}
+        placeholder="Görüşme sırasında/sonrasında aklında kalanı buraya yaz (markdown yapıştırabilirsin)"
         onChange={(event) => setOzet(event.target.value)}
       />
       <div className="tp-gorusme-alt">
@@ -320,7 +312,7 @@ function GorusmeFormu({
           disabled={saving || !ozet.trim()}
           type="button"
         >
-          {saving ? "Kaydediliyor…" : "Özeti kaydet"}
+          {saving ? "Kaydediliyor…" : "Notu kaydet"}
         </button>
       </div>
       {hata && <div className="tp-hata">{hata}</div>}
@@ -564,10 +556,14 @@ export default function TeamPage({ entity, nodeById, onGoto }: Props) {
       </section>
 
       <section className="tp-sec">
-        <h2 className="tp-sec-title">Görüşme özeti</h2>
+        {/* Sayfanın en altındaki büyük not alanı. Ayrı bir mekanizma DEĞİL:
+            görüşme özeti ile aynı uç, aynı md dosyası, aynı interaction satırı
+            — iki ayrı "not" kutusu olsaydı hangisinin nereye gittiği
+            belirsizleşirdi. */}
+        <h2 className="tp-sec-title">Notlar</h2>
         {!takimNo ? (
           <p className="tp-bos">
-            Bu kayıtta <code>takim_no</code> yok — özet dosyası takım numarasıyla
+            Bu kayıtta <code>takim_no</code> yok — not dosyası takım numarasıyla
             adlandırıldığı için kutu açılmıyor.
           </p>
         ) : (
@@ -576,7 +572,7 @@ export default function TeamPage({ entity, nodeById, onGoto }: Props) {
             {gorusmeler.length > 0 && (
               <div className="tp-kayit-list">
                 <div className="tp-kayit-baslik">
-                  Geçmiş özetler
+                  Geçmiş notlar
                   <span className="tp-kayit-count">{gorusmeler.length}</span>
                 </div>
                 {gorusmeler.map((kayit) => (

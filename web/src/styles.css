@@ -8847,20 +8847,6 @@ textarea.ms-import-text {
 .tp-soru.dolu {
   border-color: var(--accent);
 }
-.tp-soru-baslik {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text);
-  font-size: 13.5px;
-  line-height: 1.5;
-  padding: 8px 10px;
-}
 .tp-soru-blok {
   font-size: 10.5px;
   color: var(--text-faint);
@@ -8873,6 +8859,7 @@ textarea.ms-import-text {
   flex: 1;
 }
 .tp-soru-cevap,
+.tp-soru-not,
 .tp-gorusme-input,
 .tp-input {
   width: 100%;
@@ -9028,7 +9015,26 @@ textarea.ms-import-text {
   color: var(--text);
   font-weight: 550;
 }
-.tp-secenekler .tp-not-ac {
-  border-style: dashed;
-  color: var(--text-faint);
+
+/* Akordeon kalktı: soru başlığı artık buton değil, düz başlık. */
+.tp-soru-baslik {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.5;
+  padding: 9px 12px 6px;
+}
+/* Seçmeli sorunun ince ama HEP görünür not girişi. */
+.tp-soru-not {
+  margin: 0 4px 6px;
+  width: calc(100% - 8px);
+  font-size: 12.5px;
+  padding: 5px 10px;
+}
+/* Sayfa sonundaki büyük "Notlar" alanı: tam sütun, bol satır. */
+.tp-gorusme-input {
+  min-height: 260px;
+  line-height: 1.6;
 }
