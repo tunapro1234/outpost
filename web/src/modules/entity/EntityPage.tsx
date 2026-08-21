@@ -30,6 +30,7 @@ import {
 } from "@/core/icons";
 import EntityMiniGraph from "./EntityMiniGraph";
 import ExclusionBanner from "./ExclusionBanner";
+import TeamPage from "./TeamPage";
 import {
   competitionHistory,
   normalizeAuditIssues,
@@ -465,6 +466,11 @@ export default function EntityPage({
           </div>
         ) : loading || !entity || !meta ? (
           <div className="ep-loading">Loading…</div>
+        ) : type === "team" ? (
+          /* Takım kayıtları kendi sade ekranını kullanıyor (Tuna telefonda
+             bunu açıyor): sekme/ego graph/skor kutusu yok. Diğer tipler
+             aşağıdaki mevcut sayfada kalır. */
+          <TeamPage entity={entity} nodeById={nodeById} onGoto={goto} />
         ) : (
           <>
             {policyStatus === "no_contact" && (

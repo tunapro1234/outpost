@@ -31,6 +31,7 @@ import { networkRoutes } from "./modules/network/routes.mjs";
 import { overviewRoutes } from "./modules/overview/routes.mjs";
 import { profileRoutes } from "./modules/profile/routes.mjs";
 import { reachRoutes } from "./modules/reach/routes.mjs";
+import { sahaRoutes } from "./modules/saha/routes.mjs";
 import { temasRoutes } from "./modules/temas/routes.mjs";
 
 const SERVER_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
@@ -259,6 +260,10 @@ export async function createApp({
     defaultUser,
   });
   await app.register(temasRoutes, {
+    prefix: "/api/ws/:ws",
+    resolveWorkspace: resolveScopedWorkspace,
+  });
+  await app.register(sahaRoutes, {
     prefix: "/api/ws/:ws",
     resolveWorkspace: resolveScopedWorkspace,
   });

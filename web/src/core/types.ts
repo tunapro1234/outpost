@@ -812,3 +812,41 @@ export interface WorkspaceInfo {
   active?: boolean;
   comingSoon?: boolean;
 }
+
+// ---- saha: FTC anketi + görüşme özetleri --------------------------------
+// Anket soruları ve cevapları vault'ta değil, /srv/probot/outreach/arastirma
+// altında yaşıyor (vault rebuild'de silinir). Sunucu tarafı: modules/saha.
+export interface AnketSoru {
+  id: string;
+  blok: string | null;
+  soru: string;
+}
+
+export interface AnketSorular {
+  version: string | null;
+  sorular: AnketSoru[];
+}
+
+export interface AnketCevap {
+  soru: string;
+  cevap: string;
+}
+
+export interface AnketKayit {
+  anket_versiyon: string | null;
+  tarih: string;
+  cevaplayan: string | null;
+  kanal: string;
+  kaynak_tipi: string;
+  cevaplar: AnketCevap[];
+  not?: string | null;
+}
+
+export interface GorusmeKaydi {
+  dosya: string;
+  yol: string;
+  takim_no: string;
+  tarih: string | null;
+  kanal: string | null;
+  ozet: string;
+}

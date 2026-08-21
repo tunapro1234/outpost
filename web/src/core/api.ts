@@ -1,6 +1,10 @@
 import type {
   Agent,
   AgentRun,
+  AnketCevap,
+  AnketKayit,
+  AnketSorular,
+  GorusmeKaydi,
   MailAgentConfig,
   MailAgentModel,
   Entity,
@@ -664,6 +668,59 @@ export const api = {
   async entity(id: string): Promise<Entity> {
     if (MOCK) return mockEntities[id] ?? fallbackEntity(id);
     return json<Entity>(netUrl(`${workspaceBase()}/entities/${encodeURIComponent(id)}`));
+  },
+
+  // ---- saha: anket + görüşme özeti (takım sayfası) ----------------------
+  async anketSorular(): Promise<AnketSorular> {
+    if (MOCK) return { version: null, sorular: [] };
+    return json<AnketSorular>(`${workspaceBase()}/anket/sorular`);
+  },
+
+  async anketKayitlari(takimNo: string): Promise<AnketKayit[]> {
+    if (MOCK) return [];
+    const body = await json<{ kayitlar: AnketKayit[] }>(
+      `${workspaceBase()}/anket/cevaplar/${encodeURIComponent(takimNo)}`
+    );
+    return body.kayitlar ?? [];
+  },
+
+  async anketKaydet(
+    takimNo: string,
+    payload: { cevaplar: AnketCevap[]; cevaplayan?: string; not?: string }
+  ): Promise<AnketKayit> {
+    if (MOCK) throw new Error("Mock modda anket kaydedilmez");
+    return json<AnketKayit>(
+      `${workspaceBase()}/anket/cevaplar/${encodeURIComponent(takimNo)}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  async gorusmeler(takimNo: string): Promise<GorusmeKaydi[]> {
+    if (MOCK) return [];
+    const body = await json<{ kayitlar: GorusmeKaydi[] }>(
+      `${workspaceBase()}/gorusme/${encodeURIComponent(takimNo)}`
+    );
+    return body.kayitlar ?? [];
+  },
+
+  async gorusmeKaydet(
+    takimNo: string,
+    payload: { entity_id: string; kanal: string; ozet: string }
+  ): Promise<GorusmeKaydi> {
+    if (MOCK) throw new Error("Mock modda görüşme kaydedilmez");
+    const network = getNetwork();
+    return json<GorusmeKaydi>(
+      `${workspaceBase()}/gorusme/${encodeURIComponent(takimNo)}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(network ? { ...payload, network } : payload),
+      }
+    );
   },
 
   async interactions(id: string): Promise<Interaction[]> {

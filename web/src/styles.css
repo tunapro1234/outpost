@@ -8693,3 +8693,299 @@ textarea.ms-import-text {
     transform: none;
   }
 }
+
+/* ---- takım sayfası (type=team) ---------------------------------------
+   Telefonda konuşurken kullanılan ekran: tek sütun, belirgin başlıklar,
+   her bölüm aynı anda görünür. Bilerek entity sayfasının ep-* stillerini
+   miras almıyor — oradaki başlıklar alt-yazı gibi soluk. */
+.team-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 28px 40px 80px;
+  width: 100%;
+}
+.tp-head {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 16px;
+  margin-bottom: 8px;
+}
+.tp-name {
+  font-size: 27px;
+  font-weight: 650;
+  margin: 0 0 6px;
+  color: var(--text);
+}
+.tp-subline {
+  font-size: 14px;
+  color: var(--text-dim);
+}
+.tp-takim-no {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 4px;
+}
+.tp-sec {
+  padding: 22px 0 4px;
+  border-top: 1px solid var(--line);
+}
+.tp-sec:first-of-type {
+  border-top: none;
+}
+.tp-sec-title {
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--text);
+  margin: 0 0 14px;
+  letter-spacing: -0.01em;
+}
+.tp-bos {
+  font-size: 13px;
+  color: var(--text-faint);
+  margin: 0;
+}
+.tp-kisi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.tp-kisi {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  cursor: pointer;
+  color: var(--text);
+}
+.tp-kisi:hover {
+  border-color: var(--accent);
+  background: var(--surface-3);
+}
+.tp-kisi.dim {
+  opacity: 0.5;
+}
+.tp-kisi-ad {
+  font-size: 14px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.tp-flag {
+  margin-left: 6px;
+  font-size: 11px;
+}
+.tp-kisi-rol {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.tp-kisi-tel {
+  font-size: 12.5px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.tp-gecmis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px 20px;
+  margin: 0 0 14px;
+}
+.tp-gecmis-row dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+.tp-gecmis-row dd {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  color: var(--text);
+}
+.tp-basari-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--text);
+}
+.tp-kaynak-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13.5px;
+  line-height: 1.8;
+}
+.tp-kaynak-list a {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+/* anket */
+.tp-anket-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  margin-bottom: 10px;
+}
+.tp-soru-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tp-soru {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 4px;
+}
+.tp-soru.dolu {
+  border-color: var(--accent);
+}
+.tp-soru-baslik {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.5;
+  padding: 8px 10px;
+}
+.tp-soru-blok {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 5px;
+  flex: none;
+}
+.tp-soru-metin {
+  flex: 1;
+}
+.tp-soru-cevap,
+.tp-gorusme-input,
+.tp-input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+.tp-soru-cevap {
+  margin: 0 4px 6px;
+  width: calc(100% - 8px);
+}
+.tp-anket-alt,
+.tp-gorusme-alt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.tp-anket-alt .tp-input {
+  flex: 1 1 220px;
+  width: auto;
+}
+.tp-kanal-secim {
+  display: flex;
+  gap: 4px;
+}
+.tp-kanal-secim button {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12.5px;
+  padding: 5px 12px;
+}
+.tp-kanal-secim button.on {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.tp-gorusme-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tp-hata {
+  color: #e06060;
+  font-size: 12.5px;
+  margin-top: 8px;
+}
+
+/* kayıtlı cevaplar / geçmiş özetler */
+.tp-kayit-list {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tp-kayit-baslik {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tp-kayit-count {
+  font-size: 11px;
+  background: var(--surface-3);
+  border-radius: 20px;
+  padding: 0 7px;
+}
+.tp-kayit {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 12px 14px;
+}
+.tp-kayit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  margin-bottom: 8px;
+}
+.tp-kayit-cevaplar {
+  margin: 0;
+}
+.tp-kayit-cevaplar dt {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 8px;
+}
+.tp-kayit-cevaplar dd {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  color: var(--text);
+}
+.tp-kayit-not {
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+@media (max-width: 720px) {
+  .team-page {
+    padding: 20px 16px 60px;
+  }
+}
