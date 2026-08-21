@@ -1074,13 +1074,24 @@ export default function ListView({
     const rec = root.record;
     const blocked = rec ? isBlocked(rec) : false;
     const phoneCount = root.people.filter((p) => p.phone).length;
+    // Takım satırına tıklamak SAĞ PANELİ AÇMAZ, aşağı doğru genişletir
+    // (Tuna, 21 Ağu). Kaydın kendisine gitmek için "→" düğmesi duruyor;
+    // alt satırlar (kurum/kişi) genişleyemeyeceği için tıklamada panel
+    // açmaya devam ediyor.
+    const toggleRoot = () =>
+      setHierOpen((prev) => {
+        const next = new Set(prev);
+        if (next.has(root.key)) next.delete(root.key);
+        else next.add(root.key);
+        return next;
+      });
     const head = (
       <tr
         key={root.key}
         className={`hier-row hier-head${blocked ? " blocked" : ""}${
           rec && rec.id === selectedId ? " sel" : ""
         }`}
-        onClick={() => rec && openRecord(rec)}
+        onClick={toggleRoot}
       >
         <td colSpan={colSpan}>
           <div className="hier-line">
@@ -1089,12 +1100,7 @@ export default function ListView({
               title={open ? "Kapat" : "Aç"}
               onClick={(e) => {
                 e.stopPropagation();
-                setHierOpen((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(root.key)) next.delete(root.key);
-                  else next.add(root.key);
-                  return next;
-                });
+                toggleRoot();
               }}
             >
               {open ? "▾" : "▸"}
@@ -1106,11 +1112,18 @@ export default function ListView({
                 ⭐
               </span>
             )}
-            {rec && hasTag(rec, "odullu") && (
-              <span className="hier-badge" title="Ödüllü takım">
-                🏆
-              </span>
-            )}
+            {rec &&
+              (typeof rec.odul_sayisi === "number" && rec.odul_sayisi > 0 ? (
+                // Sunucu artık sayıyı taşıyor (7abce9e). 0 = "sayıldı, ödül yok"
+                // → rozet çizilmez; alan hiç yoksa eski tag rozetine düşülür.
+                <span className="hier-badge" title={`${rec.odul_sayisi} ödül (2024-25 + 2025-26)`}>
+                  🏆 {rec.odul_sayisi}
+                </span>
+              ) : rec.odul_sayisi == null && hasTag(rec, "odullu") ? (
+                <span className="hier-badge" title="Ödüllü takım">
+                  🏆
+                </span>
+              ) : null)}
             {blocked && (
               <span className="hier-badge blocked" title="Temas yasak">
                 ⛔
