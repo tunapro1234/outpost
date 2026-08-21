@@ -33,7 +33,11 @@ type ColKey =
   | "closeness";
 
 type SortKey = "name" | ColKey;
-type GroupKey = "none" | "city" | "subtype" | "status";
+// "hierarchy" bir gruplama değil, ayrı bir GÖRÜNÜM KİPİ; yine de kullanıcı için
+// tek bir seçici olsun diye Group selector'ın içinde yaşıyor (paralel bir kip
+// düğmesi eklemedik). Kipin verisi `hierarchy` memo'sunda, satırları
+// hierarchyRows()'ta üretilir; sütun/sıralama makinesi bu kipte devre dışıdır.
+type GroupKey = "none" | "city" | "subtype" | "status" | "hierarchy";
 export type ListPresetId =
   | "all"
   | "competitor"
@@ -57,6 +61,14 @@ interface SortSpec {
 
 interface Props {
   items: EntityListItem[];
+  /**
+   * Ağın SÜZÜLMEMİŞ tam kayıt listesi (App'teki `entityList`). Takım hiyerarşisi
+   * kipi bunu kullanır: hiyerarşinin kökü tip süzgecinden ve arama kutusundan
+   * bağımsız olmalı (kişiyi arayan kullanıcı takımı görmeli, takım da kurumunu
+   * ve diğer kişilerini getirmeli). Ayrıca `org` / `phone` alanları yalnız bu
+   * listede var — grafik düğümlerine taşınmıyorlar.
+   */
+  allItems?: EntityListItem[];
   network: string | null;
   requestedPreset?: ListPresetId | null;
   /**
@@ -268,6 +280,9 @@ const GROUPS: { key: GroupKey; label: string }[] = [
   { key: "city", label: "City" },
   { key: "subtype", label: "Subtype" },
   { key: "status", label: "Status" },
+  // Yalnız listede `team` kaydı varsa gösterilir (aşağıda `teamsExist`):
+  // takımsız bir ağda bu seçenek boş bir ekran vaat ederdi.
+  { key: "hierarchy", label: "Team hierarchy" },
 ];
 
 // Rota kipindeki sade etiketler (jargonsuz). GROUPS'un İngilizce etiketleri
@@ -277,6 +292,7 @@ const GROUP_LABELS_TR: Record<GroupKey, string> = {
   city: "Şehre göre",
   subtype: "Alt tipe göre",
   status: "Duruma göre",
+  hierarchy: "Takım hiyerarşisi",
 };
 
 const TYPE_LABELS_TR: Record<EntityType, string> = {
@@ -395,6 +411,121 @@ function cmpFor(key: SortKey, a: EntityListItem, b: EntityListItem): number {
   }
 }
 
+// ---- takım hiyerarşisi -------------------------------------------------
+// Bağ alanı `org`: takım kartında ve kişi kartında kurumun ADI birebir yazılı,
+// kurum kartının `name`'i ile eşleşir. Yani hiyerarşi istemcide kurulur:
+//   team.org === kurum.name === person.org
+// Kenar (edge) kullanılmıyor; kartlardaki şerh de bu yönde.
+// Aynı kuruma bağlı birden çok takım olabilir (ALKEV 2, PARS 3): kurum ve
+// kişiler HER takımın altında tekrarlanır — kişi takıma değil kuruma bağlı.
+const ORG_TYPES: EntityType[] = ["school", "institution", "company", "channel"];
+
+interface HierRoot {
+  key: string;
+  kind: "team" | "org" | "eco";
+  /** Kök satırın kendi kaydı — "eco" kökünde kayıt yok. */
+  record: EntityListItem | null;
+  label: string;
+  org: EntityListItem | null;
+  /** Kurum kartı bulunamadıysa takımın yazdığı ham kurum adı. */
+  orgName: string | null;
+  people: EntityListItem[];
+}
+
+function isBlocked(it: EntityListItem): boolean {
+  return it.politika_durumu === "no_contact" || Boolean(it.flags?.no_contact);
+}
+
+function hasTag(it: EntityListItem, tag: string): boolean {
+  return (it.tags ?? []).some((t) => normalizePresetText(t) === tag);
+}
+
+function buildHierarchy(source: EntityListItem[]): HierRoot[] {
+  const orgByName = new Map<string, EntityListItem>();
+  const peopleByOrg = new Map<string, EntityListItem[]>();
+  const loose: EntityListItem[] = [];
+
+  for (const it of source) {
+    if (ORG_TYPES.includes(it.type)) {
+      const key = normalizePresetText(it.name);
+      if (key && !orgByName.has(key)) orgByName.set(key, it);
+      continue;
+    }
+    if (it.type !== "person") continue;
+    const key = normalizePresetText(it.org);
+    // Ekosistem kişileri hiçbir kuruma bağlı değil; org'suz kalan herkes de
+    // buraya düşer — aksi halde hiyerarşi onları SESSİZCE yutardı.
+    if (!key || hasTag(it, "ekosistem")) {
+      loose.push(it);
+      continue;
+    }
+    const bucket = peopleByOrg.get(key);
+    if (bucket) bucket.push(it);
+    else peopleByOrg.set(key, [it]);
+  }
+
+  const byName = (a: EntityListItem, b: EntityListItem) =>
+    a.name.localeCompare(b.name, "tr");
+
+  const roots: HierRoot[] = [];
+  const usedOrgKeys = new Set<string>();
+
+  for (const team of source.filter((it) => it.type === "team").sort(byName)) {
+    const key = normalizePresetText(team.org);
+    if (key) usedOrgKeys.add(key);
+    roots.push({
+      key: `team:${team.id}`,
+      kind: "team",
+      record: team,
+      label: team.name,
+      org: key ? orgByName.get(key) ?? null : null,
+      orgName: team.org ?? null,
+      people: [...(peopleByOrg.get(key) ?? [])].sort(byName),
+    });
+  }
+
+  // Takımı olmayan kurumlar da kök olur: kişileri listede kaybolmasın.
+  for (const [key, org] of orgByName) {
+    if (usedOrgKeys.has(key)) continue;
+    roots.push({
+      key: `org:${org.id}`,
+      kind: "org",
+      record: org,
+      label: org.name,
+      org,
+      orgName: org.name,
+      people: [...(peopleByOrg.get(key) ?? [])].sort(byName),
+    });
+  }
+
+  if (loose.length) {
+    roots.push({
+      key: "eco",
+      kind: "eco",
+      record: null,
+      label: "Ekosistem",
+      org: null,
+      orgName: null,
+      people: [...loose].sort(byName),
+    });
+  }
+
+  return roots;
+}
+
+function rootMatches(root: HierRoot, needle: string): boolean {
+  if (!needle) return true;
+  const hay = [
+    root.label,
+    root.record?.city ?? "",
+    root.orgName ?? "",
+    root.org?.name ?? "",
+    root.org?.city ?? "",
+    ...root.people.map((p) => p.name),
+  ];
+  return hay.some((value) => normalizePresetText(value).includes(needle));
+}
+
 function groupValue(it: EntityListItem, g: GroupKey): string {
   switch (g) {
     case "city":
@@ -410,6 +541,7 @@ function groupValue(it: EntityListItem, g: GroupKey): string {
 
 export default function ListView({
   items,
+  allItems,
   network,
   requestedPreset,
   routeTitle,
@@ -440,6 +572,9 @@ export default function ListView({
   const [viewsOpen, setViewsOpen] = useState(false);
   const [viewName, setViewName] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Hiyerarşide varsayılan KAPALI ("tıklayınca görünsün"), gruplamada varsayılan
+  // AÇIK. Aynı Set'e iki zıt anlam yüklemek yerine ayrı bir açık-kümesi.
+  const [hierOpen, setHierOpen] = useState<Set<string>>(new Set());
   const [showNew, setShowNew] = useState(false);
   const [newType, setNewType] = useState<EntityType>("person");
   const [newName, setNewName] = useState("");
@@ -465,7 +600,16 @@ export default function ListView({
   useEffect(() => {
     localStorage.setItem(
       LS_STATE,
-      JSON.stringify({ preset, grouping, cols, sorts })
+      JSON.stringify({
+        preset,
+        // "hierarchy" KASITLI olarak yazılmıyor. Bu kip preset'e bağlı bir
+        // varsayılan (ftcSezonu) ve yalnız takımlı listelerde anlamlı; kalıcı
+        // hale gelseydi takımsız bir listeye taşınıp orada boş bir ekran
+        // gösterirdi. Preset her mount'ta kipi zaten geri kuruyor.
+        grouping: grouping === "hierarchy" ? "none" : grouping,
+        cols,
+        sorts,
+      })
     );
   }, [preset, grouping, cols, sorts]);
 
@@ -485,6 +629,14 @@ export default function ListView({
     setPreset(id);
     setCols(p.cols);
     setCollapsed(new Set());
+    setHierOpen(new Set());
+    // FTC Sezonu listesi (/lists/2027-ftc rotası) takım hiyerarşisiyle AÇILIR;
+    // kullanıcı Group selector'dan "Gruplama yok"a dönebilir — burası yalnız
+    // preset uygulanırken çalışır, her render'da değil. Başka bir preset'e
+    // geçilirken hiyerarşi kipi bırakılır (o listelerde anlamsız), diğer
+    // gruplama tercihleri korunur.
+    if (id === "ftcSezonu") setGrouping("hierarchy");
+    else setGrouping((g) => (g === "hierarchy" ? "none" : g));
   };
 
   useEffect(() => {
@@ -555,9 +707,27 @@ export default function ListView({
     return arr;
   }, [filtered, sorts]);
 
+  // ---- takım hiyerarşisi ----
+  // Kaynak SÜZÜLMEMİŞ liste: kökler tip süzgecinden ve arama kutusundan bağımsız.
+  const hierSource = allItems && allItems.length ? allItems : items;
+  const teamsExist = useMemo(
+    () => hierSource.some((it) => it.type === "team"),
+    [hierSource]
+  );
+  const hierarchyOn = grouping === "hierarchy" && teamsExist;
+  const hierRoots = useMemo(
+    () => (hierarchyOn ? buildHierarchy(hierSource) : null),
+    [hierarchyOn, hierSource]
+  );
+  const hierarchy = useMemo(() => {
+    if (!hierRoots) return null;
+    const needle = normalizePresetText(queryInput);
+    return hierRoots.filter((root) => rootMatches(root, needle));
+  }, [hierRoots, queryInput]);
+
   // grouped structure
   const groups = useMemo(() => {
-    if (grouping === "none") return null;
+    if (grouping === "none" || grouping === "hierarchy") return null;
     const map = new Map<string, EntityListItem[]>();
     for (const it of sorted) {
       const g = groupValue(it, grouping);
@@ -850,12 +1020,168 @@ export default function ListView({
     </tr>
   );
 
+  // ---- hiyerarşi satırları ----
+  const openRecord = (it: EntityListItem) => onSelect(it.id);
+
+  const childRow = (
+    root: HierRoot,
+    it: EntityListItem,
+    kind: "org" | "person"
+  ) => {
+    const blocked = isBlocked(it);
+    return (
+      <tr
+        key={`${root.key}-${kind}-${it.id}`}
+        className={`hier-row hier-child${blocked ? " blocked" : ""}${
+          it.id === selectedId ? " sel" : ""
+        }`}
+        onClick={() => openRecord(it)}
+      >
+        <td colSpan={colSpan}>
+          <div className="hier-line indent">
+            <span className="hier-kind">
+              {kind === "org" ? TYPE_LABELS_TR[it.type] : "Kişi"}
+            </span>
+            <span className="hier-name">{it.name}</span>
+            {blocked && <span className="hier-badge blocked">⛔</span>}
+            {kind === "org" && it.city && (
+              <span className="hier-meta">{it.city}</span>
+            )}
+            {kind === "person" && it.role && (
+              <span className="hier-meta">{it.role}</span>
+            )}
+            {kind === "person" && it.phone && (
+              <span className="hier-meta mono">{it.phone}</span>
+            )}
+            <button
+              className="row-open"
+              title="Open full page"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenFull(it.id);
+              }}
+            >
+              →
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
+  const hierarchyRows = (root: HierRoot) => {
+    const open = hierOpen.has(root.key);
+    const rec = root.record;
+    const blocked = rec ? isBlocked(rec) : false;
+    const phoneCount = root.people.filter((p) => p.phone).length;
+    const head = (
+      <tr
+        key={root.key}
+        className={`hier-row hier-head${blocked ? " blocked" : ""}${
+          rec && rec.id === selectedId ? " sel" : ""
+        }`}
+        onClick={() => rec && openRecord(rec)}
+      >
+        <td colSpan={colSpan}>
+          <div className="hier-line">
+            <button
+              className="hier-caret"
+              title={open ? "Kapat" : "Aç"}
+              onClick={(e) => {
+                e.stopPropagation();
+                setHierOpen((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(root.key)) next.delete(root.key);
+                  else next.add(root.key);
+                  return next;
+                });
+              }}
+            >
+              {open ? "▾" : "▸"}
+            </button>
+            <span className="hier-name strong">{root.label}</span>
+            {rec?.city && <span className="hier-meta">{rec.city}</span>}
+            {rec && hasTag(rec, "kayitli-2026-27") && (
+              <span className="hier-badge star" title="2026-27 sezonuna kayıtlı">
+                ⭐
+              </span>
+            )}
+            {rec && hasTag(rec, "odullu") && (
+              <span className="hier-badge" title="Ödüllü takım">
+                🏆
+              </span>
+            )}
+            {blocked && (
+              <span className="hier-badge blocked" title="Temas yasak">
+                ⛔
+              </span>
+            )}
+            {/* "Geniş görünüm": ≥1400px'te chevron açmadan da özet görünsün. */}
+            <span className="hier-wide">
+              {root.orgName && <span className="hier-meta">{root.orgName}</span>}
+              <span className="hier-meta">{root.people.length} kişi</span>
+              {phoneCount > 0 && (
+                <span className="hier-meta">{phoneCount} telefonlu</span>
+              )}
+            </span>
+            {rec && (
+              <button
+                className="row-open"
+                title="Open full page"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenFull(rec.id);
+                }}
+              >
+                →
+              </button>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+    if (!open) return [head];
+    const kids = [
+      ...(root.org && root.kind === "team"
+        ? [childRow(root, root.org, "org")]
+        : []),
+      ...(root.orgName && !root.org && root.kind === "team"
+        ? [
+            <tr key={`${root.key}-orgmiss`} className="hier-row hier-child">
+              <td colSpan={colSpan}>
+                <div className="hier-line indent">
+                  <span className="hier-kind">Kurum</span>
+                  <span className="hier-name muted">{root.orgName}</span>
+                  <span className="hier-meta">kayıt yok</span>
+                </div>
+              </td>
+            </tr>,
+          ]
+        : []),
+      ...root.people.map((p) => childRow(root, p, "person")),
+    ];
+    if (!kids.length) {
+      kids.push(
+        <tr key={`${root.key}-empty`} className="hier-row hier-child">
+          <td colSpan={colSpan}>
+            <div className="hier-line indent">
+              <span className="hier-meta">bağlı kayıt yok</span>
+            </div>
+          </td>
+        </tr>
+      );
+    }
+    return [head, ...kids];
+  };
+
   return (
     <div className="listwrap">
       <div className={`list-head${routeMode ? " route" : ""}`}>
         <h2>{routeTitle ?? "List"}</h2>
         <span className="count">
-          {sorted.length} {routeMode ? "kayıt" : "records"}
+          {hierarchy
+            ? `${hierarchy.length} ${routeMode ? "grup" : "groups"}`
+            : `${sorted.length} ${routeMode ? "kayıt" : "records"}`}
         </span>
 
         {network === "warm" && (
@@ -936,7 +1262,10 @@ export default function ListView({
                 setCollapsed(new Set());
               }}
             >
-              {GROUPS.map((g) => (
+              {GROUPS.filter(
+                // Takım hiyerarşisi yalnız takım kaydı olan listelerde anlamlı.
+                (g) => g.key !== "hierarchy" || teamsExist || grouping === "hierarchy"
+              ).map((g) => (
                 <option key={g.key} value={g.key}>
                   {routeMode ? GROUP_LABELS_TR[g.key] : g.label}
                 </option>
@@ -1053,14 +1382,22 @@ export default function ListView({
       <div className="list-table-frame">
         <table className="grid list-grid">
           <thead>
-            <tr>
-              {th("name", "Name")}
-              {activeCols.map((c) => th(c.key, c.label, c.num))}
-              <th className="col-open" />
-            </tr>
+            {hierarchy ? (
+              <tr>
+                <th colSpan={colSpan}>Takım · kurum · kişiler</th>
+              </tr>
+            ) : (
+              <tr>
+                {th("name", "Name")}
+                {activeCols.map((c) => th(c.key, c.label, c.num))}
+                <th className="col-open" />
+              </tr>
+            )}
           </thead>
           <tbody>
-            {groups === null
+            {hierarchy
+              ? hierarchy.map(hierarchyRows)
+              : groups === null
               ? sorted.map(row)
               : groups.map((g) => {
                   const isCollapsed = collapsed.has(g.label);

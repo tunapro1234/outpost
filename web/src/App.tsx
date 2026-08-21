@@ -1280,6 +1280,11 @@ export default function App() {
             ) : (
               <ListView
                 items={listItems}
+                // Takım hiyerarşisi kipinin kaynağı: ağın süzülmemiş tam listesi.
+                // `listItems` grafik süzgeçlerinden geçtiği için hiyerarşinin
+                // kökü olamaz; ayrıca `org`/`phone` alanları yalnız burada var
+                // (GraphNode'a taşınmıyorlar).
+                allItems={entityList}
                 network={network}
                 requestedPreset={listPreset}
                 routeTitle={listPreset ? TITLES[view] : null}

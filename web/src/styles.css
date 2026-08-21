@@ -5540,6 +5540,93 @@ table.ep-products .ep-product-name {
   font-variant-numeric: tabular-nums;
 }
 
+/* takım hiyerarşisi (ListView, grouping = hierarchy) */
+.hier-row td {
+  padding: 0 !important;
+}
+.hier-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  min-height: 30px;
+}
+.hier-line.indent {
+  padding-left: 34px;
+  margin-left: 18px;
+  border-left: 1px solid var(--line);
+}
+.hier-row.hier-head {
+  background: var(--surface-2);
+}
+.hier-row.blocked {
+  opacity: 0.55;
+}
+.hier-caret {
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.hier-caret:hover {
+  color: var(--text);
+}
+.hier-name {
+  font-size: 13px;
+  color: var(--text);
+}
+.hier-name.strong {
+  font-weight: 600;
+}
+.hier-kind {
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: var(--surface-3);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.hier-meta {
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+.hier-meta.mono {
+  font-family: var(--mono);
+}
+.hier-badge {
+  font-size: 11px;
+}
+.hier-wide {
+  display: none;
+  align-items: center;
+  gap: 10px;
+}
+.hier-wide .hier-meta::before {
+  content: "· ";
+  color: var(--text-faint);
+}
+.hier-wide .hier-meta:first-child::before {
+  content: "";
+}
+/* Dar ekranda "→" sağa yaslanır; geniş ekranda (≥1400px) özet şeridi sağa
+   yaslanır ve "→" onun peşinden gelir — iki `auto` boşluğu bölüşmesin. */
+.hier-line .row-open {
+  margin-left: auto;
+}
+@media (min-width: 1400px) {
+  .hier-wide {
+    display: flex;
+    margin-left: auto;
+  }
+  .hier-line .hier-wide ~ .row-open {
+    margin-left: 10px;
+  }
+}
+
 /* list cells: connected-org link + mail status */
 .cell-link {
   border: none;
