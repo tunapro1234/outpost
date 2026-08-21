@@ -5647,6 +5647,29 @@ table.ep-products .ep-product-name {
 .hier-row.hier-head {
   background: var(--surface-2);
 }
+/* Yazma bandı ayracı: numaralı / numarasız / blok. Tıklanmaz, sadece sınır. */
+.hier-row.hier-band td {
+  background: var(--surface-1);
+  border-top: 2px solid var(--line);
+  padding-top: 10px;
+}
+.hier-row.hier-band .hier-name {
+  letter-spacing: 0.02em;
+}
+.hier-row.hier-band.b0 .hier-name {
+  color: #2f9e58;
+}
+.hier-row.hier-band.b2 .hier-name {
+  color: var(--text-faint);
+}
+.hier-band-hint {
+  opacity: 0.7;
+}
+@media (max-width: 1100px) {
+  .hier-band-hint {
+    display: none;
+  }
+}
 .hier-row.blocked {
   opacity: 0.55;
 }

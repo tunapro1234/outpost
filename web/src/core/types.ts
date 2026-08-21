@@ -136,6 +136,8 @@ export interface EntityListItem extends EntityState {
   lead_source?: string | null;
   // Display only — see EntityMeta above; never feed these to an outreach flow.
   phone?: string | null;
+  /** Kurum santrali — kişisel hat DEĞİL. Ayrı alan: bkz. network/service.mjs. */
+  santral?: string | null;
   phone_source?: "elden" | "ocr" | "web" | null;
   contact_channel?: string | null;
   birincil_kanal?: string | null;

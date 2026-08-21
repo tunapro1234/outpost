@@ -440,6 +440,50 @@ function hasTag(it: EntityListItem, tag: string): boolean {
   return (it.tags ?? []).some((t) => normalizePresetText(t) === tag);
 }
 
+/**
+ * Yazma bandı — Tuna, 21 Ağu: "yetkililerine sahip olduğumuz takımlara göre
+ * sırala, numarası olan yukarı olmayan aşağı".
+ *
+ * 0 = yazılabilir numara var · 1 = numara yok (santral/mail kalır) · 2 = ⛔ blok.
+ * Ayrım KİŞİ telefonu üzerinden yapılır: kurum santralini kişi kartına basmayı
+ * build-ftc'nin "barınak testi" zaten engelliyor, yani `person.phone` dolu ise
+ * o gerçekten o kişiye ait bir hat demektir. Kurum kartındaki numara ancak
+ * GSM ise (05xx) banda girer — sabit santral WhatsApp'tan yazılamaz, aranır.
+ */
+const GSM = /(^|[^\d])0?5\d{2}[\s.-]?\d{3}/;
+
+function yazilabilirKisi(p: EntityListItem): boolean {
+  // Bloklu/erteli kişinin telefonu ELDE VAR ama YAZILMAZ; takımı "yazılabilir"
+  // bandına taşıması onu yanlışlıkla sıraya sokar (vaka: #25160 ÇAKATECH —
+  // Oğuzhan Köse'nin numarası var ama tanıştırma bekleniyor).
+  return Boolean(p.phone) && !isBlocked(p) && p.politika_durumu !== "defer";
+}
+
+function bandOf(root: HierRoot): 0 | 1 | 2 {
+  const rec = root.record;
+  if (rec && (isBlocked(rec) || rec.politika_durumu === "defer")) return 2;
+  if (root.people.some(yazilabilirKisi)) return 0;
+  const kurumTel = root.org?.santral ?? rec?.santral ?? rec?.phone ?? null;
+  if (kurumTel && GSM.test(kurumTel)) return 0;
+  return 1;
+}
+
+/**
+ * Bant içi sıra: önce muhatabın gücü (kaç kişide telefon var), sonra takımın
+ * değeri (2026-27 kaydı, ödül). Tamamen türetilmiş — elle sıra tutulmuyor ki
+ * veri değişince liste kendiliğinden güncellensin.
+ */
+function yazmaSkoru(root: HierRoot): number {
+  const rec = root.record;
+  // Kayıtsız "Ekosistem" kovası takım değil: bandının en dibinde dursun.
+  if (!rec) return -1;
+  const telli = root.people.filter(yazilabilirKisi).length;
+  const kayitli = rec && hasTag(rec, "kayitli-2026-27") ? 1 : 0;
+  const odul = typeof rec?.odul_sayisi === "number" ? rec.odul_sayisi : 0;
+  const kanal = root.org?.mail || rec?.mail || root.org?.phone || rec?.phone ? 1 : 0;
+  return telli * 1000 + kayitli * 300 + Math.min(odul, 20) * 10 + kanal;
+}
+
 function buildHierarchy(source: EntityListItem[]): HierRoot[] {
   const orgByName = new Map<string, EntityListItem>();
   const peopleByOrg = new Map<string, EntityListItem[]>();
@@ -772,16 +816,31 @@ export default function ListView({
     if (!hierRoots) return null;
     const needle = normalizePresetText(queryInput);
     const visible = hierRoots.filter((root) => rootMatches(root, needle));
-    // Yazılan takımlar dibe iner, kendi aralarında ESKİ SIRA korunur (kararlı
-    // bölme). Kişi satırları takımın altında kalır — yalnız soluklaşırlar.
-    const kalan = visible.filter(
-      (root) => !(root.record && yazildi.has(root.record.id))
-    );
-    const bitmis = visible.filter(
-      (root) => root.record && yazildi.has(root.record.id)
-    );
-    return [...kalan, ...bitmis];
+    // Önce yazma bandı (numaralı → numarasız → blok), bant içinde muhatap
+    // gücüne göre sıra. Yazılan takımlar KENDİ BANDININ dibine iner: işaret
+    // sırayı bozmasın, "bu bantta daha ne kaldı" görünsün.
+    const bands: { band: 0 | 1 | 2; roots: HierRoot[] }[] = [
+      { band: 0, roots: [] },
+      { band: 1, roots: [] },
+      { band: 2, roots: [] },
+    ];
+    for (const root of visible) bands[bandOf(root)].roots.push(root);
+    for (const b of bands) {
+      b.roots.sort((x, y) => {
+        const dx = x.record && yazildi.has(x.record.id) ? 1 : 0;
+        const dy = y.record && yazildi.has(y.record.id) ? 1 : 0;
+        if (dx !== dy) return dx - dy;
+        const s = yazmaSkoru(y) - yazmaSkoru(x);
+        return s !== 0 ? s : x.label.localeCompare(y.label, "tr");
+      });
+    }
+    return bands.filter((b) => b.roots.length);
   }, [hierRoots, queryInput, yazildi]);
+
+  const hierRootCount = useMemo(
+    () => (hierarchy ? hierarchy.reduce((n, b) => n + b.roots.length, 0) : 0),
+    [hierarchy]
+  );
 
   // grouped structure
   const groups = useMemo(() => {
@@ -1135,6 +1194,11 @@ export default function ListView({
             {kind === "org" && it.city && (
               <span className="hier-meta">{it.city}</span>
             )}
+            {kind === "org" && it.santral && (
+              <span className="hier-meta mono" title="Kurum santrali — kişisel hat değil">
+                ☎️ {it.santral}
+              </span>
+            )}
             {kind === "person" && it.role && (
               <span className="hier-meta">{it.role}</span>
             )}
@@ -1151,7 +1215,7 @@ export default function ListView({
     const open = hierOpen.has(root.key);
     const rec = root.record;
     const blocked = rec ? isBlocked(rec) : false;
-    const phoneCount = root.people.filter((p) => p.phone).length;
+    const phoneCount = root.people.filter(yazilabilirKisi).length;
     // Takım satırına tek tık = aşağı genişlet/kapat; ÇİFT TIK = takımın kendi
     // sayfası. Alt satırlarda tek tık hiçbir şey yapmaz, çift tık o kaydın
     // sayfasına gider. Hiçbiri sağ paneli açmaz.
@@ -1256,13 +1320,43 @@ export default function ListView({
     return [head, ...kids];
   };
 
+  const BAND_LABEL: Record<number, { ad: string; ipucu: string }> = {
+    0: {
+      ad: "📱 NUMARASI VAR — yazılabilir",
+      ipucu: "Takımın kendi kişisinde telefon var ya da kurum GSM hattı biliniyor",
+    },
+    1: {
+      ad: "☎️ NUMARA YOK — santral / mail",
+      ipucu:
+        "Kişisel hat yok. Santral aranır, WhatsApp yazılmaz: “robotik takımının sorumlu öğretmenine ulaşmak istiyorum”",
+    },
+    2: {
+      ad: "⛔ YAZILMAZ — blok / erteli",
+      ipucu: "ILETISIM-ERTELENENLER kapsamı; temas yok",
+    },
+  };
+
+  const bandRow = (band: number, adet: number) => (
+    <tr key={`band-${band}`} className={`hier-row hier-band b${band}`}>
+      <td colSpan={colSpan}>
+        <div className="hier-line">
+          <span className="hier-name strong">{BAND_LABEL[band].ad}</span>
+          <span className="hier-meta">{adet} takım</span>
+          <span className="hier-meta hier-band-hint">
+            {BAND_LABEL[band].ipucu}
+          </span>
+        </div>
+      </td>
+    </tr>
+  );
+
   return (
     <div className="listwrap">
       <div className={`list-head${routeMode ? " route" : ""}`}>
         <h2>{routeTitle ?? "List"}</h2>
         <span className="count">
           {hierarchy
-            ? `${hierarchy.length} ${routeMode ? "grup" : "groups"}`
+            ? `${hierRootCount} ${routeMode ? "grup" : "groups"}`
             : `${sorted.length} ${routeMode ? "kayıt" : "records"}`}
         </span>
 
@@ -1478,7 +1572,10 @@ export default function ListView({
           </thead>
           <tbody>
             {hierarchy
-              ? hierarchy.map(hierarchyRows)
+              ? hierarchy.map((b) => [
+                  bandRow(b.band, b.roots.length),
+                  ...b.roots.map(hierarchyRows),
+                ])
               : groups === null
               ? sorted.map(row)
               : groups.map((g) => {

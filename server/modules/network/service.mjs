@@ -226,6 +226,10 @@ export function entityListItem(entity, index, statsByEntity, stateByEntity) {
     durum: entity.meta.durum ?? null,
     lead_source: entity.meta.lead_source ?? null,
     phone: entity.meta.phone ?? null,
+    // Kurum kartının SANTRALİ ayrı alan: kişi telefonuyla aynı kutuya konmaz.
+    // Liste "yazılabilir numara" bandını kurarken ikisini ayırt edebilsin diye
+    // taşınıyor (santral aranır, WhatsApp'tan yazılmaz).
+    santral: entity.meta.santral ?? null,
     phone_source: entity.meta.phone_source ?? null,
     contact_channel: entity.meta.contact_channel ?? null,
     birincil_kanal: entity.meta.birincil_kanal ?? entity.meta.contact_channel ?? null,
