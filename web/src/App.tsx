@@ -1159,7 +1159,11 @@ export default function App() {
           }
         />
 
-        {isNetwork && (
+        {/* Ağ pilleri + graf filtre çubuğu yalnız GRAF yüzeyinde. /lists/*
+            rotasında (listPreset dolu) gizleniyor: orada ikinci bir seçim
+            şeridi hem bloat hem de bağlamdan kaçış kapısıydı. Süzme oradan
+            liste başlığındaki selector'larla yapılıyor. */}
+        {isNetwork && !listPreset && (
           <FilterBar
             theme={theme}
             networks={networks}
@@ -1278,6 +1282,13 @@ export default function App() {
                 items={listItems}
                 network={network}
                 requestedPreset={listPreset}
+                routeTitle={listPreset ? TITLES[view] : null}
+                query={filters.q}
+                onQueryChange={(q) => setFilters({ ...filters, q })}
+                typeFilter={filters.types.length === 1 ? filters.types[0] : null}
+                onTypeFilterChange={(t) =>
+                  setFilters({ ...filters, types: t ? [t] : [] })
+                }
                 selectedId={selectedId}
                 onSelect={setSelectedId}
                 onOpenFull={openFull}

@@ -5363,6 +5363,42 @@ table.ep-products .ep-product-name {
   gap: 8px;
   margin-left: auto;
 }
+/* Rota kipi (/lists/*): tek satır — başlık + sayı + tip selector + arama. */
+.list-head.route {
+  flex-wrap: nowrap;
+}
+.list-head.route h2 {
+  font-size: 16px;
+}
+.list-tools .list-search {
+  width: 190px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  font-family: inherit;
+}
+.list-tools .list-search::placeholder {
+  color: var(--text-faint);
+}
+.list-tools .list-search:focus {
+  outline: none;
+  border-color: var(--accent, var(--line));
+}
+.group-select select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+@media (max-width: 900px) {
+  .list-head.route {
+    flex-wrap: wrap;
+  }
+  .list-tools .list-search {
+    width: 140px;
+  }
+}
 .group-select {
   display: inline-flex;
   align-items: center;

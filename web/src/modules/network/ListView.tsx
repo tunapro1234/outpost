@@ -59,6 +59,19 @@ interface Props {
   items: EntityListItem[];
   network: string | null;
   requestedPreset?: ListPresetId | null;
+  /**
+   * Kenar çubuğundan açılan /lists/* rotalarında dolu gelir. Doluysa liste
+   * "rota kipi"ndedir: preset pil şeridi çizilmez (rotanın kendisi zaten
+   * preset'i seçmiştir), başlık liste adını gösterir ve tip/metin süzgeçleri
+   * tek satırda selector olarak sunulur.
+   */
+  routeTitle?: string | null;
+  /** filters.q ile bağlı — liste kendi arama motorunu KURMAZ. */
+  query?: string;
+  onQueryChange?: (value: string) => void;
+  /** filters.types ile bağlı (tek tip ya da null = tümü). */
+  typeFilter?: EntityType | null;
+  onTypeFilterChange?: (value: EntityType | null) => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onOpenFull: (id: string) => void;
@@ -257,6 +270,34 @@ const GROUPS: { key: GroupKey; label: string }[] = [
   { key: "status", label: "Status" },
 ];
 
+// Rota kipindeki sade etiketler (jargonsuz). GROUPS'un İngilizce etiketleri
+// network-içi liste kipinde olduğu gibi kalıyor.
+const GROUP_LABELS_TR: Record<GroupKey, string> = {
+  none: "Gruplama yok",
+  city: "Şehre göre",
+  subtype: "Alt tipe göre",
+  status: "Duruma göre",
+};
+
+const TYPE_LABELS_TR: Record<EntityType, string> = {
+  team: "Takım",
+  person: "Kişi",
+  school: "Okul",
+  institution: "Kurum",
+  company: "Şirket",
+  channel: "Kanal",
+};
+
+// Selector sırası Tuna'nın istediği sıra.
+const TYPE_FILTER_ORDER: EntityType[] = [
+  "team",
+  "person",
+  "school",
+  "institution",
+  "company",
+  "channel",
+];
+
 interface SavedView {
   name: string;
   preset: ListPresetId;
@@ -371,11 +412,17 @@ export default function ListView({
   items,
   network,
   requestedPreset,
+  routeTitle,
+  query,
+  onQueryChange,
+  typeFilter,
+  onTypeFilterChange,
   selectedId,
   onSelect,
   onOpenFull,
   onChanged,
 }: Props) {
+  const routeMode = !!routeTitle;
   const saved = loadState();
   const [preset, setPreset] = useState<ListPresetId>(
     requestedPreset ?? saved?.preset ?? "all"
@@ -397,6 +444,19 @@ export default function ListView({
   const [newType, setNewType] = useState<EntityType>("person");
   const [newName, setNewName] = useState("");
   const [showAllWarm, setShowAllWarm] = useState(false);
+  // Arama kutusu: FilterBar'daki kalıbın aynısı (250ms debounce, dışarıdan
+  // gelen değer kazanır). Filtreleme yine core/filters.ts'te, burada değil.
+  const [queryInput, setQueryInput] = useState(query ?? "");
+  useEffect(() => {
+    setQueryInput(query ?? "");
+  }, [query]);
+  useEffect(() => {
+    if (!onQueryChange) return;
+    if (queryInput === (query ?? "")) return;
+    const timer = window.setTimeout(() => onQueryChange(queryInput), 250);
+    return () => window.clearTimeout(timer);
+  }, [queryInput, query, onQueryChange]);
+
   const colsRef = useRef<HTMLDivElement>(null);
   const viewsRef = useRef<HTMLDivElement>(null);
   const previousNetworkRef = useRef(network);
@@ -792,9 +852,11 @@ export default function ListView({
 
   return (
     <div className="listwrap">
-      <div className="list-head">
-        <h2>List</h2>
-        <span className="count">{sorted.length} records</span>
+      <div className={`list-head${routeMode ? " route" : ""}`}>
+        <h2>{routeTitle ?? "List"}</h2>
+        <span className="count">
+          {sorted.length} {routeMode ? "kayıt" : "records"}
+        </span>
 
         {network === "warm" && (
           <label className="warm-show-all">
@@ -810,21 +872,63 @@ export default function ListView({
           </label>
         )}
 
-        <div className="list-presets">
-          {PRESETS.map((p) => (
-            <button
-              key={p.id}
-              className={`preset-btn ${preset === p.id ? "on" : ""}`}
-              onClick={() => applyPreset(p.id)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        {/* Preset pil şeridi yalnız network-içi liste kipinde. /lists/* rotasında
+            preset'i rota seçtiği için ikinci bir seçim şeridi bloat olurdu. */}
+        {!routeMode && (
+          <div className="list-presets">
+            {PRESETS.map((p) => (
+              <button
+                key={p.id}
+                className={`preset-btn ${preset === p.id ? "on" : ""}`}
+                onClick={() => applyPreset(p.id)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="list-tools">
+          {routeMode && (
+            <>
+              <label className="group-select">
+                <span>Tip</span>
+                <select
+                  value={activePreset.type ?? typeFilter ?? "all"}
+                  disabled={!!activePreset.type}
+                  title={
+                    activePreset.type
+                      ? "Bu liste zaten tek tipten oluşuyor"
+                      : undefined
+                  }
+                  onChange={(e) =>
+                    onTypeFilterChange?.(
+                      e.target.value === "all"
+                        ? null
+                        : (e.target.value as EntityType)
+                    )
+                  }
+                >
+                  <option value="all">Tümü</option>
+                  {TYPE_FILTER_ORDER.map((t) => (
+                    <option key={t} value={t}>
+                      {TYPE_LABELS_TR[t]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <input
+                className="list-search"
+                value={queryInput}
+                placeholder="Ara…"
+                onChange={(e) => setQueryInput(e.target.value)}
+              />
+            </>
+          )}
+
           <label className="group-select">
-            <span>Group</span>
+            <span>{routeMode ? "Grup" : "Group"}</span>
             <select
               value={grouping}
               onChange={(e) => {
@@ -834,7 +938,7 @@ export default function ListView({
             >
               {GROUPS.map((g) => (
                 <option key={g.key} value={g.key}>
-                  {g.label}
+                  {routeMode ? GROUP_LABELS_TR[g.key] : g.label}
                 </option>
               ))}
             </select>
