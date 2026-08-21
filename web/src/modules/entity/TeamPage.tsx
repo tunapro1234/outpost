@@ -57,7 +57,8 @@ function linkLabel(url: string): string {
 
 interface ResearchLink {
   url: string;
-  label: string;
+  /** nereden geldiği (site/instagram/kaynak) — okunur adres ayrıca basılır */
+  label: string | null;
 }
 
 /**
@@ -66,14 +67,14 @@ interface ResearchLink {
  * `- site: https://…` biçiminde yazılıyor, o etiketi koruyoruz.
  */
 function researchLinks(entity: Entity): ResearchLink[] {
-  const found = new Map<string, string>();
-  const add = (raw: unknown, label?: string) => {
+  const found = new Map<string, string | null>();
+  const add = (raw: unknown, label: string | null = null) => {
     const value = textValue(raw);
     if (!value) return;
     if (!/^(https?:\/\/|www\.|[\w-]+\.[a-z]{2,})/i.test(value)) return;
     if (value.includes("[object Object]")) return;
     const url = absolute(value.replace(/[.,;)]+$/, ""));
-    if (!found.has(url)) found.set(url, label ?? linkLabel(url));
+    if (!found.has(url)) found.set(url, label);
   };
 
   const meta = entity.meta;
@@ -442,8 +443,9 @@ export default function TeamPage({ entity, nodeById, onGoto }: Props) {
           <ul className="tp-kaynak-list">
             {kaynaklar.map((link) => (
               <li key={link.url}>
+                {link.label && <span className="tp-kaynak-etiket">{link.label}</span>}
                 <a href={link.url} target="_blank" rel="noreferrer">
-                  {link.label}
+                  {linkLabel(link.url)}
                 </a>
               </li>
             ))}
