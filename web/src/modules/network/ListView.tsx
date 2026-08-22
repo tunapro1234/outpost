@@ -618,7 +618,23 @@ export default function ListView({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   // Hiyerarşide varsayılan KAPALI ("tıklayınca görünsün"), gruplamada varsayılan
   // AÇIK. Aynı Set'e iki zıt anlam yüklemek yerine ayrı bir açık-kümesi.
-  const [hierOpen, setHierOpen] = useState<Set<string>>(new Set());
+  // localStorage'a yazılır: sayfa yenilenince (assistant reload'u dahil) Tuna'nın
+  // elle açtığı paneller kapanmasın.
+  const [hierOpen, setHierOpen] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem("outpost.hierOpen");
+      return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    } catch {
+      return new Set();
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("outpost.hierOpen", JSON.stringify([...hierOpen]));
+    } catch {
+      /* dolu/kapalı storage: sessiz geç — durum en kötü eski davranışa düşer */
+    }
+  }, [hierOpen]);
   const [showNew, setShowNew] = useState(false);
   const [newType, setNewType] = useState<EntityType>("person");
   const [newName, setNewName] = useState("");
