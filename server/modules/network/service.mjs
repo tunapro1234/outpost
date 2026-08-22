@@ -246,6 +246,8 @@ export function entityListItem(entity, index, statsByEntity, stateByEntity) {
     // Takım satırında tıklamasız görünen saha istihbaratı: kısa şasi/robot
     // durumu (Tuna'nın gözlemi) + dünya OPR sırası. null = ölçülmedi/bilinmiyor.
     robot: entity.meta.robot ?? null,
+    // A/B/C — Tuna'nın robot seviyesi; null = atanmadı (tahmin edilmez).
+    robot_seviye: entity.meta.robot_seviye ?? null,
     dunya_sirasi: Number.isInteger(entity.meta.dunya_sirasi_2025)
       ? entity.meta.dunya_sirasi_2025
       : null,

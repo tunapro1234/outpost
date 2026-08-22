@@ -1298,6 +1298,16 @@ export default function ListView({
               {typeof rec?.dunya_sirasi === "number" ? `🌍${rec.dunya_sirasi}` : ""}
             </span>
             <span className="hier-robot" title="Robot/şasi durumu — saha istihbaratı">
+              {rec?.robot_seviye && (
+                // A=full custom şampiyon · B=çalışan/hazır parçalı · C=zayıf/puansız.
+                // Yalnız Tuna atar; yokluğu "ölçülmedi" demek, rozet çizilmez.
+                <span
+                  className={`robot-tier tier-${rec.robot_seviye.toLowerCase()}`}
+                  title="Robot seviyesi (Tuna): A=full custom şampiyon · B=çalışan · C=zayıf/puansız"
+                >
+                  {rec.robot_seviye}
+                </span>
+              )}
               {rec?.robot ? `🔧 ${rec.robot}` : ""}
             </span>
             {/* "Geniş görünüm": ≥1400px'te chevron açmadan da özet görünsün. */}

@@ -9110,3 +9110,19 @@ textarea.ms-import-text {
   }
   .hier-line.hgrid .hier-wide { display: none; }
 }
+
+/* Robot seviyesi rozeti (A/B/C — Tuna ataması) */
+.robot-tier {
+  display: inline-block;
+  min-width: 16px;
+  text-align: center;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 0 4px;
+  margin-right: 6px;
+  line-height: 16px;
+}
+.robot-tier.tier-a { background: #1d4d2b; color: #6fdc93; }
+.robot-tier.tier-b { background: #4d431d; color: #e0c46a; }
+.robot-tier.tier-c { background: #4d1d1d; color: #e08a8a; }

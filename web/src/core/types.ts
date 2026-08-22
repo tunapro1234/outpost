@@ -148,6 +148,8 @@ export interface EntityListItem extends EntityState {
   odul_sayisi?: number | null;
   /** Kısa şasi/robot durumu — saha istihbaratı (Tuna gözlemi/IG). null = ölçülmedi. */
   robot?: string | null;
+  /** A/B/C robot seviyesi (Tuna ataması): A=custom şampiyon, B=çalışan, C=zayıf. */
+  robot_seviye?: string | null;
   /** Dünya OPR sırası (2025-26 sezonu, ftcscout). */
   dunya_sirasi?: number | null;
 }
