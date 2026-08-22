@@ -1238,8 +1238,10 @@ export default function ListView({
         onDoubleClick={() => rec && onOpenFull(rec.id)}
       >
         <td colSpan={colSpan}>
-          <div className="hier-line">
-            {rec && yazdimButton(rec.id)}
+          {/* Sabit kolonlu grid: her hücre HER ZAMAN render edilir (boşsa boş
+              span) — koşullu render kolon kaydırır, hizayı bozar. */}
+          <div className="hier-line hgrid">
+            <span className="hcell">{rec && yazdimButton(rec.id)}</span>
             <button
               className="hier-caret"
               title={open ? "Kapat" : "Aç"}
@@ -1251,29 +1253,37 @@ export default function ListView({
               {open ? "▾" : "▸"}
             </button>
             <span className="hier-name strong">{root.label}</span>
-            {rec?.city && <span className="hier-meta">{rec.city}</span>}
-            {rec && hasTag(rec, "kayitli-2026-27") && (
-              <span className="hier-badge star" title="2026-27 sezonuna kayıtlı">
-                ⭐
-              </span>
-            )}
-            {rec &&
-              (typeof rec.odul_sayisi === "number" && rec.odul_sayisi > 0 ? (
-                // Sunucu artık sayıyı taşıyor (7abce9e). 0 = "sayıldı, ödül yok"
-                // → rozet çizilmez; alan hiç yoksa eski tag rozetine düşülür.
-                <span className="hier-badge" title={`${rec.odul_sayisi} ödül (2024-25 + 2025-26)`}>
-                  🏆 {rec.odul_sayisi}
+            <span className="hier-meta hcity">{rec?.city ?? ""}</span>
+            <span className="hier-flags">
+              {rec && hasTag(rec, "kayitli-2026-27") && (
+                <span className="hier-badge star" title="2026-27 sezonuna kayıtlı">
+                  ⭐
                 </span>
-              ) : rec.odul_sayisi == null && hasTag(rec, "odullu") ? (
-                <span className="hier-badge" title="Ödüllü takım">
-                  🏆
+              )}
+              {rec &&
+                (typeof rec.odul_sayisi === "number" && rec.odul_sayisi > 0 ? (
+                  // Sunucu artık sayıyı taşıyor (7abce9e). 0 = "sayıldı, ödül yok"
+                  // → rozet çizilmez; alan hiç yoksa eski tag rozetine düşülür.
+                  <span className="hier-badge" title={`${rec.odul_sayisi} ödül (2024-25 + 2025-26)`}>
+                    🏆{rec.odul_sayisi}
+                  </span>
+                ) : rec.odul_sayisi == null && hasTag(rec, "odullu") ? (
+                  <span className="hier-badge" title="Ödüllü takım">
+                    🏆
+                  </span>
+                ) : null)}
+              {blocked && (
+                <span className="hier-badge blocked" title="Temas yasak">
+                  ⛔
                 </span>
-              ) : null)}
-            {blocked && (
-              <span className="hier-badge blocked" title="Temas yasak">
-                ⛔
-              </span>
-            )}
+              )}
+            </span>
+            <span className="hier-meta hrank" title="Dünya OPR sırası (2025-26)">
+              {typeof rec?.dunya_sirasi === "number" ? `🌍${rec.dunya_sirasi}` : ""}
+            </span>
+            <span className="hier-robot" title="Robot/şasi durumu — saha istihbaratı">
+              {rec?.robot ? `🔧 ${rec.robot}` : ""}
+            </span>
             {/* "Geniş görünüm": ≥1400px'te chevron açmadan da özet görünsün. */}
             <span className="hier-wide">
               {root.orgName && <span className="hier-meta">{root.orgName}</span>}

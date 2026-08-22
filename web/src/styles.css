@@ -9061,3 +9061,52 @@ textarea.ms-import-text {
   min-height: 260px;
   line-height: 1.6;
 }
+
+/* Takım kök satırı: sabit kolonlu grid — yazdım/ok/isim/şehir/rozet/sıra/robot/özet.
+   Her hücre her zaman render edilir; hiza isim uzunluğundan bağımsızdır. */
+.hier-line.hgrid {
+  display: grid;
+  grid-template-columns: 18px 18px minmax(200px, 250px) 120px 62px 66px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  min-height: 30px;
+}
+.hier-line.hgrid .hier-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hcity {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hier-flags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.hrank {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.hier-robot {
+  font-size: 12px;
+  color: var(--text-dim);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hier-line.hgrid .hier-wide {
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+@media (max-width: 1250px) {
+  .hier-line.hgrid {
+    grid-template-columns: 18px 18px minmax(180px, 230px) 110px 60px 64px minmax(0, 1fr);
+  }
+  .hier-line.hgrid .hier-wide { display: none; }
+}

@@ -243,6 +243,12 @@ export function entityListItem(entity, index, statsByEntity, stateByEntity) {
     odul_sayisi: Number.isInteger(entity.meta.odul_sayisi)
       ? entity.meta.odul_sayisi
       : null,
+    // Takım satırında tıklamasız görünen saha istihbaratı: kısa şasi/robot
+    // durumu (Tuna'nın gözlemi) + dünya OPR sırası. null = ölçülmedi/bilinmiyor.
+    robot: entity.meta.robot ?? null,
+    dunya_sirasi: Number.isInteger(entity.meta.dunya_sirasi_2025)
+      ? entity.meta.dunya_sirasi_2025
+      : null,
     degree: index.degrees.get(entity.id) ?? 0,
     ...(statsByEntity.get(entity.id) ?? emptyMailStats()),
     ...stateFor(entity, stateByEntity),
