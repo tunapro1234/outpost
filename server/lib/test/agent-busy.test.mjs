@@ -73,7 +73,12 @@ test("gerçek bp çıktısı sondanın beklediği şemayı taşıyor", async (t)
     "status alanı meşguliyet taşımıyor olmalı; taşıyorsa sondanın okuduğu alan yeniden gözden geçirilmeli",
   );
 
-  const probe = createBusyProbe({ exec: execFileAsync });
+  // ⚠️ Sondayı canlı bp'ye DEĞİL, yukarıda alınan TEK anlık görüntüye bağlıyoruz.
+  // Sebebi ölçülmüş: ardışık iki `bp status` çağrısında meşgul sayısı değişebiliyor
+  // (op-main, 23 Ağu: 5 → 4). İki ayrı anı karşılaştıran test flaky olur — üstelik
+  // "gerçek dünyaya baktım" diye güven verirken. Aynı JSON ikisini de besler.
+  const probe = createBusyProbe({ exec: async () => ({ stdout: gercek }) });
+
   const ornek = data.agents[0].name;
   const sonuc = await probe(ornek);
   assert.notEqual(sonuc.state, UNKNOWN, `gerçek bp çıktısında '${ornek}' çözülemedi: ${sonuc.reason}`);
@@ -94,7 +99,21 @@ test("gerçek bp çıktısı sondanın beklediği şemayı taşıyor", async (t)
     t.diagnostic("şu an meşgul agent yok; meşgul yolu bu koşuda sınanmadı");
   }
 
-  const bpBosta = data.agents.find((a) => a.tmux === "idle" && !a.busy_screen && !a.busy_turnopen);
+  // Yaşam döngüsü ile meşguliyet DİK: ölçümde tmux=working olan kayıtların çoğu
+  // status=opening idi (op-main). Yani "açılıyorsa henüz çalışmıyordur" ÇIKARIMI
+  // YANLIŞ. Bu vaka o çıkarımın koda sızmasına karşı bekçilik eder.
+  const acilirkenCalisan = data.agents.find((a) => a.tmux === "working" && a.status === "opening");
+  if (acilirkenCalisan) {
+    assert.equal(
+      (await probe(acilirkenCalisan.name)).state,
+      BUSY,
+      "status=opening olan pane çalışıyor olabilir; meşguliyet OR ile okunmalı, AND ile değil",
+    );
+  }
+
+  const bpBosta = data.agents.find(
+    (a) => a.tmux === "idle" && a.busy_screen === false && a.busy_turnopen === false,
+  );
   if (bpBosta) {
     assert.equal((await probe(bpBosta.name)).state, IDLE);
   }

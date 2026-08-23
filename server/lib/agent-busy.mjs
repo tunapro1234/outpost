@@ -70,7 +70,15 @@ export function createBusyProbe({
       return { state: UNKNOWN, reason: `${command}: tanınmayan tmux durumu '${etkin}'` };
     }
 
-    // Meşgul sinyallerinin BİRLEŞİMİ alınır: hangisi yanarsa yansın meşgul sayılır.
+    // Meşgul sinyallerinin BİRLEŞİMİ (OR) alınır: hangisi yanarsa yansın meşgul.
+    // ⛔ AND'e ÇEVİRME. İki gerekçe, ikisi de ölçülmüş (op-main, 23 Ağu 2026):
+    //  1) Yaşam döngüsü ile meşguliyet DİKTİR: tmux=working olan kayıtların çoğu
+    //     status=opening çıktı. "Açılıyorsa henüz çalışmıyordur" ÇIKARIMI YANLIŞ.
+    //  2) busy_screen bazı kayıtlarda hiç YOK (false değil, yok — hepsi closed).
+    //     Alan yokluğu "meşgul değil" demek DEĞİLDİR. Burada güvenli olmasının
+    //     tek sebebi OR: eksik alan meşgul sinyali EKLEYEMEZ ama var olanı da
+    //     silemez, yani yokluk asla meşgulü boştaya çeviremez. AND yapılırsa bu
+    //     güvence kaybolur ve eksik alan çalışan agent'ı boşta gösterir.
     const mesgul = etkin === "working" || agent.busy_screen === true || agent.busy_turnopen === true;
     return {
       state: mesgul ? BUSY : IDLE,
