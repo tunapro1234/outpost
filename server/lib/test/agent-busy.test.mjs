@@ -143,7 +143,19 @@ test("sonda ölçemediği her durumu UNKNOWN döndürür, asla boşta demez", as
   const bosCikti = createBusyProbe({ exec: execReturning("") });
   const listeYok = createBusyProbe({ exec: execReturning(JSON.stringify({ hata: "yok" })) });
   const tanimiyor = createBusyProbe({
-    exec: execReturning(JSON.stringify({ agents: [{ name: "baskasi", status: "idle" }] })),
+    exec: execReturning(JSON.stringify({ agents: [{ name: "baskasi", tmux: "idle" }] })),
+  });
+  // ⭐ Kayıt VAR ama meşguliyet alanı yok / tanınmıyor. OR tek başına burada
+  // false verip "boşta" derdi; UNKNOWN kapısının OR'un ÜSTÜNDE durması şart
+  // (op-main sorusu, 23 Ağu 2026). Bu vaka o sıralamayı sabitler.
+  const alanYok = createBusyProbe({
+    exec: execReturning(JSON.stringify({ agents: [{ name: "hedef", status: "open" }] })),
+  });
+  const tanimsizDeger = createBusyProbe({
+    exec: execReturning(JSON.stringify({ agents: [{ name: "hedef", tmux: "yepyeni-durum" }] })),
+  });
+  const tumSinyallerEksik = createBusyProbe({
+    exec: execReturning(JSON.stringify({ agents: [{ name: "hedef" }] })),
   });
 
   for (const [ad, probe] of [
@@ -152,6 +164,9 @@ test("sonda ölçemediği her durumu UNKNOWN döndürür, asla boşta demez", as
     ["boş çıktı", bosCikti],
     ["agents listesi yok", listeYok],
     ["oturumu tanımıyor", tanimiyor],
+    ["tmux alanı hiç yok", alanYok],
+    ["tmux değeri tanınmıyor", tanimsizDeger],
+    ["tüm sinyaller eksik", tumSinyallerEksik],
   ]) {
     const sonuc = await probe("hedef");
     assert.equal(sonuc.state, UNKNOWN, `${ad}: UNKNOWN bekleniyordu`);
