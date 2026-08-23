@@ -37,6 +37,13 @@ async function fixture(t) {
   return { root, directory };
 }
 
+// Meşguliyet sondası testlere DIŞARIDAN enjekte edilir. Kural: TUI metnini
+// fikstürde taklit etme — üretimdeki varsayımı kopyalayan fikstür o varsayımı
+// asla yanlışlayamaz (bkz. server/lib/agent-busy.mjs başındaki not).
+function idleProbe() {
+  return async () => ({ state: "idle", reason: "test: agent boşta" });
+}
+
 function sseEvents(response) {
   return response.body
     .split(/\r?\n/)
@@ -312,6 +319,7 @@ test("tmux köprüsü promptu yazar, literal komut ve Enter yollar, dosya ekleri
     sleep,
     idFactory: () => id,
     session: "fake-copilot",
+    busyProbe: idleProbe(),
   });
 
   const stream = await bridge("TAM PROMPT", { workspace: { directory } });
@@ -332,9 +340,10 @@ test("tmux köprüsü promptu yazar, literal komut ve Enter yollar, dosya ekleri
     );
   }
   assert.equal(deltas.join(""), "Merhaba 👋");
+  // Meşguliyet artık pane metninden değil sondadan okunuyor → boşta yolunda
+  // capture-pane YALNIZ submit doğrulamasında çağrılır.
   assert.deepEqual(calls, [
     ["tmux", ["has-session", "-t", "=fake-copilot"]],
-    ["tmux", ["capture-pane", "-p", "-t", "fake-copilot"]],
     ["tmux", [
       "send-keys",
       "-t",
@@ -383,11 +392,17 @@ test("tmux köprüsü meşgul oturumu 2 saniyede bir bekler ve 20 saniye sonunda
   const warnings = [];
   let clock = 10_000;
   let promptSeen = false;
+  // ⚠️ Bu fikstür eskiden meşgul pane'i "…esc to interrupt…" metniyle taklit ediyordu.
+  // O metin üretimdeki varsayımın KOPYASIYDI: aynı varsayım hem üretimde hem fikstürde
+  // durunca test onu asla yanlışlayamıyor, imza değişince test yeşil kalıp üretim
+  // bozuluyordu (23 Ağu 2026 vakası). Artık meşguliyet dışarıdan enjekte ediliyor.
+  let probeCalls = 0;
+  const busyProbe = async () => {
+    probeCalls += 1;
+    return { state: "busy", reason: "test: agent çalışıyor" };
+  };
   const exec = async (_command, args) => {
     calls.push(args);
-    if (args[0] === "capture-pane") {
-      return { stdout: "eski satır\nesc to interrupt\nsatır 3\nsatır 4\nsatır 5\n>\n" };
-    }
     return { stdout: "" };
   };
   const bridge = createTmuxBridge({
@@ -409,10 +424,11 @@ test("tmux köprüsü meşgul oturumu 2 saniyede bir bekler ve 20 saniye sonunda
     },
     idFactory: () => "cp-busy-0000",
     logger: { warn: (...args) => warnings.push(args) },
+    busyProbe,
   });
 
   assert.equal(await bridge("prompt", { workspace: { directory } }), null);
-  assert.equal(calls.filter((args) => args[0] === "capture-pane").length, 11);
+  assert.equal(probeCalls, 11);
   assert.equal(calls.some((args) => args[0] === "send-keys"), false);
   assert.equal(warnings.length, 1);
   assert.match(warnings[0][1], /headless runner/);
@@ -421,6 +437,37 @@ test("tmux köprüsü meşgul oturumu 2 saniyede bir bekler ve 20 saniye sonunda
     fs.access(path.join(directory, "copilot", "inbox", "cp-busy-0000.md")),
     { code: "ENOENT" },
   );
+});
+
+// ⭐ Asıl koruma: meşguliyet ÖLÇÜLEMEDİĞİNDE köprü yazmamalı.
+// 23 Ağu 2026'dan önce buradaki kontrol pane metnine bakıyordu; metin
+// değişince kontrol "boşta" deyip çalışan agent'ın üstüne yazıyordu.
+test("meşguliyet ölçülemezse köprü MEŞGUL sayar, yazmaz ve ayrıca uyarır", async (t) => {
+  const { directory } = await fixture(t);
+  const calls = [];
+  const warnings = [];
+  let clock = 0;
+
+  const bridge = createTmuxBridge({
+    exec: async (_command, args) => {
+      calls.push(args);
+      return { stdout: "" };
+    },
+    now: () => clock,
+    sleep: async (milliseconds) => { clock += milliseconds; },
+    idFactory: () => "cp-unknown-0000",
+    logger: { warn: (...args) => warnings.push(args) },
+    busyProbe: async () => ({ state: "unknown", reason: "bp çalıştırılamadı: ENOENT" }),
+  });
+
+  assert.equal(await bridge("prompt", { workspace: { directory } }), null);
+  // Hiçbir tuş gönderilmedi: çalışan agent'ın üstüne yazma riski kapalı.
+  assert.equal(calls.some((args) => args[0] === "send-keys"), false);
+  // Ve sessiz kalmadı: "ölçemedim" uyarısı "meşgul" uyarısından AYRI görünür,
+  // yoksa bp'nin düşmesi "hep meşgul" görüntüsünün altında kaybolur.
+  const olculemedi = warnings.filter(([, mesaj]) => /ÖLÇÜLEMEDİ/.test(mesaj));
+  assert.equal(olculemedi.length, 1);
+  assert.match(olculemedi[0][0].reason, /ENOENT/);
 });
 
 test("tmux session yoksa köprü sessizce fallback döndürür ve journal dizini oluşturmaz", async (t) => {
@@ -449,6 +496,7 @@ test("tmux outbox 180 saniyede tamamlanmazsa zaman aşımı hatası verir", asyn
       clock += milliseconds;
     },
     idFactory: () => "cp-timeout-0000",
+    busyProbe: idleProbe(),
   });
   const stream = await bridge("prompt", { workspace: { directory } });
 
@@ -476,6 +524,7 @@ test("tmux köprüsü eşzamanlı istekleri tek send/wait akışında sıraya al
       return { stdout: "" };
     },
     sleep: async () => {},
+    busyProbe: idleProbe(),
   });
 
   const first = await bridge("birinci", { workspace: { directory } });

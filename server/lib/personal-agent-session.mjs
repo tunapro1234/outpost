@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
+import { BUSY, createBusyProbe } from "./agent-busy.mjs";
+
 export const personalAgentExec = promisify(execFile);
 
 export function personalAgentSleep(milliseconds) {
@@ -20,7 +22,9 @@ export async function spawnPersonalAgentSession({
   sleep = personalAgentSleep,
   spawnWaitMs = 30_000,
   claudeBin = process.env.OUTPOST_CLAUDE_BIN ?? "claude",
+  busyProbe,
 }) {
+  const probe = busyProbe ?? createBusyProbe({ exec });
   const command = `IS_SANDBOX=1 ${claudeBin} --dangerously-skip-permissions --model ${model}`;
   try {
     await exec("tmux", [
@@ -47,12 +51,16 @@ export async function spawnPersonalAgentSession({
     const instruction = `talimat dosyanı oku; protokol: [${protocol} <id>] mesajları`;
     await exec("tmux", ["send-keys", "-t", session, "-l", instruction]);
     await exec("tmux", ["send-keys", "-t", session, "Enter"]);
+    // Submit doğrulaması: TUI metni yerine sürümden bağımsız iki sinyal —
+    // bp agent'ı çalışıyor görüyor mu, yoksa yazdığımız talimat hâlâ composer'da mı.
+    // (Neden desen aramıyoruz: server/lib/agent-busy.mjs başındaki not.)
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await sleep(700);
+      const { state } = await probe(session);
+      if (state === BUSY) break;
       try {
         const { stdout } = await exec("tmux", ["capture-pane", "-t", session, "-p"]);
         const pane = typeof stdout === "string" ? stdout : "";
-        if (pane.includes("esc to interrupt")) break;
         if (!pane.includes("talimat dosyanı oku")) break;
         await exec("tmux", ["send-keys", "-t", session, "Enter"]);
       } catch {

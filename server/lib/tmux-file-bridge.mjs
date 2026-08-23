@@ -5,6 +5,8 @@ import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { promisify } from "node:util";
 
+import { BUSY, IDLE, UNKNOWN, createBusyProbe } from "./agent-busy.mjs";
+
 const execFileAsync = promisify(execFile);
 
 const DEFAULTS = {
@@ -86,14 +88,9 @@ async function secureDirectory(directory, fileSystem) {
   await fileSystem.chmod(directory, 0o700);
 }
 
-function lastFiveLines(value) {
-  const lines = String(value ?? "").split(/\r?\n/);
-  if (lines.at(-1) === "") lines.pop();
-  return lines.slice(-5).join("\n");
-}
-
 export function createTmuxFileBridge({
   exec = execFileAsync,
+  busyProbe,
   fileSystem = fs,
   sleep,
   now = Date.now,
@@ -117,6 +114,7 @@ export function createTmuxFileBridge({
   }
   if (typeof commandFor !== "function") throw new Error("Tmux komut üreticisi zorunlu");
   const wait = sleep ?? ((milliseconds, signal) => defaultSleep(milliseconds, signal, label));
+  const probe = busyProbe ?? createBusyProbe({ exec });
 
   async function sessionExists(context) {
     try {
@@ -131,10 +129,20 @@ export function createTmuxFileBridge({
 
   async function waitUntilIdle(signal) {
     const deadline = now() + busyWaitMs;
+    let unmeasuredLogged = false;
     while (true) {
       throwIfAborted(signal, label);
-      const { stdout = "" } = await exec("tmux", ["capture-pane", "-p", "-t", session]);
-      if (!lastFiveLines(stdout).includes("esc to interrupt")) return true;
+      const { state, reason } = await probe(session);
+      if (state === IDLE) return true;
+      // Ölçemiyorsak MEŞGUL sayıyoruz (fail-closed), ama sessiz kalmıyoruz:
+      // "hep meşgul" görüntüsü bp'nin düşmesini maskelemesin.
+      if (state === UNKNOWN && !unmeasuredLogged) {
+        unmeasuredLogged = true;
+        logger?.warn?.(
+          { session, reason },
+          `${label}: meşguliyet ÖLÇÜLEMEDİ, meşgul sayılıyor (fail-closed)`,
+        );
+      }
       const remaining = deadline - now();
       if (remaining <= 0) return false;
       await wait(Math.min(busyPollMs, remaining), signal);
@@ -219,14 +227,17 @@ export function createTmuxFileBridge({
       await exec("tmux", ["send-keys", "-t", session, "-l", commandLine]);
       await exec("tmux", ["send-keys", "-t", session, "Enter"]);
       // vim-mode composer'da ilk Enter satır ekleyebiliyor (submit etmiyor).
-      // Agent çalışmaya başlamadıysa ("esc to interrupt" yoksa) ve mesaj hâlâ
-      // ekrandaysa Enter'ı tekrarla (en çok 3 kez).
+      // Submit olduğunu iki SÜRÜMDEN BAĞIMSIZ sinyalle anlıyoruz:
+      //   1) bp agent'ı çalışıyor görüyor,
+      //   2) yazdığımız id composer'da kalmadı (kendi metnimiz — TUI'ye bağlı değil).
+      // Hiçbiri yoksa Enter'ı tekrarla (en çok 3 kez).
       for (let attempt = 0; attempt < 3; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 700));
+        const { state } = await probe(session);
+        if (state === BUSY) break; // submit oldu, agent çalışıyor
         try {
           const { stdout } = await exec("tmux", ["capture-pane", "-p", "-t", session]);
           const pane = typeof stdout === "string" ? stdout : "";
-          if (pane.includes("esc to interrupt")) break; // submit oldu, agent çalışıyor
           if (!pane.includes(id)) break;
           await exec("tmux", ["send-keys", "-t", session, "Enter"]);
         } catch {

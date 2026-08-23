@@ -84,6 +84,11 @@ test("assistant oturumu spawn eder, brief üretir ve dosya protokolünü SSE ola
   let sessionExists = false;
 
   const exec = async (command, args) => {
+    // Meşguliyet sondası bp'ye sorar (TUI metnine DEĞİL). Çağrıyı burada
+    // karşılıyoruz ama calls'a yazmıyoruz ki aşağıdaki tmux dizisi okunur kalsın.
+    if (command === "bp") {
+      return { stdout: JSON.stringify({ agents: [{ name: session, status: "idle" }] }) };
+    }
     calls.push([command, args]);
     if (args[0] === "has-session" && !sessionExists) {
       throw new Error("can't find session");
@@ -155,8 +160,7 @@ test("assistant oturumu spawn eder, brief üretir ve dosya protokolünü SSE ola
     ["tmux", ["send-keys", "-t", session, "Enter"]],
     // brief Enter-tekrar kontrolü (pane temiz → tek bakış)
     ["tmux", ["capture-pane", "-t", session, "-p"]],
-    // köprünün meşguliyet kontrolü
-    ["tmux", ["capture-pane", "-p", "-t", session]],
+    // köprünün meşguliyet kontrolü artık pane'e değil bp'ye soruluyor → burada tmux çağrısı yok
     ["tmux", [
       "send-keys", "-t", session, "-l",
       `[assist ${id}] Soru: assistant/tuna/inbox/${id}.md oku; cevabı assistant/tuna/outbox/${id}.md dosyasına markdown olarak yaz; bitince assistant/tuna/outbox/${id}.done oluştur.`,

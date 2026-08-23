@@ -89,7 +89,18 @@ test("mail agent fake tmux ile opus session spawn eder ve [mail id] çıktısın
   let workspaceDirectory;
   let sessionExists = false;
   const calls = [];
+  let gorulenOturum = null;
   const exec = async (command, args) => {
+    // Meşguliyet sondası bp'ye sorar (TUI metnine DEĞİL). Oturum adını tmux
+    // çağrılarından yakalayıp boşta cevabı üretiyoruz; calls'a yazmıyoruz ki
+    // aşağıdaki tmux dizisi assertion'ları okunur kalsın.
+    if (command === "bp") {
+      return {
+        stdout: JSON.stringify({ agents: [{ name: gorulenOturum, status: "idle" }] }),
+      };
+    }
+    if (args[0] === "has-session") gorulenOturum = String(args.at(-1)).replace(/^=/, "");
+    if (args[0] === "new-session") gorulenOturum = args[args.indexOf("-s") + 1];
     calls.push([command, args]);
     if (args[0] === "has-session" && !sessionExists) throw new Error("oturum yok");
     if (args[0] === "new-session") sessionExists = true;
@@ -522,7 +533,16 @@ test("mail agent config model geçişinde session'ı kill eder; Sonnet spawn ve 
   let workspaceDirectory;
   let sessionExists = false;
   const calls = [];
+  let gorulenOturum = null;
   const exec = async (command, args) => {
+    // Meşguliyet sondası bp'ye sorar; oturum adını tmux çağrılarından yakalıyoruz.
+    if (command === "bp") {
+      return {
+        stdout: JSON.stringify({ agents: [{ name: gorulenOturum, status: "idle" }] }),
+      };
+    }
+    if (args[0] === "has-session") gorulenOturum = String(args.at(-1)).replace(/^=/, "");
+    if (args[0] === "new-session") gorulenOturum = args[args.indexOf("-s") + 1];
     calls.push([command, args]);
     if (args[0] === "has-session" && !sessionExists) throw new Error("oturum yok");
     if (args[0] === "new-session") sessionExists = true;
