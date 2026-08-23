@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createApp } from "../../../app.mjs";
 import { temporaryDirectory } from "../../../test-support/helpers.mjs";
 import { ControlRegistry } from "../registry.mjs";
-import { isInternalPath, validateCommand } from "../routes.mjs";
+import { ACTIONS, isInternalPath, validateCommand } from "../routes.mjs";
 
 const EXAMPLE_VAULT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -101,7 +101,6 @@ test("control endpoint kimliği header'dan veya default kullanıcıdan alır, ik
 test("aksiyon allowlist'i yalnız geçerli v1 komutlarını kabul eder", async (t) => {
   const { app } = await fixtureApp(t, "tuna");
   const invalid = [
-    { action: "reload" },
     { action: "navigate", path: "https://example.com" },
     { action: "navigate", path: "//example.com/network" },
     { action: "navigate", path: "/\\example.com/network" },
@@ -126,25 +125,46 @@ test("aksiyon allowlist'i yalnız geçerli v1 komutlarını kabul eder", async (
   }
 
   assert.equal(isInternalPath("/network?mode=list"), true);
-  const valid = [
-    { action: "navigate", path: "/network" },
-    { action: "open-entity", id: "entity-1", ws: "main" },
-    { action: "set-workspace", ws: "main" },
-    { action: "set-theme", theme: "light" },
-    { action: "set-network", network: "warm" },
-    { action: "set-view", view: "list" },
-    {
+  // Geçerli payload'lar ALLOWLIST'TEN türetilir: üretime yeni aksiyon eklenince
+  // burada karşılığı yoksa test kendiliğinden düşer. Elle tutulan ikinci liste
+  // (reload/set-sidebar vakası) tam da bu yüzden kaldırıldı — kendi kopyasını
+  // ölçen test, dış dünyayı ölçmüyor demektir (op-main teşhisi, 23 Ağu 2026).
+  const ornekPayload = new Map([
+    ["navigate", { action: "navigate", path: "/network" }],
+    ["open-entity", { action: "open-entity", id: "entity-1", ws: "main" }],
+    ["set-workspace", { action: "set-workspace", ws: "main" }],
+    ["set-theme", { action: "set-theme", theme: "light" }],
+    ["set-network", { action: "set-network", network: "warm" }],
+    ["set-view", { action: "set-view", view: "list" }],
+    ["set-filters", {
       action: "set-filters",
       q: "",
       type: "person",
       tag: "mentor",
       state: 2,
       preset: "teachers",
-    },
-    { action: "set-color-mode", mode: "state" },
-    { action: "toast", message: "done" },
-  ];
-  for (const payload of valid) assert.doesNotThrow(() => validateCommand(payload));
+    }],
+    ["set-color-mode", { action: "set-color-mode", mode: "state" }],
+    ["set-sidebar", { action: "set-sidebar", hidden: true }],
+    ["reload", { action: "reload" }],
+    ["toast", { action: "toast", message: "done" }],
+  ]);
+
+  const eksik = [...ACTIONS].filter((aksiyon) => !ornekPayload.has(aksiyon));
+  assert.deepEqual(
+    eksik,
+    [],
+    `Üretime aksiyon eklenmiş ama testte örnek payload'ı yok: ${eksik.join(", ")}`,
+  );
+  const fazla = [...ornekPayload.keys()].filter((aksiyon) => !ACTIONS.has(aksiyon));
+  assert.deepEqual(fazla, [], `Testte üretimde olmayan aksiyon var: ${fazla.join(", ")}`);
+
+  for (const payload of ornekPayload.values()) {
+    assert.doesNotThrow(() => validateCommand(payload), JSON.stringify(payload));
+  }
+
+  // Allowlist'te olmayan bir aksiyon adı her zaman reddedilir.
+  assert.throws(() => validateCommand({ action: "allowlistte-olmayan-aksiyon" }));
 });
 
 test("target yalnız localhost'tan kabul edilir ve teslimat sayısı hedef kullanıcının oturumlarıdır", async (t) => {

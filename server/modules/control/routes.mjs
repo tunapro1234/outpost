@@ -3,7 +3,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { ControlRegistry } from "./registry.mjs";
 
-const ACTIONS = new Set([
+// Geçerli aksiyonların TEK kaynağı. Test bu kümeyi içeri alıp kendi listesini
+// buradan türetir — elle tutulan ikinci bir kopya, eklenen aksiyonun test
+// güncellemesini unutturuyordu (reload/set-sidebar vakası, 21→23 Ağu 2026).
+export const ACTIONS = new Set([
   "navigate",
   "open-entity",
   "set-workspace",

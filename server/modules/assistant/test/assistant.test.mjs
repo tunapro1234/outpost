@@ -87,7 +87,7 @@ test("assistant oturumu spawn eder, brief üretir ve dosya protokolünü SSE ola
     // Meşguliyet sondası bp'ye sorar (TUI metnine DEĞİL). Çağrıyı burada
     // karşılıyoruz ama calls'a yazmıyoruz ki aşağıdaki tmux dizisi okunur kalsın.
     if (command === "bp") {
-      return { stdout: JSON.stringify({ agents: [{ name: session, status: "idle" }] }) };
+      return { stdout: JSON.stringify({ agents: [{ name: session, tmux: "idle", status: "open" }] }) };
     }
     calls.push([command, args]);
     if (args[0] === "has-session" && !sessionExists) {

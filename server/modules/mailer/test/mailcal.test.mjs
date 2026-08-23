@@ -96,7 +96,7 @@ test("mail agent fake tmux ile opus session spawn eder ve [mail id] çıktısın
     // aşağıdaki tmux dizisi assertion'ları okunur kalsın.
     if (command === "bp") {
       return {
-        stdout: JSON.stringify({ agents: [{ name: gorulenOturum, status: "idle" }] }),
+        stdout: JSON.stringify({ agents: [{ name: gorulenOturum, tmux: "idle", status: "open" }] }),
       };
     }
     if (args[0] === "has-session") gorulenOturum = String(args.at(-1)).replace(/^=/, "");
@@ -538,7 +538,7 @@ test("mail agent config model geçişinde session'ı kill eder; Sonnet spawn ve 
     // Meşguliyet sondası bp'ye sorar; oturum adını tmux çağrılarından yakalıyoruz.
     if (command === "bp") {
       return {
-        stdout: JSON.stringify({ agents: [{ name: gorulenOturum, status: "idle" }] }),
+        stdout: JSON.stringify({ agents: [{ name: gorulenOturum, tmux: "idle", status: "open" }] }),
       };
     }
     if (args[0] === "has-session") gorulenOturum = String(args.at(-1)).replace(/^=/, "");

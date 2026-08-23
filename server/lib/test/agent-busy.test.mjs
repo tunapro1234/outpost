@@ -4,7 +4,12 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
 import { BUSY, IDLE, UNKNOWN, createBusyProbe } from "../agent-busy.mjs";
+
+const execFileAsync = promisify(execFile);
 
 const LIB = path.dirname(fileURLToPath(import.meta.url));
 const SERVER = path.resolve(LIB, "..", "..");
@@ -13,12 +18,18 @@ function execReturning(stdout) {
   return async () => ({ stdout });
 }
 
-test("sonda bp çıktısındaki working durumunu meşgul, diğerlerini boşta sayar", async () => {
+// ⚠️ Alan adları sezgiye ters: meşguliyet `tmux` alanında, `status` yaşam
+// döngüsüdür. İlk yazımda yanlış alan okundu ve sonda herkese "boşta" dedi;
+// bu fikstür o hatayı tekrarlamasın diye gerçek şemaya göre yazıldı — ve
+// aşağıdaki entegrasyon vakası fikstürün gerçekten doğru olduğunu denetler.
+test("sonda meşguliyeti tmux alanından okur, status alanından DEĞİL", async () => {
   const stdout = JSON.stringify({
     agents: [
-      { name: "calisan", status: "working" },
-      { name: "bosta", status: "idle" },
-      { name: "kapali", status: "closed" },
+      { name: "calisan", tmux: "working", status: "opening" },
+      { name: "bosta", tmux: "idle", status: "open" },
+      { name: "kapali", tmux: "closed", status: "closed" },
+      { name: "ekran-mesgul", tmux: "idle", status: "open", busy_screen: true },
+      { name: "tur-acik", tmux: "idle", status: "open", busy_turnopen: true },
     ],
   });
   const probe = createBusyProbe({ exec: execReturning(stdout) });
@@ -26,6 +37,67 @@ test("sonda bp çıktısındaki working durumunu meşgul, diğerlerini boşta sa
   assert.equal((await probe("calisan")).state, BUSY);
   assert.equal((await probe("bosta")).state, IDLE);
   assert.equal((await probe("kapali")).state, IDLE);
+  // Meşgul sinyalleri birleşimle okunur: hangisi yanarsa meşgul.
+  assert.equal((await probe("ekran-mesgul")).state, BUSY);
+  assert.equal((await probe("tur-acik")).state, BUSY);
+});
+
+// ⭐⭐ DIŞ DÜNYA VAKASI — fikstürün doğruluğunu fikstürle değil, bp'nin KENDİSİYLE sınar.
+// Varlık sebebi: yukarıdaki fikstür bir zamanlar yanlıştı (status/tmux karışmıştı) ve
+// birim testler yeşil kalırken üretim fail-open çalışıyordu. Bir varsayımı yalnız
+// kendi kopyasıyla sınarsan asla yanlışlayamazsın (op-main teşhisi, 23 Ağu 2026).
+// bp yoksa (CI) vaka atlanır — "ölçemedim" ile "geçti" karıştırılmaz.
+test("gerçek bp çıktısı sondanın beklediği şemayı taşıyor", async (t) => {
+  let gercek;
+  try {
+    ({ stdout: gercek } = await execFileAsync("bp", ["status", "--json"]));
+  } catch {
+    t.skip("bp bu ortamda yok — şema dış dünyaya karşı doğrulanamadı");
+    return;
+  }
+
+  const data = JSON.parse(gercek);
+  assert.ok(Array.isArray(data.agents) && data.agents.length > 0, "agents listesi dolu gelmeli");
+
+  // Meşguliyet hangi alanda? Sondanın okuduğu alan, bp'nin gerçekten doldurduğu alan olmalı.
+  const tmuxDegerleri = new Set(data.agents.map((a) => a.tmux));
+  const statusDegerleri = new Set(data.agents.map((a) => a.status));
+  for (const deger of tmuxDegerleri) {
+    assert.ok(
+      ["working", "idle", "closed"].includes(deger),
+      `bp tmux alanında beklenmeyen değer: ${deger} — sonda güncellenmeli`,
+    );
+  }
+  assert.ok(
+    !statusDegerleri.has("working"),
+    "status alanı meşguliyet taşımıyor olmalı; taşıyorsa sondanın okuduğu alan yeniden gözden geçirilmeli",
+  );
+
+  const probe = createBusyProbe({ exec: execFileAsync });
+  const ornek = data.agents[0].name;
+  const sonuc = await probe(ornek);
+  assert.notEqual(sonuc.state, UNKNOWN, `gerçek bp çıktısında '${ornek}' çözülemedi: ${sonuc.reason}`);
+
+  // ⭐ Asıl keskin kontrol: bp'nin MEŞGUL dediğine sonda da meşgul demeli.
+  // Yanlış alanı okuyan sürüm yukarıdaki şema kontrollerinden geçebiliyordu ama
+  // buradan geçemez — çünkü meşgulü hiç göremiyordu.
+  const bpMesgul = data.agents.find((a) => a.tmux === "working");
+  if (bpMesgul) {
+    const mesgulSonuc = await probe(bpMesgul.name);
+    assert.equal(
+      mesgulSonuc.state,
+      BUSY,
+      `bp '${bpMesgul.name}' için working diyor ama sonda '${mesgulSonuc.state}' dedi`
+        + " — sonda yanlış alanı okuyor olabilir",
+    );
+  } else {
+    t.diagnostic("şu an meşgul agent yok; meşgul yolu bu koşuda sınanmadı");
+  }
+
+  const bpBosta = data.agents.find((a) => a.tmux === "idle" && !a.busy_screen && !a.busy_turnopen);
+  if (bpBosta) {
+    assert.equal((await probe(bpBosta.name)).state, IDLE);
+  }
 });
 
 test("sonda bp'ye doğru komutu sorar", async () => {
