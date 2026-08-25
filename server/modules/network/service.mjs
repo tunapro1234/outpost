@@ -231,6 +231,10 @@ export function entityListItem(entity, index, statsByEntity, stateByEntity) {
     // taşınıyor (santral aranır, WhatsApp'tan yazılmaz).
     santral: entity.meta.santral ?? null,
     phone_source: entity.meta.phone_source ?? null,
+    // Numara NİTELİĞİ (ftc vault, 25 Ağu): 'temiz' | 'kurumsal' | 'supheli'.
+    // Liste "yazılabilir" bandı yalnız 'temiz'i sayar — numara VARLIĞI kaliteyi
+    // söylemez (Hisar satın alma hattı / şüpheli ad-eşleşmesi vakaları).
+    tel_nitelik: entity.meta.tel_nitelik ?? null,
     contact_channel: entity.meta.contact_channel ?? null,
     birincil_kanal: entity.meta.birincil_kanal ?? entity.meta.contact_channel ?? null,
     kimlik_guveni: entity.meta.kimlik_guveni ?? null,

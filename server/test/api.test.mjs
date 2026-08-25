@@ -50,7 +50,7 @@ test("entities, stats, detail ve health endpointleri sözleşme şeklini döndü
     // adapter/manual-contact alanları — phone & kimlik_guveni SALT GÖRÜNTÜ,
     // outreach akışlarına lib/outreach-guard.mjs tarafından hiç geçmez.
     "org", "location", "durum", "lead_source",
-    "phone", "santral", "phone_source", "contact_channel", "birincil_kanal",
+    "phone", "santral", "phone_source", "tel_nitelik", "contact_channel", "birincil_kanal",
     "kimlik_guveni", "gun", "sira", "odul_sayisi", "robot", "robot_seviye", "dunya_sirasi",
     "degree",
     "mail_count", "last_mail_date", "last_mail_direction", "last_mail_from",

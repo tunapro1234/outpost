@@ -139,6 +139,8 @@ export interface EntityListItem extends EntityState {
   /** Kurum santrali — kişisel hat DEĞİL. Ayrı alan: bkz. network/service.mjs. */
   santral?: string | null;
   phone_source?: "elden" | "ocr" | "web" | null;
+  /** Numara niteliği (ftc): 'temiz' yazılabilir; 'kurumsal'/'supheli' 1. banda sayılmaz. */
+  tel_nitelik?: "temiz" | "kurumsal" | "supheli" | null;
   contact_channel?: string | null;
   birincil_kanal?: string | null;
   kimlik_guveni?: "iyi" | "orta" | "zayif" | null;
@@ -218,6 +220,8 @@ export interface EntityMeta {
   // follow-up generator or bulk sender ever receives them. Show them; never
   // wire them into an automated flow.
   phone_source?: "elden" | "ocr" | "web" | null;
+  /** Numara niteliği (ftc): 'temiz' yazılabilir; 'kurumsal'/'supheli' 1. banda sayılmaz. */
+  tel_nitelik?: "temiz" | "kurumsal" | "supheli" | null;
   contact_channel?: string | null;
   // How sure we are the contact details belong to THIS person — the real risk
   // with a hand-copied number is reaching the wrong human, not a bad number.

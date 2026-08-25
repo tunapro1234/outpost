@@ -456,7 +456,13 @@ function yazilabilirKisi(p: EntityListItem): boolean {
   // Bloklu/erteli kişinin telefonu ELDE VAR ama YAZILMAZ; takımı "yazılabilir"
   // bandına taşıması onu yanlışlıkla sıraya sokar (vaka: #25160 ÇAKATECH —
   // Oğuzhan Köse'nin numarası var ama tanıştırma bekleniyor).
-  return Boolean(p.phone) && !isBlocked(p) && p.politika_durumu !== "defer";
+  if (!p.phone || isBlocked(p) || p.politika_durumu === "defer") return false;
+  // Numara NİTELİĞİ (25 Ağu, Tuna: "ilk beşin üçünün düzgün numarası yok"):
+  // varlık yetmez, hüküm 'temiz' olacak. 'kurumsal' hat takımı 1. banda taşımaz
+  // (kurum GSM yolu ayrıca bakılır), 'supheli' hiç sayılmaz. Alanı olmayan
+  // ağlarda (ftc dışı) eski davranış sürer — alan yoksa filtre yok.
+  if (p.tel_nitelik && p.tel_nitelik !== "temiz") return false;
+  return true;
 }
 
 function bandOf(root: HierRoot): 0 | 1 | 2 {
