@@ -468,6 +468,12 @@ function yazilabilirKisi(p: EntityListItem): boolean {
 function bandOf(root: HierRoot): 0 | 1 | 2 {
   const rec = root.record;
   if (rec && (isBlocked(rec) || rec.politika_durumu === "defer")) return 2;
+  // TAKIM OLMAYAN kök "yazılabilir takım" bandına GİRMEZ (Tuna, 25 Ağu:
+  // "FYEV/FYF takım değil, FIRST Türkiye operatörü kurum kaydı; takım
+  // listesinde takım gibi görünmemeli"). Vaka: FYEV'in kişisinde temiz cep
+  // olduğu için kurum, 15 ödüllü takımların yanında 1. banda çıkıyordu.
+  // yazmaSkoru zaten rec-null'u dibe atıyordu; bant da aynı şeyi söylemeliydi.
+  if (!rec) return 1;
   if (root.people.some(yazilabilirKisi)) return 0;
   const kurumTel = root.org?.santral ?? rec?.santral ?? rec?.phone ?? null;
   if (kurumTel && GSM.test(kurumTel)) return 0;
